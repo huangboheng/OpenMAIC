@@ -35,7 +35,7 @@ import { isCustomASRProvider } from '@/lib/audio/types';
 import type { SettingsSection } from '@/lib/types/settings';
 
 interface MediaPopoverProps {
-  onSettingsOpen: (section: SettingsSection) => void;
+  onSettingsOpen?: (section: SettingsSection) => void;
 }
 
 // ─── Provider icon maps ───
@@ -345,19 +345,21 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div className="border-t border-border/40">
-          <button
-            onClick={() => {
-              setOpen(false);
-              onSettingsOpen(activeTab);
-            }}
-            className="w-full flex items-center justify-between px-3.5 py-2.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-          >
-            <span>{t('toolbar.advancedSettings')}</span>
-            <ChevronRight className="size-3" />
-          </button>
-        </div>
+        {/* ── Footer — hidden when settings panel is disabled ── */}
+        {onSettingsOpen && (
+          <div className="border-t border-border/40">
+            <button
+              onClick={() => {
+                setOpen(false);
+                onSettingsOpen(activeTab);
+              }}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            >
+              <span>{t('toolbar.advancedSettings')}</span>
+              <ChevronRight className="size-3" />
+            </button>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

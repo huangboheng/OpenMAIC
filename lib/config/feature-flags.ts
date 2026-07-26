@@ -53,6 +53,19 @@ export function shouldShowVocationalTestUi(): boolean {
 }
 
 /**
+ * Settings panel gate. Default OFF — hides the settings dialog and every
+ * settings entry point (header gear button, "Configure Provider" toolbar
+ * affordance, media popover "Advanced Settings" link). Intended for managed
+ * deployments (e.g. embedded as a backend behind another product) where
+ * providers/keys/models are configured server-side and end users must not
+ * reach model / API-key / base-URL configuration. Enable for standalone or
+ * development use with NEXT_PUBLIC_SETTINGS_ENABLED=true.
+ */
+export function isSettingsEnabled(): boolean {
+  return readBoolean(process.env.NEXT_PUBLIC_SETTINGS_ENABLED);
+}
+
+/**
  * Experimental classroom video export (Hyperframes composition ZIP, #865).
  * Default OFF — gates only the "Export Video" affordance in the export menu.
  * The emitter/compiler code paths are unaffected; this hides the UI entry

@@ -57,7 +57,7 @@ const MAX_COURSE_MATERIAL_SIZE_BYTES = MAX_COURSE_MATERIAL_SIZE_MB * 1024 * 1024
 export interface GenerationToolbarProps {
   webSearch: boolean;
   onWebSearchChange: (v: boolean) => void;
-  onSettingsOpen: (section?: SettingsSection) => void;
+  onSettingsOpen?: (section?: SettingsSection) => void;
   // PDF
   courseMaterials: SelectedCourseMaterial[];
   onCourseMaterialsAdd: (files: File[]) => void;
@@ -232,7 +232,7 @@ export function GenerationToolbar({
           }
           t={t}
         />
-      ) : (
+      ) : onSettingsOpen ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -249,7 +249,7 @@ export function GenerationToolbar({
           </TooltipTrigger>
           <TooltipContent>{t('toolbar.configureProviderHint')}</TooltipContent>
         </Tooltip>
-      )}
+      ) : null}
 
       <div className="flex min-w-0 items-center gap-1">
         {/* ── Separator ── */}
