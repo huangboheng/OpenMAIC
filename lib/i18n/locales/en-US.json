@@ -1710,5 +1710,15 @@
     "title": "Enter Access Code",
     "placeholder": "Access code",
     "error": "Invalid access code. Please try again."
+  },
+  "continuousLearning": {
+    "nextLesson": "Next Lesson",
+    "enterNext": "Continue to Next Lesson",
+    "enterNow": "Continue Now",
+    "autoAdvanceCountdown": "Auto-advancing in {{seconds}}s",
+    "cancel": "Cancel",
+    "toggleLabel": "Continuous Learning",
+    "courseAllComplete": "Congratulations! You've completed all lessons in this course",
+    "progress": "Lesson {{current}} of {{total}}"
   }
 }

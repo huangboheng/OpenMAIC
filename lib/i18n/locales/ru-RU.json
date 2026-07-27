@@ -1710,5 +1710,15 @@
     "title": "Введите код доступа",
     "placeholder": "Код доступа",
     "error": "Неверный код доступа. Попробуйте ещё раз."
+  },
+  "continuousLearning": {
+    "nextLesson": "Следующий урок",
+    "enterNext": "Перейти к следующему уроку",
+    "enterNow": "Перейти сейчас",
+    "autoAdvanceCountdown": "Автоматический переход через {{seconds}} с",
+    "cancel": "Отмена",
+    "toggleLabel": "Непрерывное обучение",
+    "courseAllComplete": "Поздравляем! Вы прошли все уроки этого курса",
+    "progress": "Урок {{current}} из {{total}}"
   }
 }

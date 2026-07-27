@@ -1,15 +1,11 @@
-import type { NextConfig } from 'next';
+﻿import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // 子路径部署支持：被 Philochora 以 /openmaic 前缀反向代理时设置 NEXT_PUBLIC_BASE_PATH=/openmaic，
+  // 独立运行（直接访问 OpenMAIC 端口）时留空即可。
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   output: process.env.VERCEL ? undefined : 'standalone',
   transpilePackages: ['mathml2omml', 'pptxgenjs', '@openmaic/importer'],
-  // These agent packages do a runtime `import(specifier)` with a computed
-  // specifier (to lazily load node:fs/os/path without breaking browser/Vite
-  // builds). webpack can't statically analyze that and bundling it throws
-  // "Cannot find module as expression is too dynamic" at runtime on the server
-  // (the "Edit with AI" Pro-mode path), which broke the #619 keep-alive e2e.
-  // Mark them server-external so Next loads them natively and the dynamic
-  // import resolves as a real Node call.
   serverExternalPackages: ['@earendil-works/pi-ai', '@earendil-works/pi-agent-core'],
   experimental: {
     proxyClientMaxBodySize: '200mb',
@@ -22,13 +18,18 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: [
-          // X-Frame-Options only supports SAMEORIGIN (no allow-list),
-          // so we omit it when custom ancestors are configured.
           ...(!extraAncestors ? [{ key: 'X-Frame-Options', value: 'SAMEORIGIN' }] : []),
           {
             key: 'Content-Security-Policy',
             value: `frame-ancestors ${frameAncestors}`,
           },
+          // SEC-04: Additional security headers
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          ...(process.env.NODE_ENV === 'production'
+            ? [{ key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' }]
+            : []),
         ],
       },
     ];

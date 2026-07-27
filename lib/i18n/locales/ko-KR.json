@@ -1710,5 +1710,15 @@
     "title": "접근 코드 입력",
     "placeholder": "접근 코드",
     "error": "유효하지 않은 접근 코드입니다. 다시 시도해 주세요."
+  },
+  "continuousLearning": {
+    "nextLesson": "다음 수업",
+    "enterNext": "다음 수업으로",
+    "enterNow": "지금 이동",
+    "autoAdvanceCountdown": "{{seconds}}초 후 자동으로 다음 수업으로 이동합니다",
+    "cancel": "취소",
+    "toggleLabel": "연속 학습",
+    "courseAllComplete": "축하합니다! 이 과정의 모든 수업을 완료했습니다",
+    "progress": "수업 {{current}} / {{total}}"
   }
 }

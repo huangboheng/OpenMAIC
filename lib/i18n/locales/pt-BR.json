@@ -1710,5 +1710,15 @@
     "title": "Digite o Código de Acesso",
     "placeholder": "Código de acesso",
     "error": "Código inválido. Tente novamente."
+  },
+  "continuousLearning": {
+    "nextLesson": "Próxima aula",
+    "enterNext": "Ir para a próxima aula",
+    "enterNow": "Ir agora",
+    "autoAdvanceCountdown": "Avançando automaticamente em {{seconds}}s",
+    "cancel": "Cancelar",
+    "toggleLabel": "Aprendizado contínuo",
+    "courseAllComplete": "Parabéns! Você concluiu todas as aulas deste curso",
+    "progress": "Aula {{current}} de {{total}}"
   }
 }

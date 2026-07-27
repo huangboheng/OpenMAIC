@@ -9,6 +9,7 @@ import { useStageStore } from '@/lib/store';
 import type { Scene, SceneType } from '@/lib/types/stage';
 import { summarizeScenes } from '@/lib/classroom/complete-summary';
 import { readAnswersForSummary } from '@/lib/quiz/persistence';
+import { NextLessonBanner } from './next-lesson';
 
 const SCENE_TYPE_ICONS: Record<SceneType, typeof FileText> = {
   slide: FileText,
@@ -490,6 +491,8 @@ export function ClassroomCompletePage({ scenes, title }: ClassroomCompletePagePr
               </div>
             </motion.div>
           )}
+          {/* 连续学习：下一节导航 */}
+          <NextLessonBanner />
         </div>
       </section>
     </MotionConfig>

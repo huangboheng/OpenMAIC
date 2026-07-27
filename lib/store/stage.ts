@@ -18,6 +18,7 @@ import { migrateScene } from '@/lib/edit/slide-schema';
 import { preparePBLScenesForDocumentPersistence } from '@/lib/pbl/v2/runtime/document-persistence';
 import { hydratePBLScenesFromRuntime } from '@/lib/pbl/v2/runtime/hydration';
 import type { ChatStorageSnapshot } from '@/lib/utils/chat-storage';
+import { normalizeMediaUrls } from '@/lib/classroom/load-classroom';
 
 const log = createLogger('StageStore');
 
@@ -505,7 +506,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
           persistedComplete ||
           isDeckComplete({
             outlines,
-            scenes: migrated,
+            scenes: normalizeMediaUrls(migrated),
             failedOutlines,
           });
         if (generationComplete && !persistedComplete) {
@@ -519,8 +520,8 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         }
 
         set({
-          stage: data.stage,
-          scenes: migrated,
+          stage: normalizeMediaUrls(data.stage),
+          scenes: normalizeMediaUrls(migrated),
           currentSceneId: data.currentSceneId,
           chats: data.chats,
           chatSnapshot: data.chatSnapshot ?? { sessions: [], restoreMarker: undefined },

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Image Generation API
  *
  * Generates an image from a text prompt using the specified provider.
@@ -35,7 +35,7 @@ import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 const log = createLogger('ImageGeneration API');
 
 // The ComfyUI adapter polls up to GENERATION_TIMEOUT_MS (5 min) and real
-// workflows can take 3–5 min. 60s would let platforms that enforce maxDuration
+// workflows can take 3鈥? min. 60s would let platforms that enforce maxDuration
 // (e.g. Vercel) kill the request ~4 min before the adapter finishes. 300s is
 // the practical ceiling on most managed platforms and matches the poll budget.
 // (Self-hosted Node servers ignore this value entirely.)
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     const clientBaseUrl = managed ? undefined : request.headers.get('x-base-url') || undefined;
     const clientModel = request.headers.get('x-image-model') || undefined;
 
-    if (clientBaseUrl && process.env.NODE_ENV === 'production') {
+    if (clientBaseUrl) { // SEC-05: SSRF check in all environments
       const ssrfError = await validateUrlForSSRF(clientBaseUrl);
       if (ssrfError) {
         return apiError('INVALID_URL', 403, ssrfError);
@@ -112,3 +112,4 @@ export async function POST(request: NextRequest) {
     return apiError('INTERNAL_ERROR', 500, message);
   }
 }
+

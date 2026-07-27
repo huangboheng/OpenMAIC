@@ -1710,5 +1710,15 @@
     "title": "أدخل رمز الوصول",
     "placeholder": "رمز الوصول",
     "error": "رمز الوصول غير صالح. يرجى المحاولة مرة أخرى."
+  },
+  "continuousLearning": {
+    "nextLesson": "الدرس التالي",
+    "enterNext": "الانتقال إلى الدرس التالي",
+    "enterNow": "الانتقال الآن",
+    "autoAdvanceCountdown": "الانتقال تلقائيًا خلال {{seconds}} ثانية",
+    "cancel": "إلغاء",
+    "toggleLabel": "التعلم المستمر",
+    "courseAllComplete": "تهانينا! لقد أكملت جميع دروس هذه الدورة",
+    "progress": "الدرس {{current}} من {{total}}"
   }
 }

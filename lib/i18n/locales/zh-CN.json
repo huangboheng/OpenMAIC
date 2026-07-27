@@ -1710,5 +1710,15 @@
     "title": "请输入访问码",
     "placeholder": "访问码",
     "error": "访问码错误，请重试。"
+  },
+  "continuousLearning": {
+    "nextLesson": "下一节",
+    "enterNext": "进入下一节",
+    "enterNow": "立即进入",
+    "autoAdvanceCountdown": "{{seconds}} 秒后自动进入下一节",
+    "cancel": "取消",
+    "toggleLabel": "连续学习",
+    "courseAllComplete": "恭喜！本课程全部章节已学完",
+    "progress": "第 {{current}} / {{total}} 节"
   }
 }

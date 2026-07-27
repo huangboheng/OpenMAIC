@@ -1,5 +1,8 @@
 'use client';
 
+// 子路径部署：安装全局 fetch basePath 拦截器（须早于本组件的 /api 请求）
+import '@/lib/fetch-base-path';
+
 import { useEffect, useState, ReactNode } from 'react';
 import { AccessCodeModal } from '@/components/access-code-modal';
 

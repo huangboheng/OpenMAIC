@@ -1,8 +1,8 @@
-services:
+﻿services:
   openmaic:
     build: .
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"  # SEC-11: bind loopback only
     env_file:
       - .env.local
     environment:
@@ -10,7 +10,7 @@ services:
       # RENDER_SERVICE_URL in .env.local; the service only starts under the
       # "video-export" profile. The app's capability check probes the service's
       # /health, so if the profile is off (service absent) the app reports the
-      # MP4 export disabled and degrades to the ZIP-download path — this URL
+      # MP4 export disabled and degrades to the ZIP-download path 鈥?this URL
       # being set does not, by itself, advertise a working render.
       - RENDER_SERVICE_URL=http://render-service:9000
     networks:
@@ -76,3 +76,4 @@ networks:
 
 volumes:
   openmaic-data:
+

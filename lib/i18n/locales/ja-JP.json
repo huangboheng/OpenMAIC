@@ -1710,5 +1710,15 @@
     "title": "アクセスコードを入力",
     "placeholder": "アクセスコード",
     "error": "アクセスコードが正しくありません。もう一度お試しください。"
+  },
+  "continuousLearning": {
+    "nextLesson": "次のレッスン",
+    "enterNext": "次のレッスンへ",
+    "enterNow": "今すぐ移動",
+    "autoAdvanceCountdown": "{{seconds}} 秒後に自動的に次のレッスンへ移動します",
+    "cancel": "キャンセル",
+    "toggleLabel": "連続学習",
+    "courseAllComplete": "おめでとうございます！このコースの全レッスンを完了しました",
+    "progress": "レッスン {{current}} / {{total}}"
   }
 }

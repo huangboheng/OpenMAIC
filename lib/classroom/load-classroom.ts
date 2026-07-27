@@ -178,6 +178,25 @@ export async function fetchClassroomFromApi(classroomId: string): Promise<Classr
   return json.classroom;
 }
 
+/** 将课堂数据中的绝对媒体 URL 重写为 basePath 相对路径
+ * （兜底兼容浏览器缓存/本地存储中残留的旧绝对地址，避免跨域被拦截） */
+export function normalizeMediaUrls<T>(data: T): T {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH;
+  if (!basePath) return data;
+  const pattern = /https?:\/\/[^/"]+\/(api\/classroom-media\/)/g;
+  const transform = (value: unknown): unknown => {
+    if (typeof value === 'string') return value.replace(pattern, `${basePath}/$1`);
+    if (Array.isArray(value)) return value.map(transform);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = transform(v);
+      return out;
+    }
+    return value;
+  };
+  return transform(data) as T;
+}
+
 export function applyClassroomStageAndScenes(
   stage: Stage,
   scenes: readonly Scene[],
@@ -187,14 +206,15 @@ export function applyClassroomStageAndScenes(
     chatSnapshot?: ChatStorageSnapshot;
   } = {},
 ): void {
-  const nextScenes = [...scenes];
+  const nextScenes = normalizeMediaUrls([...scenes]);
   useStageStore.setState((state) => ({
-    stage,
+    stage: normalizeMediaUrls(stage),
     scenes: nextScenes,
     currentSceneId: nextScenes[0]?.id ?? null,
     chats: options.chats ?? [],
     chatSnapshot: options.chatSnapshot ?? { sessions: [], restoreMarker: null },
-    generationComplete: false,
+    // 从服务端/存储加载的课堂场景齐全，标记为完成以启用课程完成页与连续学习“下一节”导航
+    generationComplete: nextScenes.length > 0,
     generationEpoch: state.generationEpoch + 1,
     mode: 'playback',
   }));

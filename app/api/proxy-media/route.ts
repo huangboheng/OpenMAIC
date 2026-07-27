@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Media Proxy API
  *
  * Server-side proxy for fetching remote media URLs (images/videos).
@@ -73,7 +73,10 @@ export async function POST(request: NextRequest) {
     if (blob.size > MAX_PROXY_BYTES) {
       return apiError('UPSTREAM_ERROR', 502, `Upstream asset too large (${blob.size} bytes)`);
     }
-    const contentType = response!.headers.get('content-type') || 'application/octet-stream';
+    // SEC-14: Only allow safe media Content-Types; force octet-stream for anything else
+    const rawContentType = response!.headers.get('content-type') || 'application/octet-stream';
+    const SAFE_MEDIA_TYPES = /^(image\/|video\/|audio\/)/;
+    const contentType = SAFE_MEDIA_TYPES.test(rawContentType) ? rawContentType : 'application/octet-stream';
 
     return new NextResponse(blob, {
       headers: {
@@ -87,3 +90,4 @@ export async function POST(request: NextRequest) {
     return apiError('INTERNAL_ERROR', 500, error instanceof Error ? error.message : String(error));
   }
 }
+

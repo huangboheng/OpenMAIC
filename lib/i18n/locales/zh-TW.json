@@ -1710,5 +1710,15 @@
       "quiz": "測驗",
       "slide": "頁面"
     }
+  },
+  "continuousLearning": {
+    "nextLesson": "下一節",
+    "enterNext": "進入下一節",
+    "enterNow": "立即進入",
+    "autoAdvanceCountdown": "{{seconds}} 秒後自動進入下一節",
+    "cancel": "取消",
+    "toggleLabel": "連續學習",
+    "courseAllComplete": "恭喜！本課程全部章節已學完",
+    "progress": "第 {{current}} / {{total}} 節"
   }
 }

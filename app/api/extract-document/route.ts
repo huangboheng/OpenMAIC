@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import {
   isServerConfiguredProvider,
   resolveManagedAliDocMindCredentials,
@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Media (audio/video) takes the media extraction path → MediaArtifact,
+    // Media (audio/video) takes the media extraction path 鈫?MediaArtifact,
     // flattened to the same text shape documents produce. Same route, same
     // downstream generation path.
     if (SUPPORTED_MEDIA_MIME_TYPES.includes(mimeType)) {
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
       }
       const mediaManaged = isServerConfiguredProvider('pdf', resolvedProviderId);
       // When managed, resolve the server-owned AK/SK (env OR YAML) explicitly so
-      // a YAML-only deployment works — the client-level env fallback reads env
+      // a YAML-only deployment works 鈥?the client-level env fallback reads env
       // vars only. Client-entered creds are used only when unmanaged.
       const mediaManagedCreds = mediaManaged ? resolveManagedAliDocMindCredentials() : undefined;
       const mediaClientBaseUrl = mediaManaged ? undefined : baseUrl || undefined;
@@ -206,7 +206,7 @@ export async function POST(req: NextRequest) {
       const mediaText = mediaArtifactToText(mediaArtifact);
       // An artifact with no transcript, keyframes, or synopsis carries no usable
       // content. Returning empty text as 200 would silently generate from
-      // nothing — surface a parse error instead.
+      // nothing 鈥?surface a parse error instead.
       if (!mediaText.trim()) {
         return apiError(
           'PARSE_FAILED',
@@ -280,7 +280,7 @@ export async function POST(req: NextRequest) {
         `${requestedTypeLabel(mimeType)} extraction requires a configured MinerU document extractor. Configure a self-hosted MinerU base URL or a MinerU Cloud API key in PDF provider settings.`,
       );
     }
-    if (clientBaseUrl && process.env.NODE_ENV === 'production') {
+    if (clientBaseUrl) { // SEC-05: SSRF check in all environments
       const ssrfError = await validateUrlForSSRF(clientBaseUrl);
       if (ssrfError) {
         return apiError('INVALID_URL', 403, ssrfError);
@@ -288,7 +288,7 @@ export async function POST(req: NextRequest) {
     }
 
     // For a managed AliDocMind provider, resolve server-owned AK/SK (env OR
-    // YAML) explicitly so a YAML-only deployment extracts successfully — the
+    // YAML) explicitly so a YAML-only deployment extracts successfully 鈥?the
     // client-level env fallback reads env vars only.
     const managedAliCreds =
       managed && provider.id === 'alidocmind' ? resolveManagedAliDocMindCredentials() : undefined;
@@ -300,7 +300,7 @@ export async function POST(req: NextRequest) {
       baseUrl: isPdfProviderId(provider.id)
         ? (managedAliCreds?.baseUrl ?? resolvePDFBaseUrl(provider.id, clientBaseUrl))
         : clientBaseUrl,
-      // AliDocMind uses AK/SK: managed → server-owned creds; else client values.
+      // AliDocMind uses AK/SK: managed 鈫?server-owned creds; else client values.
       accessKeyId: managed ? managedAliCreds?.accessKeyId : accessKeyId || undefined,
       accessKeySecret: managed ? managedAliCreds?.accessKeySecret : accessKeySecret || undefined,
       // Env fallback is a last resort for a managed provider (defensive; the
@@ -341,3 +341,4 @@ export async function POST(req: NextRequest) {
     return apiError('PARSE_FAILED', 500, error instanceof Error ? error.message : 'Unknown error');
   }
 }
+
