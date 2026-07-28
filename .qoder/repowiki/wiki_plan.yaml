@@ -1,0 +1,31 @@
+version: 1
+
+scope:
+  include:
+    - "lib/"
+    - "components/"
+    - "app/"
+  exclude:
+    - "data/"
+    - "assets/"
+    - "public/avatars/"
+    - "public/logos/"
+    - "packages/"
+    - "render-service/"
+    - "tests/"
+    - "e2e/"
+    - "eval/"
+
+repowiki:
+  template: product_requirement
+  notes:
+    - text: "OpenMAIC 是一个 AI 驱动的交互式课件（MAIC）生成与课堂管理平台，核心用户场景包括：通过自然语言生成结构化课件、课堂实时互动（问答/讨论/测验）、课件编辑与回放。"
+    - text: "前端基于 Next.js 16 + React 19 + Zustand 状态管理；AI 编排层使用 LangGraph + Vercel AI SDK；课件格式为自定义 DSL（packages/@openmaic/dsl）。"
+    - text: "核心业务模块位于 lib/ 目录：orchestration（AI 编排）、generation（课件生成）、playback（课堂回放）、agent（智能体）、classroom（课堂管理）、edit（编辑器）、export（导出 PPTX/PDF）。"
+    - text: "packages/ 下有四个内部子包：@openmaic/dsl（课件 DSL 定义）、@openmaic/storage（IndexedDB 持久化）、@openmaic/importer（PPTX/MAIC 导入）、@openmaic/renderer（课件渲染引擎）。"
+  documents: []
+
+knowledgecard:
+  notes:
+    - text: "按功能域划分模块边界：AI 编排（lib/orchestration + lib/agent）、课件生成（lib/generation）、编辑器（lib/edit + components/edit）、课堂系统（lib/classroom + app/classroom）、渲染与导出（packages/@openmaic/renderer + lib/export）、存储层（packages/@openmaic/storage + lib/storage）。"
+    - text: "组件层 components/ 按场景划分：slide-renderer（幻灯片渲染）、scene-renderers（交互场景）、whiteboard（白板）、stage（舞台/动画）、chat（对话 UI）、settings（设置面板）。"

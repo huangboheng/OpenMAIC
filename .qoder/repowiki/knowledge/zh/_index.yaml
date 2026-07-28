@@ -1,0 +1,58 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: custom-main
+nodes_managed: true
+exported_at: "2026-07-28T15:41:38Z"
+modules:
+    "":
+        dir_name: OpenMAIC 前端应用（Next.js App Router）
+        title: OpenMAIC 前端应用（Next.js App Router）
+        scope:
+            - app/
+            - components/
+            - lib/
+        source_files: []
+        children:
+            - component_library
+            - core_libs
+        depends_on: []
+        related_to: []
+    component_library:
+        dir_name: 组件库（components_）
+        title: 组件库（components/）
+        scope:
+            - components/
+        source_files: []
+        children:
+            - component_library/app_shell
+        depends_on: []
+        related_to:
+            - path: core_libs
+    component_library/app_shell:
+        dir_name: 应用外壳与全局 UI 组件
+        title: 应用外壳与全局 UI 组件
+        scope:
+            - components/access-code-guard.tsx
+            - components/access-code-modal.tsx
+            - components/header.tsx
+            - components/language-switcher.tsx
+            - components/server-providers-init.tsx
+            - components/stage.tsx
+            - components/user-profile.tsx
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: core_libs
+    core_libs:
+        dir_name: OpenMAIC 核心业务库（lib）
+        title: OpenMAIC 核心业务库（lib）
+        scope:
+            - lib/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: component_library
+            - path: component_library/app_shell

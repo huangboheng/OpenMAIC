@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: component_library/app_shell
+title: 应用外壳与全局 UI 组件
+scope:
+    - components/access-code-guard.tsx
+    - components/access-code-modal.tsx
+    - components/header.tsx
+    - components/language-switcher.tsx
+    - components/server-providers-init.tsx
+    - components/stage.tsx
+    - components/user-profile.tsx
+source_files: []
+depends_on: []
+related_to:
+    - path: core_libs
