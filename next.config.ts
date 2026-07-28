@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   basePath: process.env.NEXT_PUBLIC_BASE_PATH || '',
   output: process.env.VERCEL ? undefined : 'standalone',
   transpilePackages: ['mathml2omml', 'pptxgenjs', '@openmaic/importer'],
-  serverExternalPackages: ['@earendil-works/pi-ai', '@earendil-works/pi-agent-core'],
+  serverExternalPackages: ['@earendil-works/pi-ai', '@earendil-works/pi-agent-core', 'shiki'],
   experimental: {
     proxyClientMaxBodySize: '200mb',
   },
