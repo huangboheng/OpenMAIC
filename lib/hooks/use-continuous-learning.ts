@@ -43,11 +43,13 @@ interface UrlParams {
   chaptersRaw: string | null;
   chapterIndex: number;
   philochoraUserId: string | null;
+  courseSlug: string | null;
+  resumeFrom: string | null;
 }
 
 function readParams(): UrlParams {
   if (typeof window === 'undefined') {
-    return { chaptersRaw: null, chapterIndex: 0, philochoraUserId: null };
+    return { chaptersRaw: null, chapterIndex: 0, philochoraUserId: null, courseSlug: null, resumeFrom: null };
   }
   const sp = new URLSearchParams(window.location.search);
   const idxRaw = parseInt(sp.get('chapterIndex') ?? '0', 10);
@@ -55,6 +57,8 @@ function readParams(): UrlParams {
     chaptersRaw: sp.get('chapters'),
     chapterIndex: Number.isNaN(idxRaw) ? 0 : idxRaw,
     philochoraUserId: sp.get('philochoraUserId'),
+    courseSlug: sp.get('courseSlug'),
+    resumeFrom: sp.get('resumeFrom'),
   };
 }
 
@@ -71,11 +75,17 @@ export interface ContinuousLearning {
   toggleContinuous: (next: boolean) => void;
   goToChapter: (index: number) => void;
   goToNextLesson: () => void;
+  /** Philochora 用户 ID（用于进度回传） */
+  philochoraUserId: string | null;
+  /** 课程 slug（用于进度回传识别课程） */
+  courseSlug: string | null;
+  /** 是否从快照恢复（异常退出后恢复学习位置） */
+  resumeFrom: string | null;
 }
 
 export function useContinuousLearning(): ContinuousLearning {
   // 课堂通过 window.location.href 整页导航，每次加载时参数即为最新，读取一次即可
-  const { chaptersRaw, chapterIndex, philochoraUserId } = useMemo(readParams, []);
+  const { chaptersRaw, chapterIndex, philochoraUserId, courseSlug, resumeFrom } = useMemo(readParams, []);
   const chapters = useMemo(() => decodeChapterSeq(chaptersRaw), [chaptersRaw]);
 
   const total = chapters.length;
@@ -115,11 +125,13 @@ export function useContinuousLearning(): ContinuousLearning {
       const basePath = path.substring(0, path.lastIndexOf('/') + 1);
       const params = new URLSearchParams();
       if (philochoraUserId) params.set('philochoraUserId', philochoraUserId);
+      if (courseSlug) params.set('courseSlug', courseSlug);
       if (chaptersRaw) params.set('chapters', chaptersRaw);
+      if (resumeFrom) params.set('resumeFrom', resumeFrom);
       params.set('chapterIndex', String(index));
       window.location.href = `${basePath}${target.cid}?${params.toString()}`;
     },
-    [chapters, chaptersRaw, philochoraUserId],
+    [chapters, chaptersRaw, philochoraUserId, courseSlug, resumeFrom],
   );
 
   const goToNextLesson = useCallback(() => {
@@ -148,5 +160,8 @@ export function useContinuousLearning(): ContinuousLearning {
     toggleContinuous,
     goToChapter,
     goToNextLesson,
+    philochoraUserId,
+    courseSlug,
+    resumeFrom,
   };
 }

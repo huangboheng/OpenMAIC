@@ -84,6 +84,8 @@ interface UseInstructorStream {
   simPhase: SimPhase;
   run: (options: RunOptions) => Promise<{ ok: boolean; project: PBLProjectV2 }>;
   clearError: () => void;
+  /** 重试最后一次失败的 stream 调用 */
+  retry: () => void;
 }
 
 interface EvalChainTriggers {
@@ -122,11 +124,14 @@ export function useInstructorStream(
   // the `streaming` check and double-fire the opener. A ref flips immediately,
   // so the second synchronous call is rejected.
   const runningRef = useRef(false);
+  // Remember last run options so retry() can replay them.
+  const lastOptionsRef = useRef<RunOptions | null>(null);
 
   const run = useCallback(
     async ({ endpoint, body, initialProject }: RunOptions) => {
       if (runningRef.current || streaming) return { ok: false, project: projectRef.current };
       runningRef.current = true;
+      lastOptionsRef.current = { endpoint, body, initialProject };
       setError(null);
       setDraftAssistant('');
       setStreamCommittedOutput(false);
@@ -263,6 +268,13 @@ export function useInstructorStream(
 
   const clearError = useCallback(() => setError(null), []);
 
+  const retry = useCallback(() => {
+    const opts = lastOptionsRef.current;
+    if (!opts) return;
+    setError(null);
+    void run(opts);
+  }, [run]);
+
   return {
     streaming,
     status,
@@ -272,6 +284,7 @@ export function useInstructorStream(
     simPhase,
     run,
     clearError,
+    retry,
   };
 }
 

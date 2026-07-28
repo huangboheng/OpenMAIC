@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ArrowRight, CheckCircle2, Repeat } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useContinuousLearning } from '@/lib/hooks/use-continuous-learning';
@@ -23,15 +23,37 @@ export function NextLessonBanner() {
     hasNext,
     isLast,
     nextChapter,
+    currentChapter,
     currentIndex,
     total,
     continuous,
     toggleContinuous,
     goToNextLesson,
+    philochoraUserId,
+    courseSlug,
   } = useContinuousLearning();
 
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [cancelled, setCancelled] = useState(false);
+  const chapterReportedRef = useRef(false);
+
+  // 章节完成回调：课堂完成页挂载时，通知 Philochora 记录进度
+  useEffect(() => {
+    if (!hasSequence || !philochoraUserId || !courseSlug || chapterReportedRef.current) return;
+    chapterReportedRef.current = true;
+    fetch('/api/philochora/chapter-complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        philochoraUserId,
+        courseSlug,
+        chapterNumber: currentIndex + 1,
+        chapterTitle: currentChapter?.title,
+      }),
+    }).catch(() => {
+      // 静默失败，不影响课堂体验
+    });
+  }, [hasSequence, philochoraUserId, courseSlug, currentIndex, currentChapter]);
 
   // 可取消的倒计时：仅在开启连续学习、存在下一节且未取消时运行
   useEffect(() => {
