@@ -23,6 +23,7 @@ import { isVideoExportEnabled, isSettingsEnabled } from '@/lib/config/feature-fl
 import { useVideoRenderStore } from '@/lib/store/video-render';
 import { CircularProgress } from '@/components/ui/circular-progress';
 import { VideoExportMenu } from './video-export-menu';
+import { MentorVoiceSwitcher } from './mentor-voice-switcher';
 import { LanguageSwitcher } from '../language-switcher';
 import { SettingsDialog } from '../settings';
 import {
@@ -196,6 +197,9 @@ export function HeaderControls({
           </button>
         )}
       </div>
+
+      {/* 导师声音切换 — 独立于设置面板门控，托管部署下始终可用 */}
+      <MentorVoiceSwitcher />
 
       {/* Pro Switch — toggle property: on/off both clickable, not a
           one-way "Done" button. Disabled only when the current scene

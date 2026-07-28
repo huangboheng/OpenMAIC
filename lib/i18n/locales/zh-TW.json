@@ -193,7 +193,18 @@
     "courseComplete": "課程完成",
     "editCourse": "編輯課程",
     "doneEditing": "完成編輯",
-    "proModeDisabledHint": "本頁不支援編輯——開啟任一課程頁即可使用 Pro 模式編輯。"
+    "proModeDisabledHint": "本頁不支援編輯——開啟任一課程頁即可使用 Pro 模式編輯。",
+    "mentorVoice": "導師聲音",
+    "voiceDefault": "預設",
+    "noVoices": "暫無可用音色",
+    "regeneratingVoices": "正在重新生成導師語音 {{done}}/{{total}}…",
+    "voicesUpdated": "導師語音已全部更新",
+    "voicesFailed": "{{count}} 段語音生成失敗",
+    "voiceRetry": "重試",
+    "voiceSwitchConfirmTitle": "切換導師聲音",
+    "voiceSwitchConfirmDesc": "切換導師聲音將重新生成本課堂全部講課音頻，預計需要數十秒到數分鐘，期間無法正常播放。確定切換嗎？",
+    "voiceSwitchConfirm": "確定切換",
+    "voiceCancel": "取消"
   },
   "edit": {
     "proMode": "專業模式",

@@ -21,13 +21,10 @@ import {
   runClassroomLoad,
   saveGeneratedAgentsForCurrentLoad,
 } from '@/lib/classroom/load-classroom';
-import { usePhilochoraVoiceSync } from '@/lib/hooks/use-philochora-voice-sync';
 
 const log = createLogger('Classroom');
 
 export default function ClassroomDetailPage() {
-  usePhilochoraVoiceSync();
-
   const params = useParams();
   const classroomId = params?.id as string;
 

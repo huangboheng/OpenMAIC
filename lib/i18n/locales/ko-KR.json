@@ -193,7 +193,18 @@
     "exitFullscreen": "전체화면 종료",
     "editCourse": "강좌 편집",
     "doneEditing": "편집 완료",
-    "proModeDisabledHint": "이 페이지에서는 편집할 수 없습니다 — 코스 슬라이드를 열면 Pro 모드로 편집할 수 있습니다."
+    "proModeDisabledHint": "이 페이지에서는 편집할 수 없습니다 — 코스 슬라이드를 열면 Pro 모드로 편집할 수 있습니다.",
+    "mentorVoice": "멘토 음성",
+    "voiceDefault": "기본",
+    "noVoices": "사용 가능한 음성이 없습니다",
+    "regeneratingVoices": "멘토 음성 재생성 중 {{done}}/{{total}}…",
+    "voicesUpdated": "멘토 음성이 모두 업데이트되었습니다",
+    "voicesFailed": "{{count}}개 음성 생성 실패",
+    "voiceRetry": "다시 시도",
+    "voiceSwitchConfirmTitle": "멘토 음성 전환",
+    "voiceSwitchConfirmDesc": "멘토 음성을 전환하면 이 수업의 모든 강의 음성이 재생성됩니다. 수십 초에서 수 분이 소요되며, 그 동안 재생할 수 없습니다. 전환하시겠습니까?",
+    "voiceSwitchConfirm": "전환",
+    "voiceCancel": "취소"
   },
   "edit": {
     "proMode": "프로 모드",

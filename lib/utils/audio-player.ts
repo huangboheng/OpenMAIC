@@ -8,6 +8,7 @@
 
 import { db } from '@/lib/utils/database';
 import { createLogger } from '@/lib/logger';
+import { useVoiceRegenStore } from '@/lib/store/voice-regen';
 
 const log = createLogger('AudioPlayer');
 
@@ -37,6 +38,9 @@ export class AudioPlayer {
    * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
    */
   public async play(audioId: string, audioUrl?: string): Promise<boolean> {
+    // 重生成门控：导师语音重生成期间缓存音频为旧（正在重建），拒绝播放，
+    // 返回 false 交由播放引擎按"无音频"处理，防止播放脏音频。
+    if (useVoiceRegenStore.getState().running) return false;
     const requestToken = ++this.requestToken;
     try {
       // 1. Try audioUrl first (server-generated TTS)

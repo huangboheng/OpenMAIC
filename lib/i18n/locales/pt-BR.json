@@ -468,7 +468,18 @@
     "exitFullscreen": "Sair da tela cheia",
     "editCourse": "Editar curso",
     "doneEditing": "Concluir edição",
-    "proModeDisabledHint": "A edição não está disponível nesta página — abra um slide do curso para editar no modo Pro."
+    "proModeDisabledHint": "A edição não está disponível nesta página — abra um slide do curso para editar no modo Pro.",
+    "mentorVoice": "Voz do mentor",
+    "voiceDefault": "Padrão",
+    "noVoices": "Nenhuma voz disponível",
+    "regeneratingVoices": "Regerando voz do mentor {{done}}/{{total}}…",
+    "voicesUpdated": "Voz do mentor totalmente atualizada",
+    "voicesFailed": "{{count}} linha(s) de voz falharam ao gerar",
+    "voiceRetry": "Tentar novamente",
+    "voiceSwitchConfirmTitle": "Trocar voz do mentor",
+    "voiceSwitchConfirmDesc": "Trocar a voz do mentor regenerará todo o áudio da aula, o que pode levar de dezenas de segundos a vários minutos. A reprodução ficará indisponível durante esse período. Trocar mesmo assim?",
+    "voiceSwitchConfirm": "Trocar",
+    "voiceCancel": "Cancelar"
   },
   "classroomComplete": {
     "title": "Curso concluído",

@@ -193,7 +193,18 @@
     "exitFullscreen": "Exit Fullscreen",
     "editCourse": "Edit course",
     "doneEditing": "Done editing",
-    "proModeDisabledHint": "Editing isn't available on this page — open a course slide to edit with Pro mode."
+    "proModeDisabledHint": "Editing isn't available on this page — open a course slide to edit with Pro mode.",
+    "mentorVoice": "Mentor Voice",
+    "voiceDefault": "Default",
+    "noVoices": "No voices available",
+    "regeneratingVoices": "Regenerating mentor voice {{done}}/{{total}}…",
+    "voicesUpdated": "Mentor voice fully updated",
+    "voicesFailed": "{{count}} voice line(s) failed to generate",
+    "voiceRetry": "Retry",
+    "voiceSwitchConfirmTitle": "Switch Mentor Voice",
+    "voiceSwitchConfirmDesc": "Switching the mentor voice will regenerate all lecture audio for this classroom, which may take tens of seconds to several minutes. Playback will be unavailable during this time. Switch anyway?",
+    "voiceSwitchConfirm": "Switch",
+    "voiceCancel": "Cancel"
   },
   "edit": {
     "proMode": "Pro",

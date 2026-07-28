@@ -193,7 +193,18 @@
     "exitFullscreen": "الخروج من ملء الشاشة",
     "editCourse": "تحرير الدورة",
     "doneEditing": "إنهاء التحرير",
-    "proModeDisabledHint": "التحرير غير متاح في هذه الصفحة — افتح شريحة من الدورة للتحرير باستخدام وضع Pro."
+    "proModeDisabledHint": "التحرير غير متاح في هذه الصفحة — افتح شريحة من الدورة للتحرير باستخدام وضع Pro.",
+    "mentorVoice": "صوت المرشد",
+    "voiceDefault": "افتراضي",
+    "noVoices": "لا توجد أصوات متاحة",
+    "regeneratingVoices": "جارٍ إعادة إنشاء صوت المرشد {{done}}/{{total}}…",
+    "voicesUpdated": "تم تحديث صوت المرشد بالكامل",
+    "voicesFailed": "فشل إنشاء {{count}} مقطع صوتي",
+    "voiceRetry": "إعادة المحاولة",
+    "voiceSwitchConfirmTitle": "تبديل صوت المرشد",
+    "voiceSwitchConfirmDesc": "سيؤدي تبديل صوت المرشد إلى إعادة إنشاء جميع مقاطع المحاضرة، وقد يستغرق ذلك من عشرات الثواني إلى عدة دقائق، ولن يكون التشغيل متاحًا أثناء ذلك. هل تريد التبديل؟",
+    "voiceSwitchConfirm": "تبديل",
+    "voiceCancel": "إلغاء"
   },
   "edit": {
     "proMode": "احترافي",

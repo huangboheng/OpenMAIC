@@ -193,7 +193,18 @@
     "exitFullscreen": "全画面表示を終了",
     "editCourse": "コースを編集",
     "doneEditing": "編集を完了",
-    "proModeDisabledHint": "このページでは編集できません。コースのスライドを開くと Pro モードで編集できます。"
+    "proModeDisabledHint": "このページでは編集できません。コースのスライドを開くと Pro モードで編集できます。",
+    "mentorVoice": "メンター音声",
+    "voiceDefault": "デフォルト",
+    "noVoices": "利用可能な音声がありません",
+    "regeneratingVoices": "メンター音声を再生成中 {{done}}/{{total}}…",
+    "voicesUpdated": "メンター音声をすべて更新しました",
+    "voicesFailed": "{{count}} 件の音声生成に失敗しました",
+    "voiceRetry": "再試行",
+    "voiceSwitchConfirmTitle": "メンター音声の切り替え",
+    "voiceSwitchConfirmDesc": "メンター音声を切り替えると、この授業のすべての講義音声が再生成されます。数十秒から数分かかり、その間は再生できません。切り替えますか？",
+    "voiceSwitchConfirm": "切り替える",
+    "voiceCancel": "キャンセル"
   },
   "edit": {
     "proMode": "プロモード",
