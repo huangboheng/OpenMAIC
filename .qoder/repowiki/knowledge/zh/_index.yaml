@@ -3,56 +3,13 @@ schema_version: 1
 locale: zh-CN
 branch: custom-main
 nodes_managed: true
-exported_at: "2026-07-28T16:11:13Z"
+exported_at: "2026-07-29T11:11:16Z"
 modules:
     "":
-        dir_name: OpenMAIC Next.js 应用壳层
-        title: OpenMAIC Next.js 应用壳层
-        scope:
-            - app/
-            - components/
-            - lib/
+        dir_name: OpenMAIC 根应用与前端入口
+        title: OpenMAIC 根应用与前端入口
+        scope: []
         source_files: []
-        children:
-            - component_library
-            - core_libs
+        children: []
         depends_on: []
         related_to: []
-    component_library:
-        dir_name: 组件库 components_
-        title: 组件库 components/
-        scope:
-            - components/
-        source_files: []
-        children:
-            - component_library/app_shell
-        depends_on: []
-        related_to:
-            - path: core_libs
-    component_library/app_shell:
-        dir_name: 应用外壳与全局 UI 组件
-        title: 应用外壳与全局 UI 组件
-        scope:
-            - components/access-code-guard.tsx
-            - components/access-code-modal.tsx
-            - components/header.tsx
-            - components/language-switcher.tsx
-            - components/server-providers-init.tsx
-            - components/stage.tsx
-            - components/user-profile.tsx
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: core_libs
-    core_libs:
-        dir_name: OpenMAIC 核心业务库（lib）
-        title: OpenMAIC 核心业务库（lib）
-        scope:
-            - lib/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: component_library
-            - path: component_library/app_shell
