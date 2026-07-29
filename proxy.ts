@@ -1,50 +1,58 @@
+/**
+ * OpenMAIC Proxy Middleware
+ *
+ * OAuth 2.0-based authentication via Philochora SSO:
+ * 1. Check openmaic_session cookie (HMAC-signed)
+ * 2. If invalid/missing → redirect to Philochora /api/oauth/authorize
+ * 3. OAuth callback at /api/auth/callback exchanges code for tokens
+ * 4. Rate limiting applies as before
+ * 5. Service-to-service API key bypass preserved
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { checkRateLimit } from '@/lib/server/rate-limit';
+import {
+  verifySessionCookie,
+  getSessionSecret,
+  COOKIE_NAME,
+} from '@/lib/server/session-cookie';
+import {
+  generateCodeVerifier,
+  generateCodeChallenge,
+  generateState,
+} from '@/lib/server/oauth-client';
 
-/** Convert string to Uint8Array */
-function encode(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
+// ── Configuration ─────────────────────────────────────────────────
+
+const OAUTH_ISSUER = process.env.OAUTH_ISSUER || 'https://philochora.com';
+const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || 'openmaic';
+
+// Paths excluded from OAuth redirect
+const AUTH_WHITELIST = [
+  '/api/auth/callback',
+  '/api/health',
+  '/_next',
+  '/favicon.ico',
+  '/logos/',
+];
+
+// SEC-03: Rate limit patterns
+const HIGH_COST_PATTERN = /^\/api\/(generate-classroom|generate\/(image|video|tts|voice)|export-video|pbl)/;
+const GENERAL_API_PATTERN = /^\/api\//;
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function getClientIp(request: NextRequest): string {
+  if (process.env.TRUST_PROXY_HEADERS === 'true') {
+    const fwd = request.headers.get('x-forwarded-for');
+    if (fwd) return fwd.split(',')[0].trim();
+    const real = request.headers.get('x-real-ip');
+    if (real) return real.trim();
+  }
+  return 'direct';
 }
 
-/** Convert ArrayBuffer to hex string */
-function bufToHex(buf: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-/** Verify an HMAC-signed token using Web Crypto API (Edge-compatible) */
-async function verifyToken(token: string, accessCode: string): Promise<boolean> {
-  const dotIndex = token.indexOf('.');
-  if (dotIndex === -1) return false;
-
-  const timestamp = token.substring(0, dotIndex);
-  const signature = token.substring(dotIndex + 1);
-
-  // SEC-07: Token expiry — reject tokens older than 7 days
-  const ts = Number(timestamp);
-  if (Number.isFinite(ts) && Date.now() - ts > 7 * 24 * 60 * 60 * 1000) {
-    return false;
-  }
-
-  const keyData = encode(accessCode);
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyData.buffer as ArrayBuffer,
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-
-  const data = encode(timestamp);
-  const expected = bufToHex(await crypto.subtle.sign('HMAC', key, data.buffer as ArrayBuffer));
-
-  if (signature.length !== expected.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < signature.length; i++) {
-    mismatch |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  return mismatch === 0;
+function isWhitelisted(pathname: string): boolean {
+  return AUTH_WHITELIST.some((p) => pathname.startsWith(p));
 }
 
 /** SEC-01: Verify service-to-service API key (Philochora -> OpenMAIC) */
@@ -61,58 +69,98 @@ function verifyServiceApiKey(request: NextRequest): boolean {
   return mismatch === 0;
 }
 
-// SEC-03: High-cost endpoint patterns for stricter rate limiting
-const HIGH_COST_PATTERN = /^\/api\/(generate-classroom|generate\/(image|video|tts|voice)|export-video|pbl)/;
-const GENERAL_API_PATTERN = /^\/api\//;
-
-function getClientIp(request: NextRequest): string {
-  if (process.env.TRUST_PROXY_HEADERS === 'true') {
-    const fwd = request.headers.get('x-forwarded-for');
-    if (fwd) return fwd.split(',')[0].trim();
-    const real = request.headers.get('x-real-ip');
-    if (real) return real.trim();
-  }
-  return 'direct';
-}
+// ── Middleware ────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
-  const accessCode = process.env.ACCESS_CODE;
-  if (!accessCode) {
-    return NextResponse.next();
-  }
-
   const { pathname } = request.nextUrl;
+  let modifiedHeaders: Headers | undefined;
 
-  // Whitelist: access-code endpoints, health check
-  if (pathname.startsWith('/api/access-code/') || pathname === '/api/health') {
+  // Skip auth for whitelisted paths
+  if (isWhitelisted(pathname)) {
     return NextResponse.next();
   }
 
-  // SEC-01: Service-to-service API key bypasses cookie auth (but still rate-limited)
+  // SEC-01: Service-to-service API key bypasses OAuth
   const isService = verifyServiceApiKey(request);
 
   if (!isService) {
-    // Check cookie — validate HMAC signature
-    const cookie = request.cookies.get('openmaic_access');
-    if (!cookie?.value || !(await verifyToken(cookie.value, accessCode))) {
-      // API requests without valid cookie → 401
+    // Check OAuth session cookie
+    const sessionCookie = request.cookies.get(COOKIE_NAME);
+    const sessionSecret = getSessionSecret();
+    let session = null;
+
+    if (sessionCookie?.value) {
+      session = await verifySessionCookie(sessionCookie.value, sessionSecret);
+    }
+
+    if (!session) {
+      // API requests without valid session → 401
       if (pathname.startsWith('/api/')) {
         return NextResponse.json(
-          { success: false, errorCode: 'INVALID_REQUEST', error: 'Access code required' },
+          { success: false, errorCode: 'UNAUTHORIZED', error: 'Authentication required' },
           { status: 401 },
         );
       }
-      // Page requests → let through, frontend shows modal
-      return NextResponse.next();
+
+      // Page requests → redirect to Philochora OAuth authorize
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = generateCodeChallenge(codeVerifier);
+      const state = generateState();
+
+      const redirectUri = `${request.nextUrl.origin}/openmaic/api/auth/callback`;
+      const params = new URLSearchParams({
+        response_type: 'code',
+        client_id: OAUTH_CLIENT_ID,
+        redirect_uri: redirectUri,
+        scope: 'openid profile',
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+      });
+
+      const authorizeUrl = `${OAUTH_ISSUER}/api/oauth/authorize?${params.toString()}`;
+
+      const response = NextResponse.redirect(authorizeUrl);
+
+      // Store OAuth params in short-lived cookies for callback verification
+      response.cookies.set('oauth_state', state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600,
+      });
+      response.cookies.set('oauth_code_verifier', codeVerifier, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600,
+      });
+      response.cookies.set('oauth_return_to', pathname + request.nextUrl.search, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600,
+      });
+
+      return response;
+    }
+
+    // Session valid — attach user info to request headers for downstream handlers
+    modifiedHeaders = new Headers(request.headers);
+    modifiedHeaders.set('x-user-id', session.sub);
+    if (session.name) {
+      modifiedHeaders.set('x-user-name', encodeURIComponent(session.name));
     }
   }
 
-  // SEC-03: Rate limiting (applies to all authenticated callers including service)
+  // Rate limiting (applies to all authenticated callers including service)
   if (GENERAL_API_PATTERN.test(pathname)) {
     const ip = isService ? 'service:philochora' : getClientIp(request);
 
     if (HIGH_COST_PATTERN.test(pathname)) {
-      // High-cost: 10 req/min (LLM/image/video/TTS generation)
       const result = checkRateLimit(`hc:${ip}:${pathname}`, 10, 60_000);
       if (!result.allowed) {
         return NextResponse.json(
@@ -121,7 +169,6 @@ export async function proxy(request: NextRequest) {
         );
       }
     } else {
-      // General API: 60 req/min
       const result = checkRateLimit(`api:${ip}`, 60, 60_000);
       if (!result.allowed) {
         return NextResponse.json(
@@ -132,7 +179,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return modifiedHeaders
+    ? NextResponse.next({ request: { headers: modifiedHeaders } })
+    : NextResponse.next();
 }
 
 export const config = {
