@@ -99,13 +99,82 @@ const ERROR_CAPTURE_SHIM = `<script data-iframe-error-shim>
 </script>`;
 
 /**
+ * No-op fallback for KaTeX's `renderMathInElement`, injected alongside the other
+ * shims (i.e. before any page script runs).
+ *
+ * Generated widget HTML carries a KaTeX auto-render setup script that calls
+ * `renderMathInElement(...)` directly inside its DOMContentLoaded handler and
+ * only wires up its MutationObserver / setInterval AFTER that first call. When
+ * the CDN copy of auto-render never arrives (see makeCdnDepsNonBlocking — the
+ * scripts are now loaded asynchronously and may be slow or blocked), that first
+ * call would throw a ReferenceError and abort the rest of the setup. This guard
+ * guarantees the symbol exists (as a no-op) so the setup always completes; when
+ * the real auto-render script loads it simply overwrites the fallback and math
+ * renders normally (the already-installed observer / interval pick it up).
+ */
+const KATEX_GUARD_SHIM = `<script data-iframe-katex-guard>
+window.renderMathInElement = window.renderMathInElement || function () {};
+</script>`;
+
+/**
+ * Matches the render-blocking KaTeX CDN loader that the generation pipeline
+ * (lib/generation/interactive-post-processor.ts) injects into every widget:
+ * a stylesheet <link> plus two classic <script src> tags from cdn.jsdelivr.net,
+ * adjacent inside <head>.
+ */
+const CDN_KATEX_LOADER_RE =
+  /<link rel="stylesheet" href="(https:\/\/cdn\.jsdelivr\.net\/[^"]+)">\s*<script src="(https:\/\/cdn\.jsdelivr\.net\/[^"]+)"><\/script>\s*<script src="(https:\/\/cdn\.jsdelivr\.net\/[^"]+)"><\/script>/i;
+
+/**
+ * Rewrite the blocking KaTeX CDN loader into a fully non-blocking dynamic load.
+ *
+ * Classic `<script src>` tags in <head> halt HTML parsing until they finish, so
+ * a slow/unreachable CDN (offline, restricted networks — jsdelivr is unreliable
+ * in parts of the deployment region) leaves <body> unparsed and the widget blank
+ * and unusable, even for widgets (e.g. thought-experiment games) that never
+ * render math. The replacement appends the scripts dynamically with `async`
+ * (chained via onload so auto-render loads only after KaTeX) and the stylesheet
+ * dynamically too — nothing blocks parsing or delays DOMContentLoaded, so the
+ * widget renders and becomes interactive immediately regardless of CDN status.
+ *
+ * Returns the input unchanged when the loader pattern is absent (simple widgets,
+ * or HTML already rewritten — the replacement no longer matches the blocking
+ * pattern, so the transform is idempotent).
+ */
+export function makeCdnDepsNonBlocking(html: string): string {
+  const match = html.match(CDN_KATEX_LOADER_RE);
+  if (!match) return html;
+  const [full, cssUrl, katexJs, autoRenderJs] = match;
+  const loader = `<script data-iframe-katex-async>
+(function () {
+  function addScript(src, onload) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    if (onload) s.onload = onload;
+    document.head.appendChild(s);
+  }
+  addScript(${JSON.stringify(katexJs)}, function () { addScript(${JSON.stringify(autoRenderJs)}); });
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = ${JSON.stringify(cssUrl)};
+  document.head.appendChild(l);
+})();
+</script>`;
+  // Function replacer inserts the loader literally (no `$` substitution risk).
+  return html.replace(full, () => loader);
+}
+
+/**
  * Patch embedded HTML to display correctly inside an iframe.
  *
  * Injects a runtime-error capture shim + a storage shim (so sandboxed pages that
- * use localStorage don't crash) plus CSS that ensures proper sizing and scrolling
- * behavior when HTML content is rendered via srcDoc in an iframe. The shims are
- * placed first so they run before the page's own scripts (error capture first, so
- * it also observes the storage shim).
+ * use localStorage don't crash) + a KaTeX no-op guard, plus CSS that ensures
+ * proper sizing and scrolling behavior when HTML content is rendered via srcDoc
+ * in an iframe. The shims are placed first so they run before the page's own
+ * scripts (error capture first, so it also observes the storage shim). The
+ * blocking KaTeX CDN loader is additionally rewritten to a non-blocking dynamic
+ * load so a slow/blocked CDN can never blank the widget.
  */
 export function patchHtmlForIframe(html: string): string {
   const iframeCss = `<style data-iframe-patch>
@@ -122,24 +191,28 @@ export function patchHtmlForIframe(html: string): string {
   body { min-height: 100vh; }
 </style>`;
 
-  const injection = '\n' + ERROR_CAPTURE_SHIM + '\n' + STORAGE_SHIM + '\n' + iframeCss;
+  const injection =
+    '\n' + ERROR_CAPTURE_SHIM + '\n' + STORAGE_SHIM + '\n' + KATEX_GUARD_SHIM + '\n' + iframeCss;
+
+  // De-block the CDN KaTeX loader before injecting the shims.
+  const deBlocked = makeCdnDepsNonBlocking(html);
 
   // Insert right after <head> or at the start of the document
-  const headIdx = html.indexOf('<head>');
+  const headIdx = deBlocked.indexOf('<head>');
   if (headIdx !== -1) {
     const insertPos = headIdx + 6; // after <head>
-    return html.substring(0, insertPos) + injection + html.substring(insertPos);
+    return deBlocked.substring(0, insertPos) + injection + deBlocked.substring(insertPos);
   }
 
-  const headWithAttrs = html.indexOf('<head ');
+  const headWithAttrs = deBlocked.indexOf('<head ');
   if (headWithAttrs !== -1) {
-    const closeAngle = html.indexOf('>', headWithAttrs);
+    const closeAngle = deBlocked.indexOf('>', headWithAttrs);
     if (closeAngle !== -1) {
       const insertPos = closeAngle + 1;
-      return html.substring(0, insertPos) + injection + html.substring(insertPos);
+      return deBlocked.substring(0, insertPos) + injection + deBlocked.substring(insertPos);
     }
   }
 
   // Fallback: prepend
-  return injection + html;
+  return injection + deBlocked;
 }

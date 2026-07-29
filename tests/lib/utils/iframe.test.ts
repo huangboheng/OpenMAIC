@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { patchHtmlForIframe } from '@/lib/utils/iframe';
+import { patchHtmlForIframe, makeCdnDepsNonBlocking } from '@/lib/utils/iframe';
+
+/**
+ * The render-blocking KaTeX CDN loader exactly as the generation pipeline
+ * (lib/generation/interactive-post-processor.ts) injects it into every widget:
+ * a stylesheet <link> + two classic <script src> tags inside <head>, followed by
+ * the auto-render setup script that calls renderMathInElement on DOMContentLoaded.
+ */
+const KATEX_LOADER_HTML = `<!DOCTYPE html><html><head>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() { renderMathInElement(document.body, {}); });
+</script>
+</head><body><div id="app">game</div></body></html>`;
 
 describe('patchHtmlForIframe', () => {
   it('injects the storage shim and sizing CSS after <head>', () => {
@@ -132,5 +147,88 @@ describe('patchHtmlForIframe', () => {
     // An unrelated message must NOT trigger a replay.
     handlers.message({ data: { foo: 1 } });
     expect(posts).toHaveLength(4);
+  });
+
+  it('rewrites the blocking KaTeX CDN loader into a non-blocking dynamic load', () => {
+    const out = patchHtmlForIframe(KATEX_LOADER_HTML);
+    // No render-blocking <script src>…</script> tag from the CDN remains.
+    expect(out).not.toMatch(/<script src="https:\/\/cdn\.jsdelivr\.net[^"]*"><\/script>/);
+    // The dynamic loader and the no-op guard are present.
+    expect(out).toContain('data-iframe-katex-async');
+    expect(out).toContain('data-iframe-katex-guard');
+    // The CDN URLs are preserved (now loaded dynamically).
+    expect(out).toContain('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js');
+    expect(out).toContain('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js');
+    expect(out).toContain('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
+  });
+
+  it('injects the KaTeX guard before the auto-render setup script', () => {
+    const out = patchHtmlForIframe(KATEX_LOADER_HTML);
+    // The no-op guard must run before the setup's renderMathInElement call so the
+    // setup never throws when the CDN copy is absent.
+    expect(out.indexOf('data-iframe-katex-guard')).toBeLessThan(
+      out.indexOf('renderMathInElement(document.body'),
+    );
+  });
+
+  it('the async loader appends chained scripts and the stylesheet without blocking', () => {
+    const out = patchHtmlForIframe(KATEX_LOADER_HTML);
+    const loader = out.match(/<script data-iframe-katex-async>([\s\S]*?)<\/script>/)?.[1];
+    expect(loader).toBeTruthy();
+
+    interface FakeEl {
+      src?: string;
+      href?: string;
+      rel?: string;
+      async?: boolean;
+      onload?: () => void;
+    }
+    const appended: FakeEl[] = [];
+    const doc = {
+      createElement: () => {
+        const el: FakeEl = {};
+        return el;
+      },
+      head: { appendChild: (el: FakeEl) => appended.push(el) },
+    };
+    new Function('document', loader as string)(doc);
+
+    // Immediately appended: the katex script (async, chained onload) + the CSS link.
+    expect(appended).toHaveLength(2);
+    expect(appended[0].src).toContain('katex.min.js');
+    expect(appended[0].async).toBe(true);
+    expect(typeof appended[0].onload).toBe('function');
+    expect(appended[1].rel).toBe('stylesheet');
+    expect(appended[1].href).toContain('katex.min.css');
+
+    // auto-render is only appended after katex finishes loading (order preserved).
+    appended[0].onload!();
+    expect(appended).toHaveLength(3);
+    expect(appended[2].src).toContain('auto-render.min.js');
+    expect(appended[2].async).toBe(true);
+  });
+
+  it('leaves HTML without the KaTeX loader unchanged by the de-blocking transform', () => {
+    const plain = '<html><head></head><body></body></html>';
+    expect(makeCdnDepsNonBlocking(plain)).toBe(plain);
+  });
+
+  it('the de-blocking transform is idempotent', () => {
+    const once = makeCdnDepsNonBlocking(KATEX_LOADER_HTML);
+    const twice = makeCdnDepsNonBlocking(once);
+    expect(twice).toBe(once);
+  });
+
+  it('coexists with generation-time non-blocking output (no double rewrite)', async () => {
+    // Newer classrooms generated after the injectKatex hardening already carry a
+    // non-blocking loader; the render-time transform must leave them untouched.
+    const { postProcessInteractiveHtml } = await import('@/lib/generation/interactive-post-processor');
+    const generated = postProcessInteractiveHtml(
+      '<html><head></head><body><div id="w">widget</div></body></html>',
+    );
+    // Generated output no longer contains a render-blocking CDN <script src> tag.
+    expect(generated).not.toMatch(/<script src="https:\/\/cdn\.jsdelivr\.net[^"]*"><\/script>/);
+    // And the render-time de-blocking transform is a no-op on it.
+    expect(makeCdnDepsNonBlocking(generated)).toBe(generated);
   });
 });

@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: custom-main
 nodes_managed: true
-exported_at: "2026-07-29T11:11:16Z"
+exported_at: "2026-07-29T17:19:14Z"
 modules:
     "":
         dir_name: OpenMAIC 根应用与前端入口

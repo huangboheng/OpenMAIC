@@ -68,10 +68,38 @@ function convertLatexDelimiters(html: string): string {
  * Falls back to appending at end if </head> is not found.
  */
 function injectKatex(html: string): string {
+  // KaTeX is loaded via a NON-blocking dynamic loader (async scripts chained by
+  // onload + a dynamically-appended stylesheet) instead of classic render-blocking
+  // <link>/<script src> tags in <head>. Classic tags halt HTML parsing until the
+  // CDN responds, so a slow/blocked cdn.jsdelivr.net (offline, restricted
+  // networks) leaves the widget blank and unusable — even for widgets that never
+  // render math. The guard defines a no-op renderMathInElement up front so the
+  // auto-render setup below always completes; the real auto-render overwrites it
+  // once loaded and math renders normally. Mirrors makeCdnDepsNonBlocking in
+  // lib/utils/iframe.ts, which applies the same rewrite at render time to content
+  // generated before this change.
   const katexInjection = `
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+window.renderMathInElement = window.renderMathInElement || function () {};
+</script>
+<script>
+(function () {
+  function addScript(src, onload) {
+    var s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    if (onload) s.onload = onload;
+    document.head.appendChild(s);
+  }
+  addScript("https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js", function () {
+    addScript("https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js");
+  });
+  var l = document.createElement('link');
+  l.rel = 'stylesheet';
+  l.href = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
+  document.head.appendChild(l);
+})();
+</script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const katexOptions = {
