@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePreviewStore } from '@/lib/store/preview';
 
 const FREE_PREVIEW_MINUTES = 10;
 const STORAGE_KEY_PREFIX = 'openmaic.preview';
@@ -26,6 +27,8 @@ export function usePreviewTimer(classroomId: string): PreviewTimerState {
     FREE_PREVIEW_MINUTES * 60,
   );
 
+  const setIsTrial = usePreviewStore((s) => s.setIsTrial);
+
   useEffect(() => {
     if (!classroomId) return;
 
@@ -42,7 +45,11 @@ export function usePreviewTimer(classroomId: string): PreviewTimerState {
         localStorage.setItem(key, String(startTime));
       } else {
         startTime = parseInt(stored, 10);
-        if (isNaN(startTime)) {
+        // 时间戳非法，或距上一轮首次访问已超过 10 分钟（上一轮试看已过期），
+        // 均视为全新一轮访问并重置计时起点——保证用户过期后重新进入课堂能
+        // 获得完整新一轮试看，而不会"一旦过期、永久阻断"。
+        // （与覆盖层文案"重新打开课堂即可开始新一轮 10 分钟试看"一致）
+        if (isNaN(startTime) || now - startTime >= FREE_PREVIEW_MINUTES * 60 * 1000) {
           startTime = now;
           localStorage.setItem(key, String(startTime));
         }
@@ -63,12 +70,26 @@ export function usePreviewTimer(classroomId: string): PreviewTimerState {
 
       // 每秒更新倒计时
       timerId = setInterval(tick, 1000);
+
+      // 试看窗口内（未过期）同步到全局 store，供声音切换器等禁用按钮。
+      // NEXT_PUBLIC_SKIP_PREVIEW_TRIAL 为 E2E / 开发调试提供逃生舱。
+      if (!process.env.NEXT_PUBLIC_SKIP_PREVIEW_TRIAL) {
+        setIsTrial(true);
+      }
     } catch {
       // localStorage 不可用：静默降级，不限制
     }
 
     return () => {
       clearInterval(timerId);
+      setIsTrial(false);
+      // 离开课堂即清除计时起点，下次进入重新获得完整 10 分钟试看
+      // （与覆盖层文案"重新打开课堂即可开始新一轮 10 分钟试看"一致）
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // ignore
+      }
     };
   }, [classroomId]);
 

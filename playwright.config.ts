@@ -23,9 +23,10 @@ export default defineConfig({
     url: 'http://localhost:3002',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    // Enable the MAIC Editor (Pro mode) so editor e2e can reach it. This is a
-    // build-time NEXT_PUBLIC_* flag, so it must be set when the webServer runs
-    // `pnpm build` (CI) or `pnpm dev` (local).
-    env: { PORT: '3002', NEXT_PUBLIC_MAIC_EDITOR_ENABLED: 'true' },
+    // Enable the MAIC Editor (Pro mode) so editor e2e can reach it, and skip
+    // the preview trial timer so voice-switching etc. buttons aren't disabled.
+    // These are build-time NEXT_PUBLIC_* flags, so they must be set when the
+    // webServer runs `pnpm build` (CI) or `pnpm dev` (local).
+    env: { PORT: '3002', NEXT_PUBLIC_MAIC_EDITOR_ENABLED: 'true', NEXT_PUBLIC_SKIP_PREVIEW_TRIAL: 'true' },
   },
 });

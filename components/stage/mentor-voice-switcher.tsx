@@ -28,6 +28,7 @@ import {
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useVoiceRegenStore } from '@/lib/store/voice-regen';
+import { usePreviewStore } from '@/lib/store/preview';
 import { regenerateAllSpeech } from '@/lib/audio/regenerate-all-speech';
 import { getSelectableProvidersWithVoices } from '@/lib/audio/voice-resolver';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,8 @@ export function MentorVoiceSwitcher() {
   const total = useVoiceRegenStore((s) => s.total);
   const regenError = useVoiceRegenStore((s) => s.error);
   const clearError = useVoiceRegenStore((s) => s.clearError);
+
+  const isTrial = usePreviewStore((s) => s.isTrial);
 
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [pendingVoice, setPendingVoice] = useState<PendingVoice | null>(null);
@@ -119,13 +122,13 @@ export function MentorVoiceSwitcher() {
 
   return (
     <>
-      <Popover open={popoverOpen && !running} onOpenChange={setPopoverOpen}>
+      <Popover open={popoverOpen && !running && !isTrial} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
-            disabled={running}
+            disabled={running || isTrial}
             aria-label={t('stage.mentorVoice')}
-            title={t('stage.mentorVoice')}
+            title={isTrial ? t('stage.voiceDisabledTrial') : t('stage.mentorVoice')}
             className={cn(
               'shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-full backdrop-blur-md shadow-sm transition-colors',
               'bg-white/60 dark:bg-gray-800/60 border border-gray-100/50 dark:border-gray-700/50',
@@ -199,7 +202,7 @@ export function MentorVoiceSwitcher() {
       </Popover>
 
       {/* 重生成失败后的重试入口 */}
-      {regenError && !running && (
+      {regenError && !running && !isTrial && (
         <button
           type="button"
           onClick={handleRetry}

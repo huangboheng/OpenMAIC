@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+# .githooks/pre-commit
+#
+# Block commits that would re-introduce the Next.js 16 dev crash on
+# OpenMAIC: both `middleware.*` and `proxy.*` at the same directory
+# level are rejected with a clear message.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
+

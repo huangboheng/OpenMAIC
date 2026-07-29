@@ -48,6 +48,14 @@ export interface GenerateClassroomInput {
   enableVideoGeneration?: boolean;
   enableTTS?: boolean;
   agentMode?: 'default' | 'generate';
+  /** Philochora 回调 URL（课堂生成完成后通知） */
+  callbackUrl?: string;
+  /** 课程 slug（回调时识别课程） */
+  courseSlug?: string;
+  /** 章节 classroomId 映射（回调时批量写入） */
+  chapterMapping?: { chapterNumber: number; classroomId: string }[];
+  /** 服务间 API Key（回调认证） */
+  serviceApiKey?: string;
 }
 
 export type ClassroomGenerationStep =

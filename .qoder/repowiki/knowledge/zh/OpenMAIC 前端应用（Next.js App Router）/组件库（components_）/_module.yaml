@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: component_library
-title: 组件库（components/）
-scope:
-    - components/
-source_files: []
-depends_on: []
-related_to:
-    - path: core_libs

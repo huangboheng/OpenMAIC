@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: custom-main
 nodes_managed: true
-exported_at: "2026-07-28T15:41:38Z"
+exported_at: "2026-07-28T16:11:13Z"
 modules:
     "":
-        dir_name: OpenMAIC 前端应用（Next.js App Router）
-        title: OpenMAIC 前端应用（Next.js App Router）
+        dir_name: OpenMAIC Next.js 应用壳层
+        title: OpenMAIC Next.js 应用壳层
         scope:
             - app/
             - components/
@@ -19,8 +19,8 @@ modules:
         depends_on: []
         related_to: []
     component_library:
-        dir_name: 组件库（components_）
-        title: 组件库（components/）
+        dir_name: 组件库 components_
+        title: 组件库 components/
         scope:
             - components/
         source_files: []
