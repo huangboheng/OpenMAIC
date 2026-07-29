@@ -197,6 +197,7 @@
     "mentorVoice": "導師聲音",
     "voiceDefault": "預設",
     "noVoices": "暫無可用音色",
+    "voiceEmptyHint": "語音服務未配置，請聯繫管理員在伺服器端配置 TTS",
     "regeneratingVoices": "正在重新生成導師語音 {{done}}/{{total}}…",
     "voicesUpdated": "導師語音已全部更新",
     "voicesFailed": "{{count}} 段語音生成失敗",

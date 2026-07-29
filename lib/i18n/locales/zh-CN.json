@@ -197,6 +197,7 @@
     "mentorVoice": "导师声音",
     "voiceDefault": "默认",
     "noVoices": "暂无可用音色",
+    "voiceEmptyHint": "声音服务未配置，请联系管理员在服务器端配置 TTS",
     "regeneratingVoices": "正在重新生成导师语音 {{done}}/{{total}}…",
     "voicesUpdated": "导师语音已全部更新",
     "voicesFailed": "{{count}} 段语音生成失败",

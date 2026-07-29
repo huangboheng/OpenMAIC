@@ -1863,10 +1863,13 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
   );
 
   /**
-   * Start a discussion with agent speaking first
+   * Start a discussion with agent speaking first.
+   * Returns `true` when the discussion request was dispatched, `false` when
+   * validation failed early (model not configured / API key missing) and no
+   * session was created — callers must restore their UI state in that case.
    */
   const startDiscussion = useCallback(
-    async (request: DiscussionRequest): Promise<void> => {
+    async (request: DiscussionRequest): Promise<boolean> => {
       log.info(`[ChatArea] Starting discussion: "${request.topic}"`);
       // Explicitly clear buffer-pause intent (also cleared transitively via endSession,
       // but being explicit guards against future refactors)
@@ -1876,13 +1879,13 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
       const modelConfig = getCurrentModelConfig();
       if (!modelConfig.modelId) {
         toast.error(t('settings.modelNotConfigured'));
-        return;
+        return false;
       }
       if (modelConfig.requiresApiKey && !modelConfig.apiKey && !modelConfig.isServerConfigured) {
         toast.error(t('settings.setupNeeded'), {
           description: t('settings.apiKeyDesc'),
         });
-        return;
+        return false;
       }
 
       // Auto-end previous active QA/Discussion sessions to ensure only one is active
@@ -1979,7 +1982,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
         // Ignore AbortError — it's intentional (user interrupted)
         if (error instanceof DOMException && error.name === 'AbortError') {
           log.info('[ChatArea] Discussion aborted by user');
-          return;
+          return true;
         }
 
         log.error('[ChatArea] Discussion error:', error);
@@ -1987,6 +1990,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
           sessionId,
           `Error starting discussion: ${error instanceof Error ? error.message : String(error)}`,
         );
+        return true;
       } finally {
         // Only clean up if this is still the active controller (avoid race with interrupt)
         if (abortControllerRef.current === controller) {
@@ -1995,6 +1999,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
           setIsStreaming(false);
         }
       }
+      return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is stable from i18n context
     [clearLiveSessionAfterError, endSession, registerFirstPiRequest, runAgentLoopFn],

@@ -718,7 +718,12 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
           },
           isAgentSelected: (agentId) => {
             const ids = useSettingsStore.getState().selectedAgentIds;
-            return ids.includes(agentId);
+            if (ids.includes(agentId)) return true;
+            // Course-designed discussions referencing a registered agent must
+            // not be silently skipped just because the agent isn't in the
+            // user's current selection (startDiscussion ensures the trigger
+            // agent participates in the session regardless).
+            return Boolean(useAgentRegistry.getState().getAgent(agentId));
           },
           getPlaybackSpeed: () => useSettingsStore.getState().playbackSpeed || 1,
           onComplete: () => {
@@ -858,21 +863,27 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
      */
     const handleDiscussionSSE = useCallback(
       async (topic: string, prompt?: string, agentId?: string) => {
-        // Start discussion display in ChatArea (lecture speech is preserved independently)
-        chatAreaRef.current?.startDiscussion({
-          topic,
-          prompt,
-          agentId: agentId || 'default-1',
-        });
-        // Auto-switch to chat tab when discussion starts
-        chatAreaRef.current?.switchToTab('chat');
         // Immediately mark streaming for synchronized stop button
         setChatIsStreaming(true);
         setChatSessionType('discussion');
         // Optimistic thinking: show thinking dots immediately (same as onMessageSend)
         setThinkingState({ stage: 'director' });
+        // Start discussion display in ChatArea (lecture speech is preserved independently)
+        const started = await chatAreaRef.current?.startDiscussion({
+          topic,
+          prompt,
+          agentId: agentId || 'default-1',
+        });
+        if (!started) {
+          // Validation failed (model not configured / API key missing) —
+          // restore engine to idle and reset live UI so the user can retry.
+          handleLiveSessionError();
+          return;
+        }
+        // Auto-switch to chat tab when discussion starts
+        chatAreaRef.current?.switchToTab('chat');
       },
-      [],
+      [handleLiveSessionError],
     );
 
     // First speech text for idle display (extracted here for playbackView)

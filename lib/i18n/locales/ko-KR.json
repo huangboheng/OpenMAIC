@@ -197,6 +197,7 @@
     "mentorVoice": "멘토 음성",
     "voiceDefault": "기본",
     "noVoices": "사용 가능한 음성이 없습니다",
+    "voiceEmptyHint": "음성 서비스가 구성되지 않았습니다. 관리자에게 서버 측 TTS 구성을 요청하세요.",
     "regeneratingVoices": "멘토 음성 재생성 중 {{done}}/{{total}}…",
     "voicesUpdated": "멘토 음성이 모두 업데이트되었습니다",
     "voicesFailed": "{{count}}개 음성 생성 실패",

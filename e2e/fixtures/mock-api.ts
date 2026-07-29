@@ -66,13 +66,24 @@ export class MockApi {
     });
   }
 
-  /** Mock the server providers endpoint (returns empty — client-side config only) */
+  /** Mock the server providers endpoint (returns empty — client-side config only).
+   *  Must return the FULL response shape: the real /api/server-providers always
+   *  includes every section, and fetchServerProviders() iterates data.tts/asr/...
+   *  directly — a missing key would throw and abort the whole sync. */
   async mockServerProviders() {
     await this.page.route('**/api/server-providers', (route) => {
       route.fulfill({
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ providers: {} }),
+        body: JSON.stringify({
+          providers: {},
+          tts: {},
+          asr: {},
+          pdf: {},
+          image: {},
+          video: {},
+          webSearch: {},
+        }),
       });
     });
   }

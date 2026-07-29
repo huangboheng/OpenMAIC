@@ -248,8 +248,14 @@ export function Roundtable({
     if (discussionRequest.agentId === teacherParticipant?.id) {
       discussionAnchorRef.current = teacherAvatarRef.current;
     } else {
+      // Fall back to the teacher avatar when the trigger agent has no rendered
+      // participant avatar (e.g. the agent is not in the user's current agent
+      // selection). Without a valid anchor the ProactiveCard never computes a
+      // position and stays hidden, silently auto-skipping the discussion.
       discussionAnchorRef.current =
-        studentAvatarRefs.current.get(discussionRequest.agentId || '') || null;
+        studentAvatarRefs.current.get(discussionRequest.agentId || '') ||
+        teacherAvatarRef.current ||
+        null;
     }
   }, [discussionRequest, teacherParticipant?.id]);
 

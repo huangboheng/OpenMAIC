@@ -83,6 +83,10 @@ export class PlaybackEngine {
   // Internal state
   private currentTrigger: TriggerEvent | null = null;
   private triggerDelayTimer: ReturnType<typeof setTimeout> | null = null;
+  // Pending discussion trigger awaiting its delay timer (survives pause/resume)
+  private pendingDiscussionTrigger: TriggerEvent | null = null;
+  private triggerDelayRemaining: number = 0; // remaining ms when paused
+  private triggerDelayStart: number = 0; // Date.now() when (re)scheduled
   // Reading-time timer for speech actions without pre-generated audio (TTS disabled)
   private speechTimer: ReturnType<typeof setTimeout> | null = null;
   private speechTimerStart: number = 0; // Date.now() when timer was scheduled
@@ -221,8 +225,14 @@ export class PlaybackEngine {
   pause(): void {
     if (this.mode === 'playing') {
       this.invalidatePlaybackGeneration();
-      // Cancel pending timers
+      // Cancel pending timers — preserve the discussion trigger so resume()
+      // can reschedule it with the remaining delay (fixes lost discussions
+      // when pausing during the trigger delay window).
       if (this.triggerDelayTimer) {
+        this.triggerDelayRemaining = Math.max(
+          0,
+          this.triggerDelayRemaining - (Date.now() - this.triggerDelayStart),
+        );
         clearTimeout(this.triggerDelayTimer);
         this.triggerDelayTimer = null;
       }
@@ -270,6 +280,12 @@ export class PlaybackEngine {
       // Resume discussion → live
       this.currentTopicState = 'active';
       this.setMode('live');
+    } else if (this.pendingDiscussionTrigger) {
+      // Paused while waiting to show ProactiveCard — reschedule remaining delay
+      const trigger = this.pendingDiscussionTrigger;
+      const delay = this.triggerDelayRemaining;
+      this.setMode('playing');
+      this.scheduleDiscussionTrigger(trigger, delay);
     } else if (this.currentTrigger) {
       // Waiting on ProactiveCard — just resume mode, don't touch audio
       this.setMode('playing');
@@ -325,6 +341,7 @@ export class PlaybackEngine {
       clearTimeout(this.triggerDelayTimer);
       this.triggerDelayTimer = null;
     }
+    this.pendingDiscussionTrigger = null;
     if (this.speechTimer) {
       clearTimeout(this.speechTimer);
       this.speechTimer = null;
@@ -442,6 +459,7 @@ export class PlaybackEngine {
         clearTimeout(this.triggerDelayTimer);
         this.triggerDelayTimer = null;
       }
+      this.pendingDiscussionTrigger = null;
     }
 
     // Set mode BEFORE stopping audio — speechSynthesis.cancel() may fire the
@@ -487,6 +505,27 @@ export class PlaybackEngine {
     return generation === this.playbackGeneration;
   }
 
+  /**
+   * Schedule the ProactiveCard trigger after a delay. The pending trigger is
+   * stored on the instance so `pause()` can preserve it and `resume()` can
+   * reschedule with the remaining delay.
+   */
+  private scheduleDiscussionTrigger(trigger: TriggerEvent, delayMs: number): void {
+    const generation = this.playbackGeneration;
+    this.pendingDiscussionTrigger = trigger;
+    this.triggerDelayRemaining = delayMs;
+    this.triggerDelayStart = Date.now();
+    this.triggerDelayTimer = setTimeout(() => {
+      if (!this.isCurrentGeneration(generation)) return;
+      this.triggerDelayTimer = null;
+      this.pendingDiscussionTrigger = null;
+      if (this.mode !== 'playing') return; // Cancelled if user paused/stopped
+      this.currentTrigger = trigger;
+      this.callbacks.onProactiveShow?.(trigger);
+      // Engine pauses here — user calls confirmDiscussion() or skipDiscussion()
+    }, delayMs);
+  }
+
   private cancelActivePlaybackWork(): void {
     this.audioPlayer.stop();
     this.cancelBrowserTTS();
@@ -497,6 +536,7 @@ export class PlaybackEngine {
       clearTimeout(this.triggerDelayTimer);
       this.triggerDelayTimer = null;
     }
+    this.pendingDiscussionTrigger = null;
     if (this.speechTimer) {
       clearTimeout(this.speechTimer);
       this.speechTimer = null;
@@ -689,14 +729,7 @@ export class PlaybackEngine {
           agentId: discussionAction.agentId,
         };
 
-        this.triggerDelayTimer = setTimeout(() => {
-          if (!this.isCurrentGeneration(generation)) return;
-          this.triggerDelayTimer = null;
-          if (this.mode !== 'playing') return; // Cancelled if user paused/stopped
-          this.currentTrigger = trigger;
-          this.callbacks.onProactiveShow?.(trigger);
-          // Engine pauses here — user calls confirmDiscussion() or skipDiscussion()
-        }, DISCUSSION_TRIGGER_DELAY_MS);
+        this.scheduleDiscussionTrigger(trigger, DISCUSSION_TRIGGER_DELAY_MS);
         break;
       }
 

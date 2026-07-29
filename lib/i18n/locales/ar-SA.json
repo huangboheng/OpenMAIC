@@ -197,6 +197,7 @@
     "mentorVoice": "صوت المرشد",
     "voiceDefault": "افتراضي",
     "noVoices": "لا توجد أصوات متاحة",
+    "voiceEmptyHint": "خدمة الصوت غير مكوّنة. اطلب من المسؤول تكوين TTS على الخادم.",
     "regeneratingVoices": "جارٍ إعادة إنشاء صوت المرشد {{done}}/{{total}}…",
     "voicesUpdated": "تم تحديث صوت المرشد بالكامل",
     "voicesFailed": "فشل إنشاء {{count}} مقطع صوتي",

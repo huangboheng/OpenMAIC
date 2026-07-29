@@ -197,6 +197,7 @@
     "mentorVoice": "メンター音声",
     "voiceDefault": "デフォルト",
     "noVoices": "利用可能な音声がありません",
+    "voiceEmptyHint": "音声サービスが設定されていません。管理者にサーバー側の TTS 設定を依頼してください。",
     "regeneratingVoices": "メンター音声を再生成中 {{done}}/{{total}}…",
     "voicesUpdated": "メンター音声をすべて更新しました",
     "voicesFailed": "{{count}} 件の音声生成に失敗しました",

@@ -358,16 +358,41 @@ document.addEventListener('DOMContentLoaded', function() {
 ```
 
 ### 4. Global Functions for onclick Handlers
-**Functions called by inline onclick must be globally accessible.**
+**Functions called by inline onclick MUST be globally accessible (on `window`).**
+
+A `function foo() {}` declared **inside** a `DOMContentLoaded` callback is scoped to
+that callback — it is NOT global. An inline `onclick="foo()"` then throws
+`ReferenceError: foo is not defined` when clicked, and the button silently does
+nothing. This is the single most common cause of a "dead" game button.
 
 ```javascript
-// CORRECT: Define function globally (outside DOMContentLoaded)
+// WRONG: foo is trapped in the DOMContentLoaded closure — onclick="foo()" fails
+document.addEventListener('DOMContentLoaded', function() {
+  function useSpecialSkill() { /* ... */ }   // NOT global!
+  // <button onclick="useSpecialSkill()"> → ReferenceError, button is dead
+});
+
+// CORRECT (preferred): define the function at top level, outside DOMContentLoaded
 function startGame() {
   document.getElementById('start-screen').classList.add('hidden');
   gameActive = true;
   initLevel();
 }
 
+// CORRECT (when the function must live inside DOMContentLoaded because it closes
+// over setup state): explicitly attach it to window before the button can be clicked
+document.addEventListener('DOMContentLoaded', function() {
+  function useSpecialSkill() { /* ... uses closure state ... */ }
+  window.useSpecialSkill = useSpecialSkill;   // expose globally for onclick
+});
+```
+
+**Rule**: for EVERY function referenced by an inline `onclick`/`on*` attribute,
+verify it is reachable as `window.<name>`. If it is declared inside any wrapper
+(`DOMContentLoaded`, an IIFE, a module), add `window.<name> = <name>;` inside that
+wrapper after the declaration.
+
+```javascript
 // If using DOMContentLoaded, expose function to window
 document.addEventListener('DOMContentLoaded', function() {
   // ... other setup ...

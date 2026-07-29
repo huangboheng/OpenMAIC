@@ -472,6 +472,7 @@
     "mentorVoice": "Voz do mentor",
     "voiceDefault": "Padrão",
     "noVoices": "Nenhuma voz disponível",
+    "voiceEmptyHint": "Serviço de voz não configurado. Peça ao administrador para configurar o TTS no servidor.",
     "regeneratingVoices": "Regerando voz do mentor {{done}}/{{total}}…",
     "voicesUpdated": "Voz do mentor totalmente atualizada",
     "voicesFailed": "{{count}} linha(s) de voz falharam ao gerar",

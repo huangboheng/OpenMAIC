@@ -86,6 +86,18 @@ vi.mock('@/lib/audio/constants', () => ({
       supportedFormats: ['browser'],
       speedRange: { min: 0.1, max: 10, default: 1 },
     },
+    'minimax-tts': {
+      id: 'minimax-tts',
+      name: 'MiniMax TTS',
+      requiresApiKey: true,
+      defaultModelId: 'speech-2.8-hd',
+      models: [{ id: 'speech-2.8-hd', name: 'Speech 2.8 HD' }],
+      voices: [
+        { id: 'female-yujie', name: '御姐音色', language: 'zh-CN', gender: 'female' },
+        { id: 'male-qn-jingying', name: '精英青年', language: 'zh-CN', gender: 'male' },
+      ],
+      supportedFormats: ['mp3'],
+    },
   },
   ASR_PROVIDERS: {
     'openai-whisper': {
@@ -110,6 +122,7 @@ vi.mock('@/lib/audio/constants', () => ({
   DEFAULT_TTS_VOICES: {
     'openai-tts': 'alloy',
     'browser-native-tts': 'default',
+    'minimax-tts': 'female-yujie',
   },
 }));
 
@@ -743,6 +756,67 @@ describe('fetchServerProviders — TTS stale selection', () => {
     await store.getState().fetchServerProviders();
 
     expect(store.getState().ttsProviderId).toBe('openai-tts');
+  });
+
+  it('corrects a stale voice to the provider default when the provider is unchanged', async () => {
+    const store = await getStore();
+
+    // Server manages openai-tts; it is auto-selected with its default voice.
+    mockServerResponse({ tts: { 'openai-tts': {} } });
+    await store.getState().fetchServerProviders();
+    expect(store.getState().ttsProviderId).toBe('openai-tts');
+
+    // Simulate a persisted stale voice ('default' was never a real openai voice).
+    store.getState().setTTSVoice('default');
+    expect(store.getState().ttsVoice).toBe('default');
+
+    // Provider still configured and unchanged — the invalid voice must snap to
+    // the provider default instead of lingering as 'default'.
+    mockServerResponse({ tts: { 'openai-tts': {} } });
+    await store.getState().fetchServerProviders();
+
+    expect(store.getState().ttsProviderId).toBe('openai-tts');
+    expect(store.getState().ttsVoice).toBe('alloy');
+  });
+
+  it('keeps a valid voice untouched when the provider is unchanged', async () => {
+    const store = await getStore();
+
+    mockServerResponse({ tts: { 'openai-tts': {} } });
+    await store.getState().fetchServerProviders();
+    store.getState().setTTSVoice('alloy');
+
+    mockServerResponse({ tts: { 'openai-tts': {} } });
+    await store.getState().fetchServerProviders();
+
+    expect(store.getState().ttsVoice).toBe('alloy');
+  });
+
+  it('corrects a persisted {minimax-tts, default} selection to female-yujie on sync', async () => {
+    // 持久化状态：provider 已是服务端托管的 minimax-tts，但 voice 是从未被
+    // 解析过的初始值 'default'（非 minimax 真实音色）。
+    storage.set(
+      'settings-storage',
+      JSON.stringify({
+        version: 4,
+        state: {
+          ttsProviderId: 'minimax-tts',
+          ttsVoice: 'default',
+          autoConfigApplied: true,
+        },
+      }),
+    );
+
+    const store = await getStore();
+    expect(store.getState().ttsProviderId).toBe('minimax-tts');
+    expect(store.getState().ttsVoice).toBe('default');
+
+    // 服务端仍托管 minimax-tts（provider 不变）→ voice 应被纠正为默认音色。
+    mockServerResponse({ tts: { 'minimax-tts': {} } });
+    await store.getState().fetchServerProviders();
+
+    expect(store.getState().ttsProviderId).toBe('minimax-tts');
+    expect(store.getState().ttsVoice).toBe('female-yujie');
   });
 });
 

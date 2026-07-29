@@ -15,6 +15,11 @@ import { useStageStore, type StageSceneLoadToken } from '@/lib/store/stage';
 import type { GeneratedAgentRecord, MediaFileRecord } from '@/lib/utils/database';
 import type { Scene, Stage } from '@/lib/types/stage';
 
+/** Safety net so a hung sub-step (Web Lock, IndexedDB, network) cannot keep the page loading forever. */
+const DEFAULT_CLASSROOM_LOAD_TIMEOUT_MS = 30_000;
+/** Bound the server-side fallback fetch so it fails fast instead of hanging the whole load. */
+const CLASSROOM_FETCH_TIMEOUT_MS = 15_000;
+
 export interface ClassroomPayload {
   stage: Stage;
   scenes: Scene[];
@@ -66,6 +71,8 @@ export interface RunClassroomLoadArgs<TMediaTasks = unknown, TGeneratedAgentReco
   setError: (message: string) => void;
   setLoading: (loading: boolean) => void;
   log: Logger;
+  /** Upper bound for the whole load; when exceeded the load fails with a timeout error. */
+  loadTimeoutMs?: number;
 }
 
 export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRecord = unknown>({
@@ -88,8 +95,11 @@ export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRec
   setError,
   setLoading,
   log,
+  loadTimeoutMs,
 }: RunClassroomLoadArgs<TMediaTasks, TGeneratedAgentRecord>): Promise<void> {
-  try {
+  const timeoutMs = loadTimeoutMs ?? DEFAULT_CLASSROOM_LOAD_TIMEOUT_MS;
+
+  const runLoad = async (): Promise<void> => {
     await loadFromStorage(classroomId, loadToken);
     if (!isCurrent()) return;
 
@@ -121,6 +131,11 @@ export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRec
     }
 
     if (!isCurrent()) return;
+    if (!getCurrentStage()) {
+      // Neither IndexedDB nor server-side storage produced a stage. Fail loud
+      // with a retryable error instead of rendering an empty, broken stage.
+      throw new Error(`Classroom "${classroomId}" has no loadable data`);
+    }
     const mediaTasks = await loadRestoredMediaTasks(classroomId);
     if (!isCurrent()) {
       discardRestoredMediaTasks(mediaTasks);
@@ -154,12 +169,26 @@ export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRec
     if (isUserSet !== settings.agentSelectionIsUserSet) {
       settings.setAgentSelectionIsUserSet(isUserSet);
     }
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      runLoad(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Classroom load timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
   } catch (error) {
     log.error('Failed to load classroom:', error);
     if (isCurrent()) {
       setError(error instanceof Error ? error.message : 'Failed to load classroom');
     }
   } finally {
+    if (timer !== undefined) clearTimeout(timer);
     if (isCurrent()) {
       setLoading(false);
     }
@@ -167,15 +196,25 @@ export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRec
 }
 
 export async function fetchClassroomFromApi(classroomId: string): Promise<ClassroomPayload | null> {
-  const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`);
-  if (!res.ok) return null;
+  try {
+    const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`, {
+      signal: AbortSignal.timeout(CLASSROOM_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
 
-  const json = (await res.json()) as {
-    success?: boolean;
-    classroom?: ClassroomPayload;
-  };
-  if (!json.success || !json.classroom) return null;
-  return json.classroom;
+    const json = (await res.json()) as {
+      success?: boolean;
+      classroom?: ClassroomPayload;
+    };
+    if (!json.success || !json.classroom) return null;
+    return json.classroom;
+  } catch {
+    // Server-side storage is a best-effort fallback: any failure (timeout,
+    // network error, non-2xx) degrades to "no data" so the caller surfaces a
+    // single definitive "no loadable data" error instead of hanging or leaking
+    // a raw fetch error.
+    return null;
+  }
 }
 
 /** 将课堂数据中的绝对媒体 URL 重写为 basePath 相对路径

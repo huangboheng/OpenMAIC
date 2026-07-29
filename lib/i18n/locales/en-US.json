@@ -197,6 +197,7 @@
     "mentorVoice": "Mentor Voice",
     "voiceDefault": "Default",
     "noVoices": "No voices available",
+    "voiceEmptyHint": "No voice service configured. Ask the admin to configure TTS on the server.",
     "regeneratingVoices": "Regenerating mentor voice {{done}}/{{total}}…",
     "voicesUpdated": "Mentor voice fully updated",
     "voicesFailed": "{{count}} voice line(s) failed to generate",

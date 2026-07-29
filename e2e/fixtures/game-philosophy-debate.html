@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>哲学辩论竞技场 - 与AI哲学家对话</title>
+    <style>
+        :root {
+            --bg: #1a1410;
+            --panel: #2a1f18;
+            --gold: #c8a45c;
+            --gold-light: #e0c878;
+            --text: #e8dcc8;
+            --text-dim: #a89880;
+            --card-bg: #f5ecd7;
+            --card-text: #2a1f18;
+            --success: #5c9a5c;
+            --danger: #b84c4c;
+            --highlight: #d4a030;
+            --phil-red: #c0392b;
+            --phil-blue: #2980b9;
+            --phil-green: #27ae60;
+            --phil-purple: #8e44ad;
+            --phil-teal: #1abc9c;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            font-family: 'Georgia', 'Noto Serif SC', 'STSong', 'Songti SC', 'SimSun', serif;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            max-height: 900px;
+            background: linear-gradient(180deg, #1a1410 0%, #231b14 30%, #1f1812 100%);
+            border-left: 1px solid #3a2a18;
+            border-right: 1px solid #3a2a18;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.6);
+        }
+
+        @media (max-width: 500px) {
+            #game-container {
+                max-width: 100%;
+                border: none;
+                box-shadow: none;
+            }
+        }
+
+        /* Top HUD */
+        #hud {
+            position: relative;
+            z-index: 10;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            background: rgba(26, 20, 16, 0.9);
+            border-bottom: 1px solid #3a2a18;
+            flex-shrink: 0;
+        }
+        #hud .score-display {
+            color: var(--gold);
+            font-size: 1.1rem;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        #hud .combo-display {
+            background: #3a2010;
+            color: var(--gold-light);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            white-space: nowrap;
+            transition: all 0.3s;
+        }
+        #hud .combo-display.hot {
+            background: #5a3010;
+            color: #ffcc00;
+            animation: pulse-combo 0.5s ease-in-out;
+        }
+        @keyframes pulse-combo {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.15);
+            }
+        }
+        #hud .round-indicator {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+        #hud .insight-bar-wrap {
+            flex: 1;
+            max-width: 120px;
+            height: 8px;
+            background: #3a2a18;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        #hud .insight-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6a3aaa, #a060e0);
+            border-radius: 4px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+        #hud .special-btn {
+            background: #4a2a6a;
+            color: #c8a0f0;
+            border: 1px solid #6a3aaa;
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        #hud .special-btn.ready {
+            background: #6a3aaa;
+            color: #fff;
+            animation: glow-special 1.5s ease-in-out infinite;
+            cursor: pointer;
+        }
+        @keyframes glow-special {
+            0%,
+            100% {
+                box-shadow: 0 0 8px rgba(160, 96, 224, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 20px rgba(160, 96, 224, 0.9);
+            }
+        }
+        #hud .special-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            animation: none;
+        }
+
+        /* HP Bars */
+        #hp-section {
+            display: flex;
+            gap: 8px;
+            padding: 6px 16px;
+            flex-shrink: 0;
+            align-items: center;
+        }
+        .hp-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+        .hp-bar-wrap {
+            flex: 1;
+            height: 10px;
+            background: #2a1a14;
+            border-radius: 5px;
+            overflow: hidden;
+            border: 1px solid #3a2a18;
+        }
+        .hp-bar-fill {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.5s ease;
+        }
+        .hp-bar-fill.player {
+            background: linear-gradient(90deg, #4a8a4a, #6ab86a);
+        }
+        .hp-bar-fill.opponent {
+            background: linear-gradient(90deg, #b84c4c, #d46464);
+        }
+        .hp-icon {
+            font-size: 1.2rem;
+        }
+
+        /* Opponent Area */
+        #opponent-area {
+            position: relative;
+            z-index: 5;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+            border-bottom: 1px dashed #3a2a18;
+        }
+        #opponent-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: #2a1f18;
+            border: 3px solid var(--gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            flex-shrink: 0;
+            transition: all 0.3s;
+        }
+        #opponent-avatar.shaken {
+            animation: shake-avatar 0.5s ease;
+        }
+        @keyframes shake-avatar {
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+            25% {
+                transform: translateX(-6px);
+            }
+            50% {
+                transform: translateX(6px);
+            }
+            75% {
+                transform: translateX(-4px);
+            }
+        }
+        #opponent-info {
+            flex: 1;
+            min-width: 0;
+        }
+        #opponent-name {
+            color: var(--gold);
+            font-weight: bold;
+            font-size: 0.95rem;
+        }
+        #opponent-argument {
+            color: var(--text);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            margin-top: 3px;
+            background: rgba(200, 164, 92, 0.08);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border-left: 3px solid var(--gold);
+            transition: all 0.4s;
+        }
+        #opponent-argument.hit {
+            border-left-color: #b84c4c;
+            background: rgba(184, 76, 76, 0.12);
+        }
+
+        /* Debate Zone */
+        #debate-zone {
+            flex: 1;
+            position: relative;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 140px;
+            border-bottom: 1px dashed #3a2a18;
+            background: radial-gradient(ellipse at center, rgba(200, 164, 92, 0.04) 0%, transparent 70%);
+        }
+        #debate-target {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 3px dashed rgba(200, 164, 92, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            position: relative;
+        }
+        #debate-target.active {
+            border-color: rgba(200, 164, 92, 0.8);
+            border-style: solid;
+            box-shadow: 0 0 30px rgba(200, 164, 92, 0.2);
+        }
+        #debate-target .target-label {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+            text-align: center;
+            pointer-events: none;
+        }
+        #debate-target .target-icon {
+            font-size: 2.5rem;
+            pointer-events: none;
+            opacity: 0.5;
+        }
+        #debate-target.success-flash {
+            animation: flash-success 0.6s ease;
+        }
+        @keyframes flash-success {
+            0% {
+                background: rgba(92, 154, 92, 0.5);
+                box-shadow: 0 0 60px rgba(92, 154, 92, 0.7);
+            }
+            100% {
+                background: transparent;
+                box-shadow: 0 0 0px rgba(92, 154, 92, 0);
+            }
+        }
+        #debate-target.fail-flash {
+            animation: flash-fail 0.5s ease;
+        }
+        @keyframes flash-fail {
+            0% {
+                background: rgba(184, 76, 76, 0.4);
+                box-shadow: 0 0 40px rgba(184, 76, 76, 0.5);
+            }
+            100% {
+                background: transparent;
+                box-shadow: 0 0 0px rgba(184, 76, 76, 0);
+            }
+        }
+
+        /* Hand Area */
+        #hand-area {
+            position: relative;
+            z-index: 8;
+            padding: 10px 10px 14px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+            min-height: 90px;
+            background: rgba(26, 20, 16, 0.95);
+            border-top: 1px solid #3a2a18;
+        }
+        .card {
+            width: 100px;
+            height: 130px;
+            background: var(--card-bg);
+            border-radius: 8px;
+            cursor: grab;
+            position: relative;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 8px;
+            gap: 4px;
+            border: 2px solid #d4c5a0;
+            text-align: center;
+            font-size: 0.7rem;
+            color: var(--card-text);
+            line-height: 1.3;
+        }
+        .card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
+        .card:active {
+            cursor: grabbing;
+        }
+        .card.dragging {
+            position: fixed;
+            z-index: 100;
+            transform: scale(1.1) rotate(-3deg);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+            opacity: 0.9;
+            transition: none;
+        }
+        .card.returning {
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        .card.consumed {
+            animation: consume-card 0.5s ease forwards;
+            pointer-events: none;
+        }
+        @keyframes consume-card {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.2);
+                opacity: 0.7;
+            }
+            100% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+        }
+        .card .card-type-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .card .card-type-label {
+            font-size: 0.6rem;
+            color: #8a7a60;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .card .card-content {
+            font-size: 0.68rem;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card.type-red {
+            border-left: 4px solid #c0392b;
+            border-color: #c0392b #d4c5a0 #d4c5a0 #c0392b;
+        }
+        .card.type-blue {
+            border-left: 4px solid #2980b9;
+            border-color: #2980b9 #d4c5a0 #d4c5a0 #2980b9;
+        }
+        .card.type-green {
+            border-left: 4px solid #27ae60;
+            border-color: #27ae60 #d4c5a0 #d4c5a0 #27ae60;
+        }
+        .card.type-yellow {
+            border-left: 4px solid #d4a030;
+            border-color: #d4a030 #d4c5a0 #d4c5a0 #d4a030;
+        }
+        .card.type-purple {
+            border-left: 4px solid #8e44ad;
+            border-color: #8e44ad #d4c5a0 #d4c5a0 #8e44ad;
+        }
+
+        @media (max-width: 500px) {
+            .card {
+                width: 75px;
+                height: 105px;
+                padding: 5px;
+                gap: 2px;
+                font-size: 0.6rem;
+                border-radius: 6px;
+            }
+            .card .card-type-icon {
+                font-size: 1.2rem;
+            }
+            .card .card-content {
+                font-size: 0.58rem;
+            }
+            .card .card-type-label {
+                font-size: 0.5rem;
+            }
+            #debate-zone {
+                min-height: 100px;
+            }
+            #debate-target {
+                width: 100px;
+                height: 100px;
+            }
+            #opponent-argument {
+                font-size: 0.75rem;
+            }
+        }
+
+        /* Overlay Screens */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            background: rgba(18, 12, 8, 0.94);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 20px;
+            text-align: center;
+            transition: opacity 0.4s;
+        }
+        .overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .overlay h2 {
+            color: var(--gold);
+            font-size: 1.6rem;
+            letter-spacing: 2px;
+        }
+        .overlay h3 {
+            color: var(--text);
+            font-size: 1rem;
+            font-weight: normal;
+            max-width: 400px;
+            line-height: 1.5;
+        }
+        .overlay .subtitle {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            max-width: 360px;
+            line-height: 1.5;
+        }
+        .btn {
+            background: var(--gold);
+            color: #1a1410;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            font-weight: bold;
+            font-family: inherit;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(200, 164, 92, 0.3);
+        }
+        .btn:hover {
+            background: var(--gold-light);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(200, 164, 92, 0.5);
+        }
+        .btn:active {
+            transform: scale(0.96);
+        }
+        .btn.secondary {
+            background: transparent;
+            border: 2px solid var(--gold);
+            color: var(--gold);
+            box-shadow: none;
+        }
+        .btn.secondary:hover {
+            background: rgba(200, 164, 92, 0.1);
+        }
+        .philosopher-select {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 500px;
+        }
+        .phil-card {
+            width: 100px;
+            padding: 14px 8px;
+            background: #2a1f18;
+            border: 2px solid #3a2a18;
+            border-radius: 12px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s;
+            color: var(--text);
+            font-size: 0.8rem;
+        }
+        .phil-card:hover {
+            border-color: var(--gold);
+            background: #35281e;
+            transform: translateY(-4px);
+        }
+        .phil-card.selected {
+            border-color: var(--gold);
+            background: #3a2a18;
+            box-shadow: 0 0 20px rgba(200, 164, 92, 0.25);
+        }
+        .phil-card .phil-emoji {
+            font-size: 2.2rem;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .phil-card .phil-name {
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+        .phil-card .phil-era {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        /* Toast / Achievements */
+        #toast {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 60;
+            background: #2a1f18;
+            color: var(--gold-light);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            border: 1px solid var(--gold);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+        }
+        #toast.show {
+            opacity: 1;
+        }
+        #particles-canvas {
+            position: absolute;
+            inset: 0;
+            z-index: 45;
+            pointer-events: none;
+        }
+    </style>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const katexOptions = {
+        delimiters: [
+            {left: '\\[', right: '\\]', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+        ],
+        throwOnError: false,
+        strict: false,
+        trust: true
+    };
+
+    let renderTimeout;
+    function safeRender() {
+        if (renderTimeout) clearTimeout(renderTimeout);
+        renderTimeout = setTimeout(() => {
+            renderMathInElement(document.body, katexOptions);
+        }, 100);
+    }
+
+    renderMathInElement(document.body, katexOptions);
+
+    const observer = new MutationObserver((mutations) => {
+        let shouldRender = false;
+        mutations.forEach((mutation) => {
+            if (mutation.target &&
+                mutation.target.className &&
+                typeof mutation.target.className === 'string' &&
+                mutation.target.className.includes('katex')) {
+                return;
+            }
+            shouldRender = true;
+        });
+
+        if (shouldRender) {
+            safeRender();
+        }
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+
+    setInterval(() => {
+        const text = document.body.innerText;
+        if (text.includes('\\(') || text.includes('$$')) {
+            safeRender();
+        }
+    }, 2000);
+});
+</script>
+</head>
+<body>
+    <div id="game-container">
+        <!-- HUD -->
+        <div id="hud">
+            <span class="score-display">🏆 <span id="score-val">0</span></span>
+            <span class="combo-display" id="combo-display">连击 ×0</span>
+            <span class="round-indicator" id="round-indicator">第 1/5 轮</span>
+            <div class="insight-bar-wrap" title="洞察力 - 满时可释放特殊技能">
+                <div class="insight-bar-fill" id="insight-fill"></div>
+            </div>
+            <button class="special-btn" id="special-btn" disabled onclick="useSpecialSkill()">💡 思想实验</button>
+        </div>
+
+        <!-- HP Bars -->
+        <div id="hp-section">
+            <span class="hp-icon">🧑‍🎓</span>
+            <span style="color:#8ab88a;font-size:0.75rem;">你</span>
+            <div class="hp-bar-wrap"><div class="hp-bar-fill player" id="player-hp-bar" style="width:100%;"></div></div>
+            <span style="color:#8ab88a;font-size:0.7rem;" id="player-hp-text">100</span>
+            <span style="color:#c87878;font-size:0.7rem;margin-left:8px;" id="opp-hp-text">100</span>
+            <div class="hp-bar-wrap"><div class="hp-bar-fill opponent" id="opp-hp-bar" style="width:100%;"></div></div>
+            <span style="color:#c87878;font-size:0.75rem;">对手</span>
+            <span class="hp-icon" id="opp-hp-icon">🤖</span>
+        </div>
+
+        <!-- Opponent -->
+        <div id="opponent-area">
+            <div id="opponent-avatar">🤖</div>
+            <div id="opponent-info">
+                <div id="opponent-name">卡尔·波普尔</div>
+                <div id="opponent-argument">"可证伪性是科学与伪科学的划界标准。"</div>
+            </div>
+        </div>
+
+        <!-- Debate Zone -->
+        <div id="debate-zone">
+            <div id="debate-target">
+                <span class="target-icon">🎯</span>
+                <span class="target-label">拖放论证<br>卡牌至此</span>
+            </div>
+        </div>
+
+        <!-- Hand -->
+        <div id="hand-area"></div>
+
+        <!-- Toast -->
+        <div id="toast"></div>
+
+        <!-- Particles -->
+        <canvas id="particles-canvas"></canvas>
+
+        <!-- Overlay: Start -->
+        <div class="overlay" id="overlay-start">
+            <h2>🏛️ 哲学辩论竞技场</h2>
+            <h3>与AI哲学家进行一场关于<strong>划界问题</strong>的辩论</h3>
+            <p class="subtitle">选择一位科学哲学家作为对手，通过拖放论证卡牌来反驳其观点。用逻辑和洞察力赢得辩论！</p>
+            <p style="color:var(--text-dim);font-size:0.8rem;">📖 包含波普尔、库恩、拉卡托斯、费耶阿本德</p>
+            <button class="btn" onclick="startGame()">⚔️ 开始辩论</button>
+        </div>
+
+        <!-- Overlay: Result -->
+        <div class="overlay hidden" id="overlay-result">
+            <h2 id="result-title">辩论结束</h2>
+            <p id="result-detail" style="color:var(--text);font-size:1rem;"></p>
+            <p id="result-score" style="color:var(--gold);font-size:1.3rem;font-weight:bold;"></p>
+            <div id="result-achievements" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;"></div>
+            <button class="btn" onclick="restartGame()">🔄 再来一局</button>
+        </div>
+    </div>
+
+    <script type="application/json" id="widget-config">
+        {
+            "type": "game",
+            "gameType": "dialogue_debate",
+            "description": "通过拖放论证卡牌与AI哲学家进行辩论，学习科学哲学中的划界问题",
+            "gameConfig": {
+                "controls": ["drag_card", "special_skill"],
+                "philosophers": ["popper", "kuhn", "lakatos", "feyerabend"],
+                "topics": ["demarcation", "progress", "theory_choice"],
+                "roundsPerGame": 5
+            },
+            "scoring": {
+                "correctPoints": 10,
+                "speedBonus": 5,
+                "comboMultiplier": 1.5,
+                "perfectMatchPoints": 30
+            },
+            "achievements": [
+                { "id": "first_win", "name": "初战告捷", "description": "赢得第一场辩论", "icon": "🏆" },
+                { "id": "combo3", "name": "逻辑风暴", "description": "达成3连击", "icon": "⚡" },
+                { "id": "perfect_round", "name": "完美论证", "description": "单轮造成50+伤害", "icon": "💎" },
+                { "id": "all_philosophers", "name": "博学者", "description": "与所有哲学家辩论过", "icon": "📚" },
+                { "id": "speed_demon", "name": "敏捷思维", "description": "在3秒内回应并获胜", "icon": "🚀" }
+            ]
+        }
+    </script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // ============ GAME STATE ============
+            const gameState = {
+                opponent: null,
+                topic: 'demarcation',
+                round: 0,
+                totalRounds: 5,
+                playerHP: 100,
+                opponentHP: 100,
+                combo: 0,
+                maxCombo: 0,
+                score: 0,
+                insight: 0,
+                maxInsight: 100,
+                currentArgument: null,
+                hand: [],
+                isDragging: false,
+                dragCardEl: null,
+                dragStartX: 0,
+                dragStartY: 0,
+                dragOrigRect: null,
+                gameActive: false,
+                roundStartTime: 0,
+                usedPhilosophers: new Set(),
+                achievements: new Set(),
+                roundHistory: [],
+            };
+
+            // ============ DOM REFS ============
+            const container = document.getElementById('game-container');
+            const handArea = document.getElementById('hand-area');
+            const debateTarget = document.getElementById('debate-target');
+            const debateZone = document.getElementById('debate-zone');
+            const opponentArg = document.getElementById('opponent-argument');
+            const opponentName = document.getElementById('opponent-name');
+            const opponentAvatar = document.getElementById('opponent-avatar');
+            const scoreVal = document.getElementById('score-val');
+            const comboDisplay = document.getElementById('combo-display');
+            const roundIndicator = document.getElementById('round-indicator');
+            const insightFill = document.getElementById('insight-fill');
+            const specialBtn = document.getElementById('special-btn');
+            const playerHpBar = document.getElementById('player-hp-bar');
+            const oppHpBar = document.getElementById('opp-hp-bar');
+            const playerHpText = document.getElementById('player-hp-text');
+            const oppHpText = document.getElementById('opp-hp-text');
+            const oppHpIcon = document.getElementById('opp-hp-icon');
+            const toast = document.getElementById('toast');
+            const particlesCanvas = document.getElementById('particles-canvas');
+            const ctx = particlesCanvas.getContext('2d');
+            const overlayStart = document.getElementById('overlay-start');
+            const overlayResult = document.getElementById('overlay-result');
+            const resultTitle = document.getElementById('result-title');
+            const resultDetail = document.getElementById('result-detail');
+            const resultScore = document.getElementById('result-score');
+            const resultAchievements = document.getElementById('result-achievements');
+
+            let particles = [];
+            let toastTimer = null;
+
+            // ============ AUDIO ============
+            let audioCtx = null;
+
+            function getAudioCtx() {
+                if (!audioCtx) {
+                    try { audioCtx = new(window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+                }
+                return audioCtx;
+            }
+
+            function playTone(freq, duration, type = 'sine', vol = 0.08) {
+                const ac = getAudioCtx();
+                if (!ac) return;
+                const osc = ac.createOscillator();
+                const gain = ac.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(vol, ac.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(ac.destination);
+                osc.start(ac.currentTime);
+                osc.stop(ac.currentTime + duration);
+            }
+
+            function sfxSuccess() { playTone(600, 0.15, 'sine', 0.07);
+                playTone(900, 0.2, 'sine', 0.05); }
+
+            function sfxFail() { playTone(200, 0.3, 'triangle', 0.06); }
+
+            function sfxCombo() { playTone(800, 0.1, 'square', 0.04);
+                playTone(1200, 0.15, 'square', 0.03); }
+
+            function sfxDrop() { playTone(400, 0.08, 'sine', 0.03); }
+
+            function sfxWin() { playTone(500, 0.15, 'sine', 0.06);
+                playTone(700, 0.2, 'sine', 0.05);
+                playTone(1000, 0.3, 'sine', 0.04); }
+
+            // ============ PARTICLES ============
+            function spawnParticles(x, y, count, color) {
+                for (let i = 0; i < count; i++) {
+                    particles.push({
+                        x: x,
+                        y: y,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: (Math.random() - 0.5) * 6 - 2,
+                        life: 1,
+                        decay: 0.02 + Math.random() * 0.04,
+                        size: 2 + Math.random() * 4,
+                        color: color,
+                    });
+                }
+            }
+
+            function updateParticles() {
+                particles = particles.filter(p => p.life > 0);
+                particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.life -= p.decay;
+                });
+            }
+
+            function drawParticles() {
+                ctx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
+                particles.forEach(p => {
+                    ctx.globalAlpha = p.life;
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+            }
+
+            function resizeCanvas() {
+                const rect = container.getBoundingClientRect();
+                particlesCanvas.width = rect.width;
+                particlesCanvas.height = rect.height;
+                particlesCanvas.style.width = rect.width + 'px';
+                particlesCanvas.style.height = rect.height + 'px';
+            }
+
+            // ============ TOAST ============
+            function showToast(msg) {
+                if (toastTimer) clearTimeout(toastTimer);
+                toast.textContent = msg;
+                toast.classList.add('show');
+                toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+            }
+
+            // ============ PHILOSOPHER DATA ============
+            const philosophers = {
+                popper: {
+                    id: 'popper',
+                    name: '卡尔·波普尔',
+                    nameEn: 'Karl Popper',
+                    emoji: '🧐',
+                    era: '1902-1994',
+                    color: '#c0392b',
+                    arguments: [
+                        { id: 'pop1', text: '可证伪性（falsifiability）是科学与伪科学的划界标准。一个理论如果不能被任何可能的观察所反驳，那它就不是科学。', weakness: 'green',
+                            strength: 'blue' },
+                        { id: 'pop2', text: '科学通过"猜想与反驳"（conjectures and refutations）的模式进步。我们提出大胆猜想，然后试图证伪它们。', weakness: 'green',
+                            strength: 'blue' },
+                        { id: 'pop3', text: '归纳法不能作为科学方法的基础。无论多少观察都不能最终证实一个理论，但一个反例就能证伪它。', weakness: 'yellow',
+                            strength: 'blue' },
+                        { id: 'pop4', text: '科学理论必须冒风险做出可检验的预测。回避检验的理论——如精神分析和马克思主义——属于伪科学。', weakness: 'green',
+                            strength: 'red' },
+                    ],
+                },
+                kuhn: {
+                    id: 'kuhn',
+                    name: '托马斯·库恩',
+                    nameEn: 'Thomas Kuhn',
+                    emoji: '🤔',
+                    era: '1922-1996',
+                    color: '#2980b9',
+                    arguments: [
+                        { id: 'kuh1', text: '范式（paradigm）是常态科学的基础。科学家在范式内解谜，而非试图证伪范式本身。', weakness: 'blue',
+                            strength: 'green' },
+                        { id: 'kuh2', text: '科学革命导致范式转换（paradigm shift），不同范式之间不可通约（incommensurable）。', weakness: 'purple',
+                            strength: 'green' },
+                        { id: 'kuh3', text: '科学进步不是累积性的。新范式取代旧范式时，许多旧"事实"被重新解释或抛弃。', weakness: 'blue',
+                        strength: 'green' },
+                        { id: 'kuh4', text: '波普尔的证伪主义是理想化的——实际的科学家在遇到反常时通常不会放弃范式。', weakness: 'yellow', strength: 'green' },
+                    ],
+                },
+                lakatos: {
+                    id: 'lakatos',
+                    name: '伊姆雷·拉卡托斯',
+                    nameEn: 'Imre Lakatos',
+                    emoji: '🧠',
+                    era: '1922-1974',
+                    color: '#27ae60',
+                    arguments: [
+                        { id: 'lak1', text: '科学研究纲领（research programme）包含硬核（hard core）和保护带（protective belt）。硬核是不可反驳的。',
+                            weakness: 'purple', strength: 'yellow' },
+                        { id: 'lak2', text: '进步的研究纲领不断做出新颖预测并被证实；退步的研究纲领只是事后解释。', weakness: 'red',
+                        strength: 'yellow' },
+                        { id: 'lak3', text: '没有"即时理性"——一个研究纲领可能需要时间才能展现出进步性。', weakness: 'blue', strength: 'yellow' },
+                    ],
+                },
+                feyerabend: {
+                    id: 'feyerabend',
+                    name: '保罗·费耶阿本德',
+                    nameEn: 'Paul Feyerabend',
+                    emoji: '😈',
+                    era: '1924-1994',
+                    color: '#8e44ad',
+                    arguments: [
+                        { id: 'fey1', text: '没有任何方法论规则是普遍有效的。"怎么都行"（anything goes）——科学没有固定的方法。',
+                            weakness: 'yellow', strength: 'purple' },
+                        { id: 'fey2', text: '科学与其他传统（如神话、宗教）之间没有严格的认知界限。科学只是众多传统之一。', weakness: 'blue',
+                            strength: 'purple' },
+                        { id: 'fey3', text: '试图为科学设立严格标准反而会阻碍科学进步。伽利略如果遵守当时的"科学方法"就不会成功。',
+                            weakness: 'red', strength: 'purple' },
+                    ],
+                },
+            };
+
+            // ============ CARD TEMPLATES ============
+            const cardTypes = {
+                red: { icon: '🔴', label: '经验论证', desc: '诉诸观察与实验', color: '#c0392b' },
+                blue: { icon: '🔵', label: '逻辑论证', desc: '演绎推理', color: '#2980b9' },
+                green: { icon: '🟢', label: '历史论证', desc: '科学史案例', color: '#27ae60' },
+                yellow: { icon: '🟡', label: '概念分析', desc: '术语与定义澄清', color: '#d4a030' },
+                purple: { icon: '🟣', label: '归谬法', desc: '揭示对方矛盾', color: '#8e44ad' },
+            };
+
+            const allCardContents = {
+                red: [
+                    '指出历史上被广泛接受但后来被证伪的理论（如燃素说），说明证伪是科学自我修正的机制。',
+                    '援引现代物理学实验——如爱丁顿1919年日食观测——说明关键实验如何检验理论。',
+                    '引用心理学中的可复制性危机，说明缺乏严格检验的领域会出现什么问题。',
+                ],
+                blue: [
+                    '论证：如果范式之间不可通约，那么范式选择就是非理性的，这会导致认识论相对主义。',
+                    '指出"怎么都行"的立场自相矛盾——如果所有方法论都同等有效，那么"怎么都行"本身也只是任意的偏好。',
+                    '用逻辑分析证明：波普尔的证伪标准本身不可证伪，因此按他自己的标准，证伪主义也不是科学。',
+                ],
+                green: [
+                    '引用库恩《科学革命的结构》中的案例：哥白尼革命并非因为旧范式被证伪，而是因为新范式提供了更丰富的解谜资源。',
+                    '以拉瓦锡的化学革命为例：新范式重新定义了"元素"概念，这不是累积性进步，而是概念框架的根本转变。',
+                    '指出伽利略的案例——他的许多论证在当时并不符合严格的"科学方法"，但却推动了科学革命。',
+                ],
+                yellow: [
+                    '澄清"划界问题"（demarcation problem）的术语——区分"科学vs非科学"与"有意义vs无意义"是不同的概念。',
+                    '分析"可证伪性"概念：一个理论加上辅助假设后，任何理论都可以免于证伪（迪昂-蒯因论题）。',
+                    '指出"范式"概念的模糊性——库恩使用了二十多种不同的含义，这使得范式理论难以精确评估。',
+                ],
+                purple: [
+                    '归谬：如果严格执行证伪标准，那么理论物理学中的弦理论（目前无法检验）也必须被排除在科学之外——这合理吗？',
+                    '揭示矛盾：库恩一方面说范式不可通约，另一方面又写书比较不同范式——这不正说明存在共通的理解框架吗？',
+                    '归谬：费耶阿本德反对方法论规则，但"反对所有方法论规则"本身就是一条方法论规则——立场自我反驳。',
+                ],
+            };
+
+            function generateHand(opponentId, currentArg) {
+                const opp = philosophers[opponentId];
+                if (!opp) return [];
+                const weakness = currentArg ? currentArg.weakness : 'green';
+                // Generate 5 cards: 1-2 perfect match, 1-2 partial, rest random
+                const hand = [];
+                const perfectType = weakness;
+                const partialTypes = Object.keys(cardTypes).filter(t => t !== perfectType && t !== (currentArg ?
+                    currentArg.strength : ''));
+                const weakType = currentArg ? currentArg.strength : 'blue';
+
+                // 1-2 perfect matches
+                const perfectCount = 1 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < perfectCount; i++) {
+                    const contents = allCardContents[perfectType] || allCardContents['green'];
+                    hand.push({
+                        type: perfectType,
+                        content: contents[Math.floor(Math.random() * contents.length)],
+                        matchQuality: 'perfect',
+                        damage: 25 + Math.floor(Math.random() * 10),
+                    });
+                }
+
+                // 1-2 partial matches
+                const partialCount = 1 + Math.floor(Math.random() * 2);
+                const shuffledPartials = partialTypes.sort(() => Math.random() - 0.5);
+                for (let i = 0; i < Math.min(partialCount, shuffledPartials.length); i++) {
+                    const pType = shuffledPartials[i];
+                    const contents = allCardContents[pType] || allCardContents['blue'];
+                    hand.push({
+                        type: pType,
+                        content: contents[Math.floor(Math.random() * contents.length)],
+                        matchQuality: 'partial',
+                        damage: 10 + Math.floor(Math.random() * 8),
+                    });
+                }
+
+                // Fill remaining with weak matches
+                while (hand.length < 5) {
+                    const contents = allCardContents[weakType] || allCardContents['red'];
+                    hand.push({
+                        type: weakType,
+                        content: contents[Math.floor(Math.random() * contents.length)],
+                        matchQuality: 'weak',
+                        damage: -5 - Math.floor(Math.random() * 10),
+                    });
+                }
+
+                // Shuffle
+                return hand.sort(() => Math.random() - 0.5);
+            }
+
+            // ============ RENDER HAND ============
+            function renderHand() {
+                handArea.innerHTML = '';
+                gameState.hand.forEach((card, index) => {
+                    const cardEl = document.createElement('div');
+                    cardEl.className = `card type-${card.type}`;
+                    cardEl.dataset.index = index;
+                    cardEl.dataset.type = card.type;
+                    cardEl.dataset.match = card.matchQuality;
+                    cardEl.dataset.damage = card.damage;
+                    cardEl.innerHTML = `
+                <span class="card-type-icon">${cardTypes[card.type].icon}</span>
+                <span class="card-type-label">${cardTypes[card.type].label}</span>
+                <span class="card-content">${card.content.substring(0, 40)}...</span>
+              `;
+                    cardEl.addEventListener('mousedown', onDragStart);
+                    cardEl.addEventListener('touchstart', onDragStart, { passive: false });
+                    cardEl.title = card.content;
+                    handArea.appendChild(cardEl);
+                });
+            }
+
+            // ============ DRAG SYSTEM ============
+            function onDragStart(e) {
+                if (!gameState.gameActive) return;
+                if (gameState.isDragging) return;
+                e.preventDefault();
+                const cardEl = e.currentTarget;
+                const rect = cardEl.getBoundingClientRect();
+                gameState.isDragging = true;
+                gameState.dragCardEl = cardEl;
+                gameState.dragOrigRect = rect;
+                gameState.dragStartX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+                gameState.dragStartY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+                cardEl.classList.add('dragging');
+                cardEl.style.left = rect.left + 'px';
+                cardEl.style.top = rect.top + 'px';
+                cardEl.style.width = rect.width + 'px';
+                cardEl.style.height = rect.height + 'px';
+                document.body.appendChild(cardEl);
+                debateTarget.classList.add('active');
+                sfxDrop();
+            }
+
+            function onDragMove(e) {
+                if (!gameState.isDragging || !gameState.dragCardEl) return;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                gameState.dragCardEl.style.left = (clientX - gameState.dragStartX) + 'px';
+                gameState.dragCardEl.style.top = (clientY - gameState.dragStartY) + 'px';
+                // Check proximity to debate target
+                const targetRect = debateTarget.getBoundingClientRect();
+                const cx = clientX;
+                const cy = clientY;
+                const tcx = targetRect.left + targetRect.width / 2;
+                const tcy = targetRect.top + targetRect.height / 2;
+                const dist = Math.sqrt((cx - tcx) ** 2 + (cy - tcy) ** 2);
+                if (dist < 80) {
+                    debateTarget.classList.add('active');
+                } else {
+                    debateTarget.classList.remove('active');
+                }
+            }
+
+            function onDragEnd(e) {
+                if (!gameState.isDragging || !gameState.dragCardEl) return;
+                const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+                const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+                const targetRect = debateTarget.getBoundingClientRect();
+                const tcx = targetRect.left + targetRect.width / 2;
+                const tcy = targetRect.top + targetRect.height / 2;
+                const dist = Math.sqrt((clientX - tcx) ** 2 + (clientY - tcy) ** 2);
+                const cardEl = gameState.dragCardEl;
+                const cardIndex = parseInt(cardEl.dataset.index);
+                const cardData = gameState.hand[cardIndex];
+
+                debateTarget.classList.remove('active');
+
+                if (dist < 80 && cardData) {
+                    // Dropped on target
+                    resolveCardPlay(cardData, cardIndex, cardEl);
+                } else {
+                    // Return card
+                    returnCard(cardEl, cardIndex);
+                }
+                gameState.isDragging = false;
+                gameState.dragCardEl = null;
+            }
+
+            function resolveCardPlay(cardData, cardIndex, cardEl) {
+                const targetRect = debateTarget.getBoundingClientRect();
+                const tcx = targetRect.left + targetRect.width / 2;
+                const tcy = targetRect.top + targetRect.height / 2;
+                const containerRect = container.getBoundingClientRect();
+                const relX = tcx - containerRect.left;
+                const relY = tcy - containerRect.top;
+
+                // Animate card consumed
+                cardEl.style.transition = 'all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+                cardEl.style.left = tcx + 'px';
+                cardEl.style.top = tcy + 'px';
+                cardEl.style.transform = 'scale(0.5)';
+                cardEl.style.opacity = '0';
+                cardEl.classList.add('consumed');
+
+                const damage = cardData.damage;
+                const matchQuality = cardData.matchQuality;
+
+                if (matchQuality === 'perfect') {
+                    debateTarget.classList.add('success-flash');
+                    setTimeout(() => debateTarget.classList.remove('success-flash'), 600);
+                    spawnParticles(relX, relY, 25, '#c8a45c');
+                    sfxSuccess();
+                    gameState.combo++;
+                    if (gameState.combo > gameState.maxCombo) gameState.maxCombo = gameState.combo;
+                    gameState.opponentHP = Math.max(0, gameState.opponentHP - damage);
+                    gameState.score += 30 + (gameState.combo > 1 ? gameState.combo * 8 : 0);
+                    gameState.insight = Math.min(gameState.maxInsight, gameState.insight + 25);
+                    if (gameState.combo >= 3) {
+                        sfxCombo();
+                        showToast('⚡ 逻辑风暴！' + gameState.combo + '连击！');
+                        if (gameState.combo >= 3 && !gameState.achievements.has('combo3')) {
+                            gameState.achievements.add('combo3');
+                            showToast('🏆 成就解锁：逻辑风暴！');
+                        }
+                    }
+                    opponentAvatar.classList.add('shaken');
+                    setTimeout(() => opponentAvatar.classList.remove('shaken'), 500);
+                    opponentArg.classList.add('hit');
+                    setTimeout(() => opponentArg.classList.remove('hit'), 400);
+                } else if (matchQuality === 'partial') {
+                    debateTarget.classList.add('success-flash');
+                    setTimeout(() => debateTarget.classList.remove('success-flash'), 600);
+                    spawnParticles(relX, relY, 12, '#a0a0a0');
+                    sfxSuccess();
+                    gameState.combo = 0;
+                    gameState.opponentHP = Math.max(0, gameState.opponentHP - Math.max(0, damage));
+                    gameState.score += 10;
+                    gameState.insight = Math.min(gameState.maxInsight, gameState.insight + 10);
+                } else {
+                    debateTarget.classList.add('fail-flash');
+                    setTimeout(() => debateTarget.classList.remove('fail-flash'), 500);
+                    spawnParticles(relX, relY, 15, '#b84c4c');
+                    sfxFail();
+                    gameState.combo = 0;
+                    const recoilDamage = Math.abs(Math.min(0, damage)) || 15;
+                    gameState.playerHP = Math.max(0, gameState.playerHP - recoilDamage);
+                    gameState.score = Math.max(0, gameState.score - 5);
+                }
+
+                // Speed bonus
+                const elapsed = (Date.now() - gameState.roundStartTime) / 1000;
+                if (elapsed < 3 && matchQuality === 'perfect') {
+                    gameState.score += 5;
+                    if (elapsed < 2 && !gameState.achievements.has('speed_demon')) {
+                        gameState.achievements.add('speed_demon');
+                        showToast('🚀 成就解锁：敏捷思维！');
+                    }
+                }
+
+                updateUI();
+                gameState.hand.splice(cardIndex, 1);
+
+                setTimeout(() => {
+                    if (cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
+                    renderHand();
+                    if (gameState.opponentHP <= 0) {
+                        endGame(true);
+                    } else if (gameState.playerHP <= 0) {
+                        endGame(false);
+                    } else {
+                        // Check if round should advance
+                        if (gameState.hand.length <= 1) {
+                            advanceRound();
+                        }
+                    }
+                }, 450);
+            }
+
+            function returnCard(cardEl, cardIndex) {
+                cardEl.classList.add('returning');
+                const origRect = gameState.dragOrigRect;
+                cardEl.style.left = origRect.left + 'px';
+                cardEl.style.top = origRect.top + 'px';
+                cardEl.style.transform = '';
+                cardEl.classList.remove('dragging');
+                sfxDrop();
+                setTimeout(() => {
+                    cardEl.classList.remove('returning');
+                    if (cardEl.parentNode && cardEl.parentNode !== handArea) {
+                        cardEl.parentNode.removeChild(cardEl);
+                    }
+                    // Re-render hand to restore card
+                    renderHand();
+                }, 420);
+            }
+
+            // ============ GLOBAL EVENTS ============
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('mouseup', onDragEnd);
+            document.addEventListener('touchmove', onDragMove, { passive: false });
+            document.addEventListener('touchend', onDragEnd);
+
+            // ============ GAME LOGIC ============
+            function updateUI() {
+                scoreVal.textContent = gameState.score;
+                comboDisplay.textContent = '连击 ×' + gameState.combo;
+                if (gameState.combo >= 2) {
+                    comboDisplay.classList.add('hot');
+                } else {
+                    comboDisplay.classList.remove('hot');
+                }
+                roundIndicator.textContent = '第 ' + (gameState.round + 1) + '/' + gameState.totalRounds + ' 轮';
+                insightFill.style.width = (gameState.insight / gameState.maxInsight * 100) + '%';
+                playerHpBar.style.width = gameState.playerHP + '%';
+                oppHpBar.style.width = gameState.opponentHP + '%';
+                playerHpText.textContent = Math.round(gameState.playerHP);
+                oppHpText.textContent = Math.round(gameState.opponentHP);
+                if (gameState.insight >= gameState.maxInsight) {
+                    specialBtn.classList.add('ready');
+                    specialBtn.disabled = false;
+                } else {
+                    specialBtn.classList.remove('ready');
+                    specialBtn.disabled = true;
+                }
+                if (gameState.opponentHP < 40) {
+                    oppHpIcon.textContent = '😰';
+                } else if (gameState.opponentHP < 70) {
+                    oppHpIcon.textContent = '😟';
+                } else {
+                    oppHpIcon.textContent = '🤖';
+                }
+            }
+
+            function setOpponent(opponentId) {
+                gameState.opponent = opponentId;
+                const opp = philosophers[opponentId];
+                opponentName.textContent = opp.name + '（' + opp.nameEn + '）';
+                opponentAvatar.textContent = opp.emoji;
+                opponentAvatar.style.borderColor = opp.color;
+                gameState.usedPhilosophers.add(opponentId);
+            }
+
+            function advanceRound() {
+                if (gameState.round >= gameState.totalRounds - 1) {
+                    // All rounds done
+                    if (gameState.playerHP > gameState.opponentHP) {
+                        endGame(true);
+                    } else if (gameState.opponentHP > gameState.playerHP) {
+                        endGame(false);
+                    } else {
+                        endGame(gameState.score >= 50);
+                    }
+                    return;
+                }
+                gameState.round++;
+                gameState.roundStartTime = Date.now();
+                const opp = philosophers[gameState.opponent];
+                const argPool = opp.arguments;
+                const arg = argPool[gameState.round % argPool.length];
+                gameState.currentArgument = arg;
+                opponentArg.textContent = '「' + arg.text + '」';
+                opponentArg.classList.remove('hit');
+                gameState.hand = generateHand(gameState.opponent, arg);
+                renderHand();
+                updateUI();
+                roundIndicator.textContent = '第 ' + (gameState.round + 1) + '/' + gameState.totalRounds + ' 轮';
+            }
+
+            function endGame(playerWon) {
+                gameState.gameActive = false;
+                overlayResult.classList.remove('hidden');
+                if (playerWon) {
+                    resultTitle.textContent = '🎉 辩论胜利！';
+                    resultDetail.textContent = '你用严密的论证和敏捷的思维赢得了这场哲学辩论。' +
+                        (gameState.opponent ? philosophers[gameState.opponent].name : '') + '对你的逻辑能力表示赞赏。';
+                    sfxWin();
+                    if (!gameState.achievements.has('first_win')) {
+                        gameState.achievements.add('first_win');
+                    }
+                } else {
+                    resultTitle.textContent = '📖 辩论结束';
+                    resultDetail.textContent = '虽然这次辩论未能获胜，但你从中学到了关于划界问题的重要见解。哲学的精髓在于思考的过程。';
+                }
+                resultScore.textContent = '最终得分：' + gameState.score + ' | 最大连击：' + gameState.maxCombo;
+                // Show achievements
+                resultAchievements.innerHTML = '';
+                const achList = [
+                    { id: 'first_win', name: '🏆 初战告捷', desc: '赢得第一场辩论' },
+                    { id: 'combo3', name: '⚡ 逻辑风暴', desc: '达成3连击' },
+                    { id: 'speed_demon', name: '🚀 敏捷思维', desc: '3秒内完美回应' },
+                ];
+                achList.forEach(a => {
+                    if (gameState.achievements.has(a.id)) {
+                        const badge = document.createElement('span');
+                        badge.style.cssText =
+                            'background:#3a2a18;color:#c8a45c;padding:6px 12px;border-radius:20px;font-size:0.75rem;border:1px solid #c8a45c;';
+                        badge.textContent = a.name;
+                        badge.title = a.desc;
+                        resultAchievements.appendChild(badge);
+                    }
+                });
+                if (gameState.usedPhilosophers.size >= 3 && !gameState.achievements.has('all_philosophers')) {
+                    gameState.achievements.add('all_philosophers');
+                }
+                // Save to localStorage
+                try {
+                    const saved = JSON.parse(localStorage.getItem('philoDebateProgress') || '{}');
+                    saved.usedPhilosophers = [...new Set([...(saved.usedPhilosophers || []), ...Array.from(gameState
+                        .usedPhilosophers)])];
+                    saved.achievements = [...new Set([...(saved.achievements || []), ...Array.from(gameState
+                        .achievements)])];
+                    saved.highScore = Math.max(saved.highScore || 0, gameState.score);
+                    localStorage.setItem('philoDebateProgress', JSON.stringify(saved));
+                } catch (e) {}
+                updateUI();
+            }
+
+            function useSpecialSkill() {
+                if (!gameState.gameActive || gameState.insight < gameState.maxInsight) return;
+                gameState.insight = 0;
+                gameState.opponentHP = Math.max(0, gameState.opponentHP - 20);
+                gameState.score += 15;
+                const containerRect = container.getBoundingClientRect();
+                const targetRect = debateTarget.getBoundingClientRect();
+                const relX = targetRect.left + targetRect.width / 2 - containerRect.left;
+                const relY = targetRect.top + targetRect.height / 2 - containerRect.top;
+                spawnParticles(relX, relY, 35, '#a060e0');
+                debateTarget.classList.add('success-flash');
+                setTimeout(() => debateTarget.classList.remove('success-flash'), 700);
+                opponentAvatar.classList.add('shaken');
+                setTimeout(() => opponentAvatar.classList.remove('shaken'), 600);
+                opponentArg.classList.add('hit');
+                setTimeout(() => opponentArg.classList.remove('hit'), 400);
+                showToast('💡 思想实验发动！揭示对方论证弱点');
+                playTone(300, 0.2, 'triangle', 0.06);
+                playTone(600, 0.3, 'sine', 0.05);
+                updateUI();
+                if (gameState.opponentHP <= 0) {
+                    setTimeout(() => endGame(true), 600);
+                }
+            }
+
+            // ============ GAME START / RESTART ============
+            window.useSpecialSkill = useSpecialSkill;
+            window.startGame = function() {
+                // Pick a random philosopher
+                const philKeys = Object.keys(philosophers);
+                const randomPhil = philKeys[Math.floor(Math.random() * philKeys.length)];
+                setOpponent(randomPhil);
+                gameState.round = 0;
+                gameState.playerHP = 100;
+                gameState.opponentHP = 100;
+                gameState.combo = 0;
+                gameState.maxCombo = 0;
+                gameState.score = 0;
+                gameState.insight = 0;
+                gameState.roundStartTime = Date.now();
+                gameState.gameActive = true;
+                gameState.achievements = new Set();
+                const opp = philosophers[randomPhil];
+                gameState.currentArgument = opp.arguments[0];
+                opponentArg.textContent = '「' + gameState.currentArgument.text + '」';
+                opponentArg.classList.remove('hit');
+                gameState.hand = generateHand(randomPhil, gameState.currentArgument);
+                updateUI();
+                renderHand();
+                overlayStart.classList.add('hidden');
+                overlayResult.classList.add('hidden');
+                resizeCanvas();
+                roundIndicator.textContent = '第 1/' + gameState.totalRounds + ' 轮';
+                showToast('辩论开始！对手：' + opp.name);
+            };
+
+            window.restartGame = function() {
+                overlayResult.classList.add('hidden');
+                overlayStart.classList.remove('hidden');
+                gameState.gameActive = false;
+                gameState.round = 0;
+                gameState.playerHP = 100;
+                gameState.opponentHP = 100;
+                gameState.combo = 0;
+                gameState.maxCombo = 0;
+                gameState.score = 0;
+                gameState.insight = 0;
+                gameState.hand = [];
+                gameState.currentArgument = null;
+                gameState.isDragging = false;
+                gameState.dragCardEl = null;
+                gameState.achievements = new Set();
+                handArea.innerHTML = '';
+                opponentArg.textContent = '选择一位哲学家开始辩论';
+                opponentName.textContent = '???';
+                opponentAvatar.textContent = '🤖';
+                opponentAvatar.style.borderColor = '#c8a45c';
+                oppHpIcon.textContent = '🤖';
+                updateUI();
+                playerHpBar.style.width = '100%';
+                oppHpBar.style.width = '100%';
+                playerHpText.textContent = '100';
+                oppHpText.textContent = '100';
+                insightFill.style.width = '0%';
+                comboDisplay.classList.remove('hot');
+                comboDisplay.textContent = '连击 ×0';
+                scoreVal.textContent = '0';
+                roundIndicator.textContent = '第 1/5 轮';
+                specialBtn.classList.remove('ready');
+                specialBtn.disabled = true;
+                debateTarget.classList.remove('active', 'success-flash', 'fail-flash');
+                particles = [];
+            };
+
+            // ============ GAME LOOP ============
+            function gameLoop() {
+                updateParticles();
+                drawParticles();
+                if (gameState.gameActive) {
+                    // Auto-advance if hand is nearly empty (player played cards)
+                    if (gameState.hand.length <= 1 && gameState.gameActive && gameState.opponentHP > 0 && gameState
+                        .playerHP > 0) {
+                        // Hand will be replenished after card resolution
+                    }
+                }
+                requestAnimationFrame(gameLoop);
+            }
+
+            // ============ INIT ============
+            function init() {
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                updateUI();
+                playerHpBar.style.width = '100%';
+                oppHpBar.style.width = '100%';
+                handArea.innerHTML =
+                    '<span style="color:#a89880;padding:20px;font-size:0.85rem;">选择对手后，论证卡牌将出现在此处</span>';
+                specialBtn.disabled = true;
+                // Load saved progress
+                try {
+                    const saved = JSON.parse(localStorage.getItem('philoDebateProgress') || '{}');
+                    if (saved.usedPhilosophers) {
+                        saved.usedPhilosophers.forEach(p => gameState.usedPhilosophers.add(p));
+                    }
+                    if (saved.achievements) {
+                        saved.achievements.forEach(a => gameState.achievements.add(a));
+                    }
+                } catch (e) {}
+                requestAnimationFrame(gameLoop);
+            }
+
+            // ============ POSTMESSAGE LISTENER ============
+            window.addEventListener('message', function(event) {
+                const { type, target, state, content } = event.data;
+                switch (type) {
+                    case 'SET_WIDGET_STATE':
+                        if (state && typeof window.setGameParam === 'function') {
+                            Object.entries(state).forEach(([key, value]) => {
+                                window.setGameParam(key, value);
+                            });
+                        }
+                        break;
+                    case 'HIGHLIGHT_ELEMENT':
+                        const highlightEl = document.querySelector(target);
+                        if (highlightEl) {
+                            highlightEl.style.outline = '3px solid rgba(200, 164, 92, 0.8)';
+                            highlightEl.style.outlineOffset = '4px';
+                            highlightEl.style.animation = 'pulse-highlight 2s infinite';
+                            setTimeout(() => {
+                                highlightEl.style.outline = '';
+                                highlightEl.style.animation = '';
+                            }, 3000);
+                        }
+                        break;
+                    case 'ANNOTATE_ELEMENT':
+                        const annotateEl = document.querySelector(target);
+                        if (annotateEl && content) {
+                            const rect = annotateEl.getBoundingClientRect();
+                            const tooltip = document.createElement('div');
+                            tooltip.className = 'teacher-annotation';
+                            tooltip.style.cssText =
+                                'position:fixed; top:' + (rect.top - 40) +
+                                'px; left:' + rect.left +
+                                'px; background:rgba(200,164,92,0.95); color:#1a1410; padding:8px 12px; border-radius:8px; font-size:14px; z-index:1000; animation:fadeIn 0.3s; font-family:Georgia,serif;';
+                            tooltip.textContent = content;
+                            document.body.appendChild(tooltip);
+                            setTimeout(() => tooltip.remove(), 4000);
+                        }
+                        break;
+                    case 'REVEAL_ELEMENT':
+                        const revealEl = document.querySelector(target);
+                        if (revealEl) {
+                            revealEl.style.display = '';
+                            revealEl.style.opacity = '1';
+                        }
+                        break;
+                }
+            });
+
+            // Expose setGameParam for postMessage
+            window.setGameParam = function(key, value) {
+                if (key === 'opponent' && philosophers[value]) {
+                    setOpponent(value);
+                    if (gameState.gameActive) {
+                        gameState.round = 0;
+                        const opp = philosophers[value];
+                        gameState.currentArgument = opp.arguments[0];
+                        opponentArg.textContent = '「' + gameState.currentArgument.text + '」';
+                        gameState.hand = generateHand(value, gameState.currentArgument);
+                        renderHand();
+                        updateUI();
+                    }
+                }
+                if (key === 'playerHP') {
+                    gameState.playerHP = Math.max(0, Math.min(100, Number(value)));
+                    updateUI();
+                }
+                if (key === 'opponentHP') {
+                    gameState.opponentHP = Math.max(0, Math.min(100, Number(value)));
+                    updateUI();
+                }
+            };
+
+            // Add highlight animation
+            const animStyle = document.createElement('style');
+            animStyle.textContent =
+                '@keyframes pulse-highlight { 0%, 100% { outline-color: rgba(200, 164, 92, 0.8); } 50% { outline-color: rgba(200, 164, 92, 0.4); } } @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }';
+            document.head.appendChild(animStyle);
+
+            init();
+        });
+    </script>
+</body>
+</html>

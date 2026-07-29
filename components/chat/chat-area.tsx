@@ -66,7 +66,7 @@ export interface ChatAreaRef {
   softPauseActiveSession: () => Promise<void>;
   resumeActiveSession: () => Promise<void>;
   sendMessage: (content: string) => Promise<void>;
-  startDiscussion: (request: DiscussionRequest) => Promise<void>;
+  startDiscussion: (request: DiscussionRequest) => Promise<boolean>;
   startLecture: (sceneId: string) => Promise<string>;
   addLectureMessage: (sessionId: string, action: Action, actionIndex: number) => void;
   getIsStreaming: () => boolean;

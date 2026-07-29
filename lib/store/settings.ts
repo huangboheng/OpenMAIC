@@ -13,6 +13,7 @@ import type { ThinkingConfig } from '@/lib/types/provider';
 import { getThinkingConfigKey, supportsConfigurableThinking } from '@/lib/ai/thinking-config';
 import type { TTSProviderId, ASRProviderId, BuiltInTTSProviderId } from '@/lib/audio/types';
 import type { AgentVoiceOverride } from '@/lib/audio/voice-resolver';
+import { getServerVoiceList } from '@/lib/audio/voice-resolver';
 import { isCustomTTSProvider, isCustomASRProvider } from '@/lib/audio/types';
 import { ASR_PROVIDERS, DEFAULT_TTS_VOICES, TTS_PROVIDERS } from '@/lib/audio/constants';
 import { DEFAULT_VOXCPM_BACKEND, VOXCPM_MODEL_ID, VOXCPM_VLLM_MODEL_ID } from '@/lib/audio/voxcpm';
@@ -1701,10 +1702,21 @@ export const useSettingsStore = create<SettingsState>()(
                 ? resolveSelectedModel(state.videoModelId, videoModels)
                 : '';
 
-              const validTTSVoice =
-                validTTSProvider !== state.ttsProviderId
-                  ? DEFAULT_TTS_VOICES[validTTSProvider as BuiltInTTSProviderId] || 'default'
-                  : state.ttsVoice;
+              const validTTSVoice = (() => {
+                if (validTTSProvider !== state.ttsProviderId) {
+                  return DEFAULT_TTS_VOICES[validTTSProvider as BuiltInTTSProviderId] || 'default';
+                }
+                // Provider unchanged — but the persisted voice may be stale/invalid
+                // (e.g. the initial 'default' that was never resolved to a real voice).
+                // For built-in providers with a static voice list, snap to the provider
+                // default when the current voice is unknown. browser-native (dynamic)
+                // and custom (user-defined) voices return an empty list and are skipped.
+                const knownVoices = getServerVoiceList(validTTSProvider as TTSProviderId);
+                if (knownVoices.length > 0 && !knownVoices.includes(state.ttsVoice)) {
+                  return DEFAULT_TTS_VOICES[validTTSProvider as BuiltInTTSProviderId] || 'default';
+                }
+                return state.ttsVoice;
+              })();
 
               // Auto-disable image/video generation when no provider is usable
               const shouldDisableImage = !validImageProvider && state.imageGenerationEnabled;
@@ -1818,8 +1830,10 @@ export const useSettingsStore = create<SettingsState>()(
                 ...(validLLMModel !== state.modelId && { modelId: validLLMModel }),
                 ...(validTTSProvider !== state.ttsProviderId && {
                   ttsProviderId: validTTSProvider as TTSProviderId,
-                  ttsVoice: validTTSVoice,
                 }),
+                // Voice is written independently so a stale/invalid voice is
+                // corrected even when the provider itself is unchanged.
+                ...(validTTSVoice !== state.ttsVoice && { ttsVoice: validTTSVoice }),
                 ...(validASRProvider !== state.asrProviderId && {
                   asrProviderId: validASRProvider as ASRProviderId,
                 }),

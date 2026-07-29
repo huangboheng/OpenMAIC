@@ -313,9 +313,14 @@ describe('runClassroomLoad', () => {
     ]);
     const scene = makeScene('scene-a', 'stage-a');
     const mediaTasks = { image: { elementId: 'image' } };
-    const { deps, settings } = makeDeps({
+    const { deps, settings, setStage } = makeDeps({
       fetchClassroom: vi.fn().mockResolvedValue({ stage, scenes: [scene] }),
-      applyFallbackScenes: vi.fn().mockResolvedValue(true),
+      applyFallbackScenes: vi.fn().mockImplementation(async () => {
+        // Mirror the real applyClassroomStageAndScenes side effect so that
+        // getCurrentStage() reflects the committed fallback stage.
+        setStage(stage);
+        return true;
+      }),
       loadRestoredMediaTasks: vi.fn().mockResolvedValue(mediaTasks),
       loadGeneratedAgentRecords: vi.fn().mockResolvedValue([{ id: 'agent-a' }]),
       applyGeneratedAgentRecords: vi.fn().mockReturnValue(['agent-a']),
@@ -357,6 +362,62 @@ describe('runClassroomLoad', () => {
     expect(deps.loadGeneratedAgentRecords).not.toHaveBeenCalled();
     expect(deps.setError).not.toHaveBeenCalled();
     expect(deps.setLoading).not.toHaveBeenCalled();
+  });
+
+  it('fails with a timeout error and clears loading when a load step hangs', async () => {
+    const loadStorage = deferred<void>();
+    const { deps, setCurrent } = makeDeps({
+      loadFromStorage: vi.fn().mockReturnValue(loadStorage.promise),
+      loadTimeoutMs: 20,
+    });
+
+    await runClassroomLoad(deps);
+
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining('timed out'));
+    expect(deps.setLoading).toHaveBeenCalledWith(false);
+
+    // Clean up the hung background load so it does not outlive the test.
+    setCurrent(false);
+    loadStorage.resolve();
+  });
+
+  it('reports a clear error when neither IndexedDB nor server storage has the classroom', async () => {
+    const { deps } = makeDeps({
+      loadFromStorage: vi.fn().mockResolvedValue(undefined),
+      getCurrentStage: () => null,
+      fetchClassroom: vi.fn().mockResolvedValue(null),
+    });
+
+    await runClassroomLoad(deps);
+
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining('no loadable data'));
+    expect(deps.setLoading).toHaveBeenCalledWith(false);
+    expect(deps.loadRestoredMediaTasks).not.toHaveBeenCalled();
+  });
+
+  it('does not mutate loading or error state again after the load already timed out', async () => {
+    const loadStorage = deferred<void>();
+    const { deps, setCurrent } = makeDeps({
+      loadFromStorage: vi.fn().mockReturnValue(loadStorage.promise),
+      loadTimeoutMs: 20,
+    });
+
+    await runClassroomLoad(deps);
+
+    expect(deps.setError).toHaveBeenCalledTimes(1);
+    expect(deps.setError).toHaveBeenCalledWith(expect.stringContaining('timed out'));
+    expect(deps.setLoading).toHaveBeenCalledTimes(1);
+    expect(deps.setLoading).toHaveBeenCalledWith(false);
+
+    // The hung storage read settles only after the timeout already ended the
+    // load. The superseded background load must not touch state again.
+    setCurrent(false);
+    loadStorage.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(deps.setError).toHaveBeenCalledTimes(1);
+    expect(deps.setLoading).toHaveBeenCalledTimes(1);
+    expect(deps.fetchClassroom).not.toHaveBeenCalled();
   });
 });
 

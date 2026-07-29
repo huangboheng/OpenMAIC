@@ -31,6 +31,8 @@ import { useVoiceRegenStore } from '@/lib/store/voice-regen';
 import { usePreviewStore } from '@/lib/store/preview';
 import { regenerateAllSpeech } from '@/lib/audio/regenerate-all-speech';
 import { getSelectableProvidersWithVoices } from '@/lib/audio/voice-resolver';
+import { useVoxCPMVoiceProfiles } from '@/lib/audio/voxcpm-voices';
+import { VOXCPM_AUTO_VOICE_ID } from '@/lib/audio/voxcpm';
 import { cn } from '@/lib/utils';
 import type { TTSProviderId } from '@/lib/audio/types';
 
@@ -73,21 +75,32 @@ export function MentorVoiceSwitcher() {
     return () => window.speechSynthesis.removeEventListener?.('voiceschanged', load);
   }, []);
 
+  const { profiles: voxcpmProfiles } = useVoxCPMVoiceProfiles();
+
   const availableProviders = getSelectableProvidersWithVoices(
     ttsProvidersConfig,
-    [],
+    voxcpmProfiles,
     browserVoices,
   );
 
-  // 当前音色展示名（在选择器可用音色中查找，找不到则回退原始 id）。
+  // 当前音色展示名（在选择器可用音色中查找；找不到时回退到第一个可用音色，
+  // 避免显示从未被解析过的原始 store 值 "default"）。
   const displayName = (() => {
+    if (availableProviders.length === 0) return t('stage.noVoices');
     for (const p of availableProviders) {
       if (p.providerId === ttsProviderId) {
         const v = p.voices.find((voice) => voice.id === ttsVoice);
-        if (v) return v.name;
+        if (v) return v.id === VOXCPM_AUTO_VOICE_ID ? t('settings.voxcpmAutoVoice') : v.name;
       }
     }
-    return ttsVoice || t('stage.voiceDefault');
+    // 当前选择已失效 — 显示实际会生效的第一个音色名称。
+    const firstVoice = availableProviders[0]?.voices[0];
+    if (firstVoice) {
+      return firstVoice.id === VOXCPM_AUTO_VOICE_ID
+        ? t('settings.voxcpmAutoVoice')
+        : firstVoice.name;
+    }
+    return t('stage.noVoices');
   })();
 
   /** 应用音色并触发全部讲课音频重生成，结束后给出成功/失败反馈。 */
@@ -161,6 +174,7 @@ export function MentorVoiceSwitcher() {
             {availableProviders.length === 0 && (
               <div className="px-3 py-6 text-center text-sm text-muted-foreground/60">
                 {t('stage.noVoices')}
+                <p className="mt-2 text-xs text-muted-foreground/40">{t('stage.voiceEmptyHint')}</p>
               </div>
             )}
             {availableProviders.map((provider) =>
@@ -190,7 +204,9 @@ export function MentorVoiceSwitcher() {
                           isActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted',
                         )}
                       >
-                        {voice.name}
+                        {voice.id === VOXCPM_AUTO_VOICE_ID
+                          ? t('settings.voxcpmAutoVoice')
+                          : voice.name}
                       </button>
                     );
                   })}

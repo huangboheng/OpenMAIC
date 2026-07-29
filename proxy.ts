@@ -20,11 +20,16 @@ import {
   generateCodeChallenge,
   generateState,
 } from '@/lib/server/oauth-client';
+import { verifyAccessTokenEdge } from '@/lib/server/access-token';
 
 // ── Configuration ─────────────────────────────────────────────────
 
 const OAUTH_ISSUER = process.env.OAUTH_ISSUER || 'https://philochora.com';
 const OAUTH_CLIENT_ID = process.env.OAUTH_CLIENT_ID || 'openmaic';
+
+// Seamless-auth cookie issued by Philochora's /api/openmaic/enter endpoint
+// (HMAC token signed with the shared ACCESS_CODE — see lib/server/access-token.ts)
+const ACCESS_COOKIE_NAME = 'openmaic_access';
 
 // Paths excluded from OAuth redirect
 const AUTH_WHITELIST = [
@@ -93,7 +98,20 @@ export async function proxy(request: NextRequest) {
       session = await verifySessionCookie(sessionCookie.value, sessionSecret);
     }
 
+    // Seamless auth: accept the openmaic_access HMAC cookie issued by
+    // Philochora's /api/openmaic/enter endpoint (signed with the shared
+    // ACCESS_CODE). Restores the no-redirect classroom-entry flow without
+    // forcing an OAuth round-trip.
+    let seamlessAuthed = false;
     if (!session) {
+      const accessToken = request.cookies.get(ACCESS_COOKIE_NAME)?.value;
+      const accessCode = process.env.ACCESS_CODE;
+      if (accessToken && accessCode) {
+        seamlessAuthed = await verifyAccessTokenEdge(accessToken, accessCode);
+      }
+    }
+
+    if (!session && !seamlessAuthed) {
       // API requests without valid session → 401
       if (pathname.startsWith('/api/')) {
         return NextResponse.json(
@@ -149,10 +167,12 @@ export async function proxy(request: NextRequest) {
     }
 
     // Session valid — attach user info to request headers for downstream handlers
-    modifiedHeaders = new Headers(request.headers);
-    modifiedHeaders.set('x-user-id', session.sub);
-    if (session.name) {
-      modifiedHeaders.set('x-user-name', encodeURIComponent(session.name));
+    if (session) {
+      modifiedHeaders = new Headers(request.headers);
+      modifiedHeaders.set('x-user-id', session.sub);
+      if (session.name) {
+        modifiedHeaders.set('x-user-name', encodeURIComponent(session.name));
+      }
     }
   }
 
