@@ -293,8 +293,8 @@ test.describe('Mentor Voice Switching — server-managed provider', () => {
     const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
     await expect(voiceButton).toBeVisible({ timeout: 10_000 });
 
-    // 服务端同步后自动选中 minimax 默认音色（御姐音色），而非 stale 的 "default"。
-    await expect(voiceButton).toContainText('御姐音色', { timeout: 10_000 });
+    // 服务端同步后自动选中 minimax 默认音色（精英青年），而非 stale 的 "default"。
+    await expect(voiceButton).toContainText('精英青年', { timeout: 10_000 });
     await expect(voiceButton).not.toContainText('default');
 
     // 弹层列出 minimax 全部音色，可自由选择。
@@ -315,6 +315,35 @@ test.describe('Mentor Voice Switching — server-managed provider', () => {
     await openVoicePickerAndSelect(page);
     await page.getByRole('button', { name: 'Switch', exact: true }).click();
 
+    await expect(page.getByText('Mentor voice fully updated')).toBeVisible({ timeout: 20_000 });
+  });
+});
+
+test.describe('Mentor Voice Switching — trial mode no longer blocks', () => {
+  // 修复前：试看期间（isTrial=true）声音切换按钮被 disabled，用户永远无法切换。
+  // 修复后：试看不再阻断声音切换，按钮始终可操作。
+
+  test('试看期间声音切换按钮可用（不被 isTrial 禁用）', async ({ page }) => {
+    await mockServerManagedTts(page);
+    await mockTtsSuccess(page);
+    await seedDatabase(page);
+
+    const classroom = new ClassroomPage(page);
+    await classroom.goto(TEST_STAGE_ID);
+    await classroom.waitForLoaded();
+
+    // 试看计时器已启动（isTrial=true），但声音按钮不应被禁用
+    const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
+    await expect(voiceButton).toBeVisible({ timeout: 10_000 });
+    await expect(voiceButton).toBeEnabled();
+
+    // 弹层可打开，音色可选择
+    await voiceButton.click();
+    await expect(page.getByRole('button', { name: '精英青年', exact: true }).first()).toBeVisible();
+
+    // 完整闭环：选择 → 确认 → 重生成 → 成功
+    await page.getByRole('button', { name: '精英青年', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Switch', exact: true }).click();
     await expect(page.getByText('Mentor voice fully updated')).toBeVisible({ timeout: 20_000 });
   });
 });
