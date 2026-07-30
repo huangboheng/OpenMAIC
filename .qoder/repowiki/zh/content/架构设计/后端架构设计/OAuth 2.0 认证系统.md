@@ -11,22 +11,32 @@
 - [lib/server/access-token.ts](file://lib/server/access-token.ts)
 - [components/access-code-guard.tsx](file://components/access-code-guard.tsx)
 - [components/access-code-modal.tsx](file://components/access-code-modal.tsx)
+- [proxy.ts](file://proxy.ts)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 新增无缝认证系统集成，支持 Philochora SSO 与 OpenMAIC 教室的无缝认证
+- 新增 Edge 兼容的 HMAC-SHA256 验证函数 verifyAccessTokenEdge
+- 代理中间件现在同时接受 OAuth session cookies 和 seamless access tokens，创建'或'授权模型
+- 访问码状态端点已更新以识别两种认证方法，修复了仅具有 OAuth session 的用户被 AccessCodeModal 错误阻止的问题
 
 ## 产品概述
 本系统为 OpenMAIC 的 OAuth 2.0 认证子系统，基于 Authorization Code + PKCE 流程与 OIDC Discovery，完成用户登录、会话建立与访问控制。核心能力包括：
 - 通过 Philochora OIDC 服务进行授权码交换，获取 access_token、id_token、refresh_token
 - 使用 HMAC-SHA256 签名会话 Cookie，在 Edge/Node 双环境兼容验证
-- 提供“访问码”模式作为轻量级鉴权补充（适用于无 OIDC 或快速部署场景）
+- 提供"访问码"模式作为轻量级鉴权补充（适用于无 OIDC 或快速部署场景）
+- **新增**无缝认证集成，支持 Philochora SSO 与 OpenMAIC 教室的直接认证
 - 前端根据后端状态动态展示访问码弹窗并维持登录态
 
 适用场景：
 - 面向教师/讲师的课件生成与课堂互动平台
 - 需要统一身份认证与跨端会话保持的 Web 应用
 - 需要快速部署且可配置外部 OIDC 提供商的系统
+- **新增**需要无缝单点登录体验的教育平台集成
 
 ## 核心业务流程
-本节描述两种主要认证路径：OAuth 2.0 授权码流程与访问码流程。
+本节描述三种主要认证路径：OAuth 2.0 授权码流程、访问码流程和无缝认证流程。
 
 ```mermaid
 sequenceDiagram
@@ -45,19 +55,22 @@ APP-->>U : 设置 httpOnly cookie 并重定向回原页面
 ```
 
 **图表来源** 
-- [app/api/auth/callback/route.ts:1-117](file://app/api/auth/callback/route.ts#L1-L117)
+- [app/api/auth/callback/route.ts:73-116](file://app/api/auth/callback/route.ts#L73-L116)
 - [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L1-L130)
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
-- [lib/server/session-cookie.ts:1-109](file://lib/server/session-cookie.ts#L1-L109)
+- [lib/server/session-cookie.ts:24-32](file://lib/server/session-cookie.ts#L24-L32)
 
 ```mermaid
 flowchart TD
 Start(["进入应用"]) --> CheckStatus["调用 /api/access-code/status"]
 CheckStatus --> Enabled{"是否启用访问码?"}
 Enabled -- 否 --> Allow["直接放行"]
-Enabled -- 是 --> HasToken{"是否存在有效 openmaic_access?"}
-HasToken -- 是 --> Allow
-HasToken -- 否 --> ShowModal["显示 AccessCodeModal"]
+Enabled -- 是 --> CheckAuth{"检查认证状态"}
+CheckAuth --> SeamlessToken{"是否存在有效的 openmaic_access token?"}
+SeamlessToken -- 是 --> Allow
+SeamlessToken -- 否 --> OAuthSession{"是否存在有效的 OAuth session?"}
+OAuthSession -- 是 --> Allow
+OAuthSession -- 否 --> ShowModal["显示 AccessCodeModal"]
 ShowModal --> Submit["POST /api/access-code/verify"]
 Submit --> Verify{"校验成功?"}
 Verify -- 否 --> Error["提示错误并重试"]
@@ -66,22 +79,22 @@ SetCookie --> Allow
 ```
 
 **图表来源** 
-- [components/access-code-guard.tsx:1-53](file://components/access-code-guard.tsx#L1-L53)
-- [components/access-code-modal.tsx:1-199](file://components/access-code-modal.tsx#L1-L199)
-- [app/api/access-code/status/route.ts:1-17](file://app/api/access-code/status/route.ts#L1-L17)
-- [app/api/access-code/verify/route.ts:1-41](file://app/api/access-code/verify/route.ts#L1-L41)
-- [lib/server/access-token.ts:1-26](file://lib/server/access-token.ts#L1-L26)
+- [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
+- [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
+- [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
+- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-L25)
 
 **章节来源**
-- [app/api/auth/callback/route.ts:1-117](file://app/api/auth/callback/route.ts#L1-L117)
+- [app/api/auth/callback/route.ts:73-116](file://app/api/auth/callback/route.ts#L73-L116)
 - [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L1-L130)
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
-- [lib/server/session-cookie.ts:1-109](file://lib/server/session-cookie.ts#L1-L109)
-- [components/access-code-guard.tsx:1-53](file://components/access-code-guard.tsx#L1-L53)
-- [components/access-code-modal.tsx:1-199](file://components/access-code-modal.tsx#L1-L199)
-- [app/api/access-code/status/route.ts:1-17](file://app/api/access-code/status/route.ts#L1-L17)
-- [app/api/access-code/verify/route.ts:1-41](file://app/api/access-code/verify/route.ts#L1-L41)
-- [lib/server/access-token.ts:1-26](file://lib/server/access-token.ts#L1-L26)
+- [lib/server/session-cookie.ts:24-99](file://lib/server/session-cookie.ts#L24-L99)
+- [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
+- [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
+- [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
+- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-L25)
 
 ## 功能模块清单
 - OAuth 客户端工具（PKCE、State、Token 交换、JWT 解码、授权 URL 构建）
@@ -93,19 +106,26 @@ SetCookie --> Allow
 - 会话 Cookie 签名与验证
   - 职责：服务端签名（Node crypto），Edge 兼容验证（Web Crypto API）；包含过期时间校验与必填字段检查
   - 验收要点：签名算法一致；HMAC 比较安全；过期判断准确；子域/路径/SameSite 策略合理
+- **新增**无缝访问令牌验证
+  - 职责：Edge 兼容的 HMAC-SHA256 验证，支持 Next.js middleware 中的无缝认证
+  - 验收要点：verifyAccessTokenEdge 函数在 Edge Runtime 中正常工作；与 Node.js 版本产生相同签名
 - 访问码鉴权（可选）
   - 职责：前端检测状态并弹出模态框；后端常量时间比较访问码；成功后下发短期访问令牌 Cookie
   - 验收要点：timingSafeEqual 防时序攻击；Cookie 安全属性正确；前端默认安全策略（失败即视为需认证）
+- **新增**统一授权模型
+  - 职责：代理中间件同时接受 OAuth session cookies 和 seamless access tokens，创建'或'授权模型
+  - 验收要点：中间件优先检查 OAuth session，然后检查无缝 token；任一有效即可放行
 
 **章节来源**
 - [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L1-L130)
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
-- [lib/server/session-cookie.ts:1-109](file://lib/server/session-cookie.ts#L1-L109)
-- [app/api/access-code/status/route.ts:1-17](file://app/api/access-code/status/route.ts#L1-L17)
-- [app/api/access-code/verify/route.ts:1-41](file://app/api/access-code/verify/route.ts#L1-L41)
-- [lib/server/access-token.ts:1-26](file://lib/server/access-token.ts#L1-L26)
-- [components/access-code-guard.tsx:1-53](file://components/access-code-guard.tsx#L1-L53)
-- [components/access-code-modal.tsx:1-199](file://components/access-code-modal.tsx#L1-L199)
+- [lib/server/session-cookie.ts:24-99](file://lib/server/session-cookie.ts#L24-L99)
+- [lib/server/access-token.ts:27-71](file://lib/server/access-token.ts#L27-L71)
+- [proxy.ts:91-117](file://proxy.ts#L91-L117)
+- [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
+- [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
+- [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
 
 ## 数据与状态
 - 会话数据结构（SessionData）
@@ -114,7 +134,7 @@ SetCookie --> Allow
 - Cookie 命名与安全属性
   - 会话 Cookie：openmaic_session（httpOnly、secure 在生产启用、sameSite=lax、path=/、maxAge=30天）
   - 临时 OAuth Cookie：oauth_state、oauth_code_verifier、oauth_return_to（一次性，完成后清空）
-  - 访问码令牌：openmaic_access（httpOnly、sameSite=lax、path=/、maxAge=7天）
+  - **新增**无缝访问令牌：openmaic_access（httpOnly、sameSite=lax、path=/、maxAge=7天）
 - 配置与密钥
   - OIDC 发现端点：OAUTH_ISSUER/.well-known/openid-configuration
   - Client 凭据：OAUTH_CLIENT_ID、OAUTH_CLIENT_SECRET
@@ -157,17 +177,24 @@ class OidcConfig {
 +string userinfoEndpoint
 +string jwksUri
 }
+class AccessToken {
++string timestamp
++string signature
++boolean isValid()
+}
 ```
 
 **图表来源** 
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
 - [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
 - [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
 
 **章节来源**
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
 - [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
 - [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
 
 ## 关键约束与边界
 - 安全约束
@@ -175,17 +202,63 @@ class OidcConfig {
   - JWT 签名由上游 OIDC 保证，本侧仅做 payload 解码
   - 会话 Cookie 使用 HMAC-SHA256 签名，Edge/Node 两端一致性验证
   - 访问码校验采用常量时间比较，避免时序攻击
+  - **新增**无缝访问令牌验证使用 Edge 兼容的 HMAC-SHA256 实现，确保在 Next.js middleware 中正常工作
 - 依赖与集成边界
   - 依赖 Philochora OIDC 服务的 discovery 端点；若不可用则回退环境变量
   - 回调地址需与 OIDC 注册一致；支持同域与子路径部署
+  - **新增**无缝认证依赖 Philochora 的 /api/openmaic/enter 端点颁发 openmaic_access token
 - 业务约束
   - 访问码模式为可选开关，未启用时不强制认证
   - 会话有效期由 expires_at 控制，过期后需重新登录或刷新令牌
   - 生产环境建议开启 secure Cookie 与 SameSite=Lax
+  - **新增**统一授权模型：OAuth session 和无缝 access token 任一有效即可通过认证
 
 **章节来源**
 - [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-L23)
 - [lib/server/oauth-client.ts:92-101](file://lib/server/oauth-client.ts#L92-L101)
 - [lib/server/session-cookie.ts:70-99](file://lib/server/session-cookie.ts#L70-L99)
 - [lib/server/access-token.ts:10-25](file://lib/server/access-token.ts#L10-L25)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
 - [lib/server/oauth-config.ts:25-60](file://lib/server/oauth-config.ts#L25-L60)
+- [proxy.ts:101-112](file://proxy.ts#L101-L112)
+
+## 无缝认证集成详解
+
+### 架构设计
+无缝认证系统允许已通过 Philochora SSO 认证的用户直接进入 OpenMAIC 教室，无需重复登录。系统采用"或"授权模型，同时支持传统 OAuth session 和新的无缝 access token。
+
+```mermaid
+sequenceDiagram
+participant User as "用户"
+participant Philochora as "Philochora SSO"
+participant OpenMAIC as "OpenMAIC 应用"
+participant Proxy as "代理中间件"
+Note over Philochora,OpenMAIC : 无缝认证流程
+Philochora->>OpenMAIC : /api/openmaic/enter
+OpenMAIC->>OpenMAIC : 验证用户身份
+OpenMAIC->>User : 设置 openmaic_access cookie
+User->>Proxy : 访问受保护资源
+Proxy->>Proxy : 检查 openmaic_session
+alt 无有效 session
+Proxy->>Proxy : 检查 openmaic_access token
+Proxy->>Proxy : verifyAccessTokenEdge(token, accessCode)
+end
+Proxy-->>User : 允许访问
+```
+
+**图表来源** 
+- [proxy.ts:101-112](file://proxy.ts#L101-L112)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
+
+### 技术实现
+- **Edge 兼容验证**：verifyAccessTokenEdge 函数使用 Web Crypto API 而非 Node.js crypto，确保在 Next.js middleware 环境中正常工作
+- **常量时间比较**：使用位运算 XOR 实现安全的字符串比较，防止时序攻击
+- **统一授权逻辑**：代理中间件优先检查 OAuth session，然后检查无缝 access token，任一有效即可放行
+
+### 前端集成
+访问码状态端点已更新以识别两种认证方法，修复了仅具有 OAuth session 的用户被 AccessCodeModal 错误阻止的问题。
+
+**章节来源**
+- [proxy.ts:101-112](file://proxy.ts#L101-L112)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
+- [app/api/access-code/status/route.ts:17-27](file://app/api/access-code/status/route.ts#L17-L27)

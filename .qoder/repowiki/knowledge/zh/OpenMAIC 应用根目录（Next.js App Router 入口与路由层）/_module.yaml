@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: OpenMAIC 应用根目录与基础设施
+title: OpenMAIC 应用根目录（Next.js App Router 入口与路由层）
 scope: []
 source_files: []
 depends_on: []
