@@ -12,14 +12,18 @@ import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import { generateImage } from '@/lib/media/image-providers';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
 import { generateTTS } from '@/lib/audio/tts-providers';
-import { DEFAULT_TTS_VOICES, DEFAULT_TTS_MODELS, TTS_PROVIDERS } from '@/lib/audio/constants';
+import {
+  TTS_PROVIDERS,
+  PREGENERATED_VOICES,
+  DEFAULT_PREGENERATED_VOICE,
+  voiceIdToFileName,
+} from '@/lib/audio/constants';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import {
   getServerImageProviders,
   getServerVideoProviders,
-  getServerTTSProviders,
   resolveImageApiKey,
   resolveImageBaseUrl,
   resolveVideoApiKey,
@@ -34,7 +38,6 @@ import type { ImageProviderId } from '@/lib/media/types';
 import type { VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
-import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
 
 const log = createLogger('ClassroomMedia');
 
@@ -221,30 +224,17 @@ export async function generateTTSForClassroom(
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 
-  // Resolve TTS provider (exclude browser-native-tts and operator force-disabled
-  // providers — server precedence, #665).
-  const ttsProviderIds = Object.entries(getServerTTSProviders())
-    .filter(([id, info]) => id !== 'browser-native-tts' && !info.disabled)
-    .map(([id]) => id);
-  if (ttsProviderIds.length === 0) {
-    log.warn('No server TTS provider configured, skipping TTS generation');
-    return;
-  }
-
-  const providerId = ttsProviderIds[0] as TTSProviderId;
+  // Force MiniMax TTS as the sole provider for pre-generated multi-voice audio.
+  const providerId: TTSProviderId = 'minimax-tts';
   const apiKey = resolveTTSApiKey(providerId);
-  const ttsProvider = TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS];
-  if (ttsProvider?.requiresApiKey && !apiKey) {
+  const ttsProvider = TTS_PROVIDERS[providerId];
+  if (!apiKey) {
     log.warn(`No API key for TTS provider "${providerId}", skipping TTS generation`);
     return;
   }
   const ttsBaseUrl = resolveTTSBaseUrl(providerId) || ttsProvider?.defaultBaseUrl;
-  const voice = DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES] || 'default';
-  const format = ttsProvider?.supportedFormats?.[0] || 'mp3';
-  if (providerId === VOXCPM_TTS_PROVIDER_ID && voice === VOXCPM_AUTO_VOICE_ID) {
-    log.warn('VoxCPM Auto Voice requires agent context; skipping server-side TTS generation');
-    return;
-  }
+  const modelId = 'speech-2.8-hd';
+  const format = 'mp3';
 
   for (const scene of scenes) {
     if (!scene.actions) continue;
@@ -259,31 +249,41 @@ export async function generateTTSForClassroom(
     for (const action of scene.actions) {
       if (action.type !== 'speech' || !(action as SpeechAction).text) continue;
       const speechAction = action as SpeechAction;
-      // Include scene order in audioId to prevent collision across scenes
-      const audioId = `tts_s${sceneOrder}_${action.id}`;
+      const baseAudioId = `tts_s${sceneOrder}_${action.id}`;
 
-      try {
-        const result = await generateTTS(
-          {
-            providerId,
-            modelId: DEFAULT_TTS_MODELS[providerId as keyof typeof DEFAULT_TTS_MODELS] || '',
-            apiKey,
-            baseUrl: ttsBaseUrl,
-            voice,
-            speed: speechAction.speed,
-          },
-          speechAction.text,
-        );
+      // Pre-generate audio for ALL voices so users can switch instantly.
+      for (const voice of PREGENERATED_VOICES) {
+        const audioId = `${baseAudioId}_${voiceIdToFileName(voice)}`;
+        try {
+          const result = await generateTTS(
+            {
+              providerId,
+              modelId,
+              apiKey,
+              baseUrl: ttsBaseUrl,
+              voice,
+              speed: speechAction.speed,
+            },
+            speechAction.text,
+          );
 
-        const filename = `${audioId}.${result.format || format}`;
-        await fs.writeFile(path.join(audioDir, filename), result.audio);
-
-        speechAction.audioId = audioId;
-        speechAction.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
-        log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
-      } catch (err) {
-        log.warn(`TTS generation failed for action ${action.id}:`, err);
+          const filename = `${audioId}.${result.format || format}`;
+          await fs.writeFile(path.join(audioDir, filename), result.audio);
+          log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
+        } catch (err) {
+          log.warn(`TTS generation failed for ${audioId}:`, err);
+        }
       }
+
+      // Set default voice audioId/audioUrl on the action (backward compat + fallback).
+      // audioUrl uses {voice} template so the player can resolve any voice at runtime.
+      const defaultAudioId = `${baseAudioId}_${voiceIdToFileName(DEFAULT_PREGENERATED_VOICE)}`;
+      speechAction.audioId = defaultAudioId;
+      speechAction.audioUrl = mediaServingUrl(
+        baseUrl,
+        classroomId,
+        `audio/${baseAudioId}_{voice}.${format}`,
+      );
     }
   }
 }

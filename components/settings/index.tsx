@@ -984,25 +984,18 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
             <>
               <ProviderListColumn
                 providers={[
-                  ...Object.values(TTS_PROVIDERS).map((p) => ({
-                    id: p.id,
-                    name: getTTSProviderName(p.id, t),
-                    icon: p.icon,
-                  })),
-                  ...Object.entries(ttsProvidersConfig)
-                    .filter(([id]) => isCustomTTSProvider(id))
-                    .map(([id, cfg]) => ({
-                      id: id as TTSProviderId,
-                      name: cfg.customName || id,
-                      icon: undefined,
-                    })),
+                  // Only MiniMax TTS is visible (pre-generated multi-voice architecture)
+                  {
+                    id: TTS_PROVIDERS['minimax-tts'].id,
+                    name: getTTSProviderName('minimax-tts', t),
+                    icon: TTS_PROVIDERS['minimax-tts'].icon,
+                  },
                 ]}
                 configs={ttsProvidersConfig}
                 selectedId={ttsProviderId}
                 onSelect={setTTSProvider}
                 width={providerListWidth}
                 t={t}
-                onAdd={() => setShowAddTTSProviderDialog(true)}
               />
               <div
                 onMouseDown={(e) => handleResizeStart(e, 'providerList')}

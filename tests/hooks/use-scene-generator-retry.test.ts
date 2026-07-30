@@ -261,4 +261,78 @@ describe('browser scene generation retry wrappers', () => {
       }),
     );
   });
+
+  it('uses teacher voiceConfig over global ttsVoice when provider is enabled', async () => {
+    const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
+
+    // Global settings: minimax-tts with female-yujie (the old default)
+    mocks.settingsState.mockReturnValue({
+      ttsProviderId: 'minimax-tts',
+      ttsProvidersConfig: {
+        'minimax-tts': { apiKey: 'key', modelId: 'speech-2.8-hd' },
+      },
+      ttsVoice: 'female-yujie',
+      ttsSpeed: 1,
+    });
+
+    // Teacher agent has voiceConfig with male-qn-jingying (精英青年)
+    mocks.pickNarratorAgent.mockReturnValue({
+      id: 'gen-teacher',
+      role: 'teacher',
+      voiceConfig: { providerId: 'minimax-tts', voiceId: 'male-qn-jingying' },
+    });
+    mocks.isTTSProviderEnabled.mockReturnValue(true);
+    mocks.resolveAgentVoiceOptions.mockResolvedValue(undefined);
+
+    mockFetch.mockResolvedValue(
+      jsonResponse(200, { success: true, base64: btoa('audio'), format: 'mp3' }),
+    );
+
+    await generateAndStoreTTS('tts_voice_test', 'Hello', undefined, undefined, {
+      maxRetries: 0,
+      sleep: async () => undefined,
+      random: () => 0,
+    });
+
+    // The TTS request should use the teacher's voiceConfig voice, not the global default
+    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(requestBody.ttsVoice).toBe('male-qn-jingying');
+    expect(requestBody.ttsProviderId).toBe('minimax-tts');
+  });
+
+  it('falls back to global ttsVoice when teacher has no voiceConfig', async () => {
+    const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
+
+    mocks.settingsState.mockReturnValue({
+      ttsProviderId: 'minimax-tts',
+      ttsProvidersConfig: {
+        'minimax-tts': { apiKey: 'key', modelId: 'speech-2.8-hd' },
+      },
+      ttsVoice: 'male-qn-jingying',
+      ttsSpeed: 1,
+    });
+
+    // Teacher without voiceConfig
+    mocks.pickNarratorAgent.mockReturnValue({
+      id: 'gen-teacher',
+      role: 'teacher',
+      persona: 'A patient mentor',
+    });
+    mocks.isTTSProviderEnabled.mockReturnValue(true);
+    mocks.resolveAgentVoiceOptions.mockResolvedValue(undefined);
+
+    mockFetch.mockResolvedValue(
+      jsonResponse(200, { success: true, base64: btoa('audio'), format: 'mp3' }),
+    );
+
+    await generateAndStoreTTS('tts_fallback_test', 'Hello', undefined, undefined, {
+      maxRetries: 0,
+      sleep: async () => undefined,
+      random: () => 0,
+    });
+
+    // Should use the global ttsVoice
+    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(requestBody.ttsVoice).toBe('male-qn-jingying');
+  });
 });

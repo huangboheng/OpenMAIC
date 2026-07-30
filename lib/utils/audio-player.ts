@@ -8,7 +8,8 @@
 
 import { db } from '@/lib/utils/database';
 import { createLogger } from '@/lib/logger';
-import { useVoiceRegenStore } from '@/lib/store/voice-regen';
+import { useSettingsStore } from '@/lib/store/settings';
+import { DEFAULT_PREGENERATED_VOICE, voiceIdToFileName } from '@/lib/audio/constants';
 
 const log = createLogger('AudioPlayer');
 
@@ -32,23 +33,37 @@ export class AudioPlayer {
   }
 
   /**
-   * Play audio (from URL or IndexedDB pre-generated cache)
-   * @param audioId Audio ID
-   * @param audioUrl Optional server-generated audio URL (takes priority over IndexedDB)
-   * @returns true if audio started playing, false if no audio (TTS disabled or not generated)
+   * Play audio (from URL or IndexedDB pre-generated cache).
+   *
+   * Voice-aware resolution:
+   * - audioUrl may contain a `{voice}` template placeholder (server-generated
+   *   classrooms) which is replaced with the current voice's file-safe id.
+   * - For IndexedDB, tries: audioId as-is (already voice-suffixed by the
+   *   generation pipeline), then falls back to the default voice variant,
+   *   then to the raw audioId (legacy classrooms without voice suffix).
+   *
+   * @param audioId Audio ID (may already include voice suffix from new pipeline)
+   * @param audioUrl Optional server-generated audio URL (may contain {voice} template)
+   * @returns true if audio started playing, false if no audio found
    */
   public async play(audioId: string, audioUrl?: string): Promise<boolean> {
-    // 重生成门控：导师语音重生成期间缓存音频为旧（正在重建），拒绝播放，
-    // 返回 false 交由播放引擎按"无音频"处理，防止播放脏音频。
-    if (useVoiceRegenStore.getState().running) return false;
     const requestToken = ++this.requestToken;
+    const currentVoice = useSettingsStore.getState().ttsVoice || DEFAULT_PREGENERATED_VOICE;
+    const voiceFile = voiceIdToFileName(currentVoice);
+    const defaultVoiceFile = voiceIdToFileName(DEFAULT_PREGENERATED_VOICE);
+  
     try {
       // 1. Try audioUrl first (server-generated TTS)
       if (audioUrl) {
+        // Resolve {voice} template in URL (multi-voice pre-generation format)
+        const resolvedUrl = audioUrl.includes('{voice}')
+          ? audioUrl.replace('{voice}', voiceFile)
+          : audioUrl;
+  
         this.stopAudioElement();
         if (requestToken !== this.requestToken) return false;
         this.audio = new Audio();
-        this.audio.src = audioUrl;
+        this.audio.src = resolvedUrl;
         if (this.muted) this.audio.volume = 0;
         else this.audio.volume = this.volume;
         this.audio.defaultPlaybackRate = this.playbackRate;
@@ -61,42 +76,44 @@ export class AudioPlayer {
         this.audio.playbackRate = this.playbackRate;
         return true;
       }
-
-      // 2. Fall back to IndexedDB (client-generated TTS)
-      const audioRecord = await db.audioFiles.get(audioId);
+  
+      // 2. Fall back to IndexedDB (client-generated TTS) with voice-aware lookup.
+      // The audioId from the new pipeline already contains the default voice suffix.
+      // We try to swap it to the current voice, then fall back.
+      const audioRecord = await this.resolveAudioRecord(
+        audioId,
+        voiceFile,
+        defaultVoiceFile,
+      );
       if (requestToken !== this.requestToken) return false;
-
+  
       if (!audioRecord) {
-        // Pre-generated audio does not exist (generation failed), skip silently
         return false;
       }
-
+  
       // Stop current playback
       this.stopAudioElement();
       if (requestToken !== this.requestToken) return false;
-
+  
       // Create audio element
       this.audio = new Audio();
-
+  
       // Set audio source
       const blobUrl = URL.createObjectURL(audioRecord.blob);
       this.audio.src = blobUrl;
       if (this.muted) this.audio.volume = 0;
       else this.audio.volume = this.volume;
-
+  
       // Apply playback rate
       this.audio.defaultPlaybackRate = this.playbackRate;
       this.audio.playbackRate = this.playbackRate;
-
+  
       // Set ended callback
       this.audio.addEventListener('ended', () => {
         URL.revokeObjectURL(blobUrl);
         this.onEndedCallback?.();
       });
-
-      // Play. If play() rejects (autoplay policy, decode error, interrupted
-      // load) the 'ended' listener never fires, so revoke the blob URL here to
-      // avoid leaking it for the lifetime of the document.
+  
       try {
         await this.audio.play();
       } catch (playError) {
@@ -107,13 +124,62 @@ export class AudioPlayer {
         URL.revokeObjectURL(blobUrl);
         return false;
       }
-      // Re-apply after play() — some browsers reset during load
       this.audio.playbackRate = this.playbackRate;
       return true;
     } catch (error) {
       log.error('Failed to play audio:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Voice-aware IndexedDB audio resolution.
+   *
+   * The audioId from the pre-generation pipeline is formatted as:
+   *   `tts_s<order>_<actionId>_<defaultVoiceFile>`
+   *
+   * To switch voice, we replace the default voice suffix with the current one.
+   * Fallback chain:
+   *   1. audioId with current voice suffix (swap default → current)
+   *   2. audioId as-is (already the default voice)
+   *   3. raw audioId without any voice suffix (legacy classrooms)
+   */
+  private async resolveAudioRecord(
+    audioId: string,
+    currentVoiceFile: string,
+    defaultVoiceFile: string,
+  ): Promise<{ blob: Blob; format?: string } | undefined> {
+    // If current voice IS the default, just look up audioId directly.
+    if (currentVoiceFile === defaultVoiceFile) {
+      const rec = await db.audioFiles.get(audioId);
+      if (rec) return rec;
+      // Legacy fallback: strip voice suffix
+      const legacyId = audioId.endsWith(`_${defaultVoiceFile}`)
+        ? audioId.slice(0, -(`_${defaultVoiceFile}`).length)
+        : undefined;
+      if (legacyId) return db.audioFiles.get(legacyId);
+      return undefined;
+    }
+  
+    // Try swapping default voice suffix → current voice suffix
+    if (audioId.endsWith(`_${defaultVoiceFile}`)) {
+      const base = audioId.slice(0, -(`_${defaultVoiceFile}`).length);
+      const currentVoiceId = `${base}_${currentVoiceFile}`;
+      const rec = await db.audioFiles.get(currentVoiceId);
+      if (rec) return rec;
+    }
+  
+    // Fallback: try audioId as-is (default voice)
+    const rec = await db.audioFiles.get(audioId);
+    if (rec) return rec;
+  
+    // Legacy fallback: raw audioId without voice suffix
+    const legacyId = audioId.endsWith(`_${defaultVoiceFile}`)
+      ? audioId.slice(0, -(`_${defaultVoiceFile}`).length)
+      : undefined;
+    if (legacyId) return db.audioFiles.get(legacyId);
+  
+    return undefined;
   }
 
   /**

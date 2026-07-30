@@ -124,13 +124,29 @@ export function useDiscussionTTS({ enabled, agents, onAudioStateChange }: Discus
       const agent = agentId ? agents.find((a) => a.id === agentId) : undefined;
       if (!agent) return firstVoice();
 
-      // Teacher's voice = the global lecture selection, honored VERBATIM (incl.
-      // its model) whenever that provider is enabled — identical to what the
-      // pre-generated lecture sends (use-scene-generator), so lecture and
-      // discussion teacher never diverge. No voiceId re-validation/fallback that
-      // could swap the user's chosen voice. Only if the global provider is itself
-      // disabled does the teacher fall back to an enabled provider.
+      // Teacher's voice priority: (1) the agent's own voiceConfig (LLM-generated
+      // binding, e.g. 'male-qn-jingying' for a male teacher persona) when its
+      // provider is still enabled; (2) the global lecture selection (ttsVoice),
+      // honored VERBATIM so lecture and discussion teacher never diverge; (3) the
+      // first enabled provider as a last resort. This ensures a generated teacher
+      // with an explicit voice assignment is not overridden by the global default
+      // (which may be a mismatched gender, e.g. 'female-yujie').
       if (agent.role === 'teacher') {
+        // Prefer the agent's own voiceConfig when valid.
+        if (
+          agent.voiceConfig &&
+          isTTSProviderEnabled(
+            agent.voiceConfig.providerId,
+            ttsProvidersConfig[agent.voiceConfig.providerId],
+          )
+        ) {
+          return {
+            providerId: agent.voiceConfig.providerId,
+            voiceId: agent.voiceConfig.voiceId,
+            modelId: agent.voiceConfig.modelId,
+          };
+        }
+        // Fall back to the global lecture voice.
         if (isTTSProviderEnabled(globalTtsProviderId, ttsProvidersConfig[globalTtsProviderId])) {
           return {
             providerId: globalTtsProviderId,

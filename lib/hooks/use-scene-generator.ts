@@ -19,6 +19,11 @@ import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { measureAudioDuration } from '@/lib/audio/audio-duration';
 import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
 import { resolveAgentVoiceOptions, pickNarratorAgent } from '@/lib/audio/agent-voice';
+import {
+  PREGENERATED_VOICES,
+  DEFAULT_PREGENERATED_VOICE,
+  voiceIdToFileName,
+} from '@/lib/audio/constants';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { lazyBoundedMap, mapWithConcurrency } from '@/lib/utils/concurrency';
@@ -243,28 +248,60 @@ export async function generateAndStoreTTS(
   language?: string,
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
+  options?: { forceVoice?: string },
 ): Promise<void> {
   const settings = useSettingsStore.getState();
-  if (settings.ttsProviderId === 'browser-native-tts') return;
+
+  // When forceVoice is provided, skip agent/settings resolution and use MiniMax directly.
+  const forced = !!options?.forceVoice;
+  let effectiveProviderId = forced ? 'minimax-tts' as const : settings.ttsProviderId;
+  let effectiveVoice = options?.forceVoice || settings.ttsVoice;
+  let effectiveProviderConfig = forced
+    ? settings.ttsProvidersConfig?.['minimax-tts']
+    : settings.ttsProvidersConfig?.[settings.ttsProviderId];
+
+  if (!forced) {
+    // Narration is the teacher's voice — resolve it from the teacher agent profile
+    // through the single resolver (registers + references by id for stable timbre).
+    const teacher = pickNarratorAgent(useAgentRegistry.getState().listAgents());
+
+    // Priority: the teacher agent's own voiceConfig (LLM-generated binding) when
+    // its provider is enabled; otherwise the global lecture voice from settings.
+    if (
+      teacher?.voiceConfig &&
+      isTTSProviderEnabled(
+        teacher.voiceConfig.providerId,
+        settings.ttsProvidersConfig?.[teacher.voiceConfig.providerId],
+      )
+    ) {
+      effectiveProviderId = teacher.voiceConfig.providerId;
+      effectiveVoice = teacher.voiceConfig.voiceId;
+      effectiveProviderConfig = settings.ttsProvidersConfig?.[teacher.voiceConfig.providerId];
+    }
+  }
+
+  if (effectiveProviderId === 'browser-native-tts') return;
   // Don't server-generate against a disabled/unconfigured provider (#665).
   if (
+    !forced &&
     !isTTSProviderEnabled(
-      settings.ttsProviderId,
-      settings.ttsProvidersConfig?.[settings.ttsProviderId],
+      effectiveProviderId,
+      settings.ttsProvidersConfig?.[effectiveProviderId],
     )
   )
     return;
 
-  const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
-  // Narration is the teacher's voice — resolve it from the teacher agent profile
-  // through the single resolver (registers + references by id for stable timbre).
-  const teacher = pickNarratorAgent(useAgentRegistry.getState().listAgents());
-  const providerOptions = await resolveAgentVoiceOptions(teacher, {
-    providerId: settings.ttsProviderId,
-    providerConfig: ttsProviderConfig,
-    voiceId: settings.ttsVoice,
-    language,
-  });
+  const providerOptions = forced
+    ? undefined
+    : await resolveAgentVoiceOptions(
+        pickNarratorAgent(useAgentRegistry.getState().listAgents()),
+        {
+          providerId: effectiveProviderId,
+          providerConfig: effectiveProviderConfig,
+          voiceId: effectiveVoice,
+          language,
+        },
+      );
   const data = await withGenerationRetry(
     async () => {
       const response = await fetch('/api/generate/tts', {
@@ -273,15 +310,17 @@ export async function generateAndStoreTTS(
         body: JSON.stringify({
           text,
           audioId,
-          ttsProviderId: settings.ttsProviderId,
-          ttsModelId: ttsProviderConfig?.modelId,
-          ttsVoice: settings.ttsVoice,
+          ttsProviderId: effectiveProviderId,
+          ttsModelId: effectiveProviderConfig?.modelId,
+          ttsVoice: effectiveVoice,
           ttsSpeed: settings.ttsSpeed,
-          ttsApiKey: ttsProviderConfig?.apiKey || undefined,
+          ttsApiKey: effectiveProviderConfig?.apiKey || undefined,
           // Managed providers resolve their base URL server-side; only send the
           // client's own base URL (custom providers).
           ttsBaseUrl:
-            ttsProviderConfig?.baseUrl || ttsProviderConfig?.customDefaultBaseUrl || undefined,
+            effectiveProviderConfig?.baseUrl ||
+            effectiveProviderConfig?.customDefaultBaseUrl ||
+            undefined,
           ttsProviderOptions: providerOptions,
         }),
         signal,
@@ -327,7 +366,7 @@ export async function generateAndStoreTTS(
   });
 }
 
-/** Generate TTS for all speech actions in a scene. Returns result. */
+/** Generate TTS for all speech actions in a scene (all pregenerated voices). */
 async function generateTTSForScene(
   scene: Scene,
   language?: string,
@@ -344,38 +383,38 @@ async function generateTTSForScene(
   let lastError: string | undefined;
 
   // Use scene order to make audio IDs unique across scenes
-  // This prevents audio collision when action IDs are sequential (e.g., action_1, action_2)
   const sceneOrder = scene.order;
 
-  // Generate + store one action's audio. Failures are counted, not thrown, so
-  // one bad clip never aborts the rest of the scene.
+  // Generate + store all voice variants for one action.
   const generateOne = async (action: SpeechAction) => {
-    // Include scene order in audioId to prevent collision across scenes
-    const audioId = `tts_s${sceneOrder}_${action.id}`;
-    action.audioId = audioId;
-    try {
-      await generateAndStoreTTS(audioId, action.text, language, signal);
-    } catch (error) {
-      if (isAbortError(error)) throw error;
-
-      failedCount++;
-      lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
-      log.warn('TTS generation failed:', {
-        providerId,
-        actionId: action.id,
-        sceneOrder,
-        audioId,
-        textLength: action.text.length,
-        error: lastError,
-      });
+    const baseAudioId = `tts_s${sceneOrder}_${action.id}`;
+    for (const voice of PREGENERATED_VOICES) {
+      const audioId = `${baseAudioId}_${voiceIdToFileName(voice)}`;
+      try {
+        await generateAndStoreTTS(audioId, action.text, language, signal, undefined, {
+          forceVoice: voice,
+        });
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        failedCount++;
+        lastError =
+          error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
+        log.warn('TTS generation failed:', {
+          providerId: 'minimax-tts',
+          actionId: action.id,
+          sceneOrder,
+          audioId,
+          textLength: action.text.length,
+          error: lastError,
+        });
+      }
     }
+    // Set the default voice audioId on the action.
+    action.audioId = `${baseAudioId}_${voiceIdToFileName(DEFAULT_PREGENERATED_VOICE)}`;
   };
 
-  // #660 follow-up: speech actions within a scene are independent — each renders
-  // its own audio under its own audioId, with no cross-action ordering — so when
-  // the server opts into parallel generation, render them with bounded
-  // concurrency (reusing the PARALLEL_SCENE_CONCURRENCY knob) instead of one at a
-  // time. Default (0 / unset) keeps the original strictly-serial behaviour.
+  // Speech actions within a scene are independent — use bounded concurrency
+  // when configured.
   const ttsConcurrency = Math.max(
     0,
     Math.floor(useSettingsStore.getState().parallelSceneConcurrency ?? 0),
