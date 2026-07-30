@@ -544,7 +544,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
         });
         log.info('Loaded from storage:', stageId);
       } else {
-        log.warn('No data found for stage:', stageId);
+        log.warn('No data found in IndexedDB for stage:', stageId, 'Will attempt server-side fallback');
       }
     } catch (error) {
       log.error('Failed to load from storage:', error);

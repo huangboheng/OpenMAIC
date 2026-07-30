@@ -97,3 +97,9 @@ e2e/__screenshots-619/
 # local dev server logs (do not ship)
 openmaic-dev*.log
 e2e-dev*.log
+
+# Qoder IDE generated files
+.qoder/
+
+# batch generate progress files
+scripts/batch-generate-progress.json*
