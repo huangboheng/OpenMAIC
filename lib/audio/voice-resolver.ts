@@ -149,96 +149,52 @@ export function getEnabledProvidersWithVoices(
 ): ProviderWithVoices[] {
   const result: ProviderWithVoices[] = [];
 
-  // Built-in providers
+  // Built-in providers — only MiniMax TTS is visible (pre-generated multi-voice architecture).
   for (const [id, config] of Object.entries(TTS_PROVIDERS)) {
     const providerId = id as TTSProviderId;
-    if (providerId === 'browser-native-tts') continue;
+    if (providerId !== 'minimax-tts') continue;
     if (config.voices.length === 0) continue;
 
     const providerConfig = ttsProvidersConfig[providerId];
     if (!isTTSProviderEnabled(providerId, providerConfig)) continue;
 
-    const visibleVoxCPMProfiles =
-      providerId === VOXCPM_TTS_PROVIDER_ID
-        ? voxcpmProfiles.filter((profile) => {
-            const backend = normalizeVoxCPMBackend(providerConfig?.providerOptions?.backend);
-            return profile.kind !== 'clone' || voxCPMBackendSupportsReferenceAudio(backend);
-          })
-        : [];
+    const allVoices = config.voices.map((v) => ({
+      id: v.id,
+      name: v.name,
+      language: v.language,
+    }));
 
-    {
-      const allVoices = [
-        ...config.voices.map((v) => ({
-          id: v.id,
-          name: v.name,
-          language: v.language,
-        })),
-        ...(providerId === VOXCPM_TTS_PROVIDER_ID
-          ? visibleVoxCPMProfiles.map((profile) => ({
-              id: getVoxCPMProfileVoiceId(profile.id),
-              name: profile.name,
-              language: 'auto',
-            }))
-          : []),
-      ];
-
-      // Build model groups
-      const modelGroups: ModelVoiceGroup[] = [];
-      if (config.models.length > 0) {
-        for (const model of config.models) {
-          const compatibleVoices = config.voices
-            .filter((v) => !v.compatibleModels || v.compatibleModels.includes(model.id))
-            .map((v) => ({ id: v.id, name: v.name, language: v.language }));
-          if (providerId === VOXCPM_TTS_PROVIDER_ID) {
-            compatibleVoices.push(
-              ...visibleVoxCPMProfiles.map((profile) => ({
-                id: getVoxCPMProfileVoiceId(profile.id),
-                name: profile.name,
-                language: 'auto',
-              })),
-            );
-          }
-          modelGroups.push({
-            modelId: model.id,
-            modelName: model.name,
-            voices: compatibleVoices,
-          });
-        }
-      } else {
+    // Build model groups
+    const modelGroups: ModelVoiceGroup[] = [];
+    if (config.models.length > 0) {
+      for (const model of config.models) {
+        const compatibleVoices = config.voices
+          .filter((v) => !v.compatibleModels || v.compatibleModels.includes(model.id))
+          .map((v) => ({ id: v.id, name: v.name, language: v.language }));
         modelGroups.push({
-          modelId: '',
-          modelName: config.name,
-          voices: allVoices,
+          modelId: model.id,
+          modelName: model.name,
+          voices: compatibleVoices,
         });
       }
-
-      result.push({
-        providerId,
-        providerName: config.name,
+    } else {
+      modelGroups.push({
+        modelId: '',
+        modelName: config.name,
         voices: allVoices,
-        modelGroups,
       });
     }
-  }
-
-  // Custom providers
-  for (const [id, providerConfig] of Object.entries(ttsProvidersConfig)) {
-    if (!isCustomTTSProvider(id)) continue;
-    const customVoices = providerConfig.customVoices || [];
-    if (customVoices.length === 0) continue;
-    if (!isTTSProviderEnabled(id as TTSProviderId, providerConfig)) continue;
-
-    const providerId = id as TTSProviderId;
-    const providerName = providerConfig.customName || id;
-    const voices = customVoices.map((v) => ({ id: v.id, name: v.name }));
 
     result.push({
       providerId,
-      providerName,
-      voices,
-      modelGroups: [{ modelId: '', modelName: providerName, voices }],
+      providerName: config.name,
+      voices: allVoices,
+      modelGroups,
     });
   }
+
+  // Custom providers — hidden in pre-generated multi-voice architecture.
+  // (No custom providers are shown.)
 
   return result;
 }

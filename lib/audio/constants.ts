@@ -47,6 +47,27 @@ import {
  * Default supported languages for custom OpenAI-compatible ASR providers.
  * A practical subset of commonly used languages + auto-detect.
  */
+
+// ---------------------------------------------------------------------------
+// Pre-generated voice constants (multi-voice pre-generation architecture)
+// ---------------------------------------------------------------------------
+
+/** 预生成音色列表（课堂生成时为每个 speech action 同时合成这些音色） */
+export const PREGENERATED_VOICES: readonly string[] = [
+  'female-yujie',
+  'female-shaonv',
+  'male-qn-jingying',
+  'Chinese (Mandarin)_Gentleman',
+];
+
+/** 默认回退音色（某音色预生成失败时使用） */
+export const DEFAULT_PREGENERATED_VOICE = 'female-yujie';
+
+/** voiceId → 文件名安全片段（空格/括号等非字母数字字符 → 下划线） */
+export function voiceIdToFileName(voiceId: string): string {
+  return voiceId.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 export const CUSTOM_ASR_DEFAULT_LANGUAGES = [
   'auto',
   'zh',
@@ -672,10 +693,15 @@ export const TTS_PROVIDERS: Record<BuiltInTTSProviderId, TTSProviderConfig> = {
     models: MINIMAX_TTS_MODELS.map((m) => ({ id: m.id, name: m.name })),
     defaultModelId: 'speech-2.8-hd',
     voices: [
-      // 中文常用
       {
         id: 'female-yujie',
         name: '御姐音色',
+        language: 'zh-CN',
+        gender: 'female',
+      },
+      {
+        id: 'female-shaonv',
+        name: '少女音色',
         language: 'zh-CN',
         gender: 'female',
       },
@@ -686,53 +712,10 @@ export const TTS_PROVIDERS: Record<BuiltInTTSProviderId, TTSProviderConfig> = {
         gender: 'male',
       },
       {
-        id: 'female-shaonv',
-        name: '少女音色',
-        language: 'zh-CN',
-        gender: 'female',
-      },
-      {
         id: 'Chinese (Mandarin)_Gentleman',
         name: '温润男声',
         language: 'zh-CN',
         gender: 'male',
-      },
-      {
-        id: 'Chinese (Mandarin)_News_Anchor',
-        name: '新闻女声',
-        language: 'zh-CN',
-        gender: 'female',
-      },
-      {
-        id: 'Chinese (Mandarin)_Warm_Girl',
-        name: '温暖少女',
-        language: 'zh-CN',
-        gender: 'female',
-      },
-      {
-        id: 'Chinese (Mandarin)_Radio_Host',
-        name: '电台男主播',
-        language: 'zh-CN',
-        gender: 'male',
-      },
-      // 英文
-      {
-        id: 'English_Trustworthy_Man',
-        name: 'Trustworthy Man',
-        language: 'en-US',
-        gender: 'male',
-      },
-      {
-        id: 'English_Graceful_Lady',
-        name: 'Graceful Lady',
-        language: 'en-US',
-        gender: 'female',
-      },
-      {
-        id: 'English_expressive_narrator',
-        name: 'Expressive Narrator',
-        language: 'en-US',
-        gender: 'neutral',
       },
     ],
     supportedFormats: ['mp3', 'wav', 'flac', 'pcm'],
