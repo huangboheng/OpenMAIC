@@ -196,23 +196,33 @@ export async function runClassroomLoad<TMediaTasks = unknown, TGeneratedAgentRec
 }
 
 export async function fetchClassroomFromApi(classroomId: string): Promise<ClassroomPayload | null> {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
   try {
-    const res = await fetch(`/api/classroom?id=${encodeURIComponent(classroomId)}`, {
+    const url = `${basePath}/api/classroom?id=${encodeURIComponent(classroomId)}`;
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(CLASSROOM_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(
+        `[Classroom] API fetch failed for "${classroomId}": HTTP ${res.status} ${res.statusText}`,
+      );
+      return null;
+    }
 
     const json = (await res.json()) as {
       success?: boolean;
       classroom?: ClassroomPayload;
     };
-    if (!json.success || !json.classroom) return null;
+    if (!json.success || !json.classroom) {
+      console.warn(
+        `[Classroom] API fetch unexpected response for "${classroomId}":`,
+        json,
+      );
+      return null;
+    }
     return json.classroom;
-  } catch {
-    // Server-side storage is a best-effort fallback: any failure (timeout,
-    // network error, non-2xx) degrades to "no data" so the caller surfaces a
-    // single definitive "no loadable data" error instead of hanging or leaking
-    // a raw fetch error.
+  } catch (err) {
+    console.warn(`[Classroom] API fetch error for "${classroomId}":`, err);
     return null;
   }
 }

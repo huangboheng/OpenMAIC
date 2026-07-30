@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
 
     const classroom = await readClassroom(id);
     if (!classroom) {
+      log.warn(`Classroom not found on filesystem: ${id}`);
       return apiError(API_ERROR_CODES.INVALID_REQUEST, 404, 'Classroom not found');
     }
 

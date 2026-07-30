@@ -1076,6 +1076,21 @@ function GenerationPreviewContent() {
 
       sessionStorage.removeItem('generationSession');
       await store.saveToStorage();
+
+      // Persist to server-side filesystem as a fallback for cross-browser /
+      // cache-cleared scenarios. Fire-and-forget — IndexedDB is the canonical
+      // source; the server copy is a best-effort backup.
+      fetch('/api/classroom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage: useStageStore.getState().stage,
+          scenes: useStageStore.getState().scenes,
+        }),
+      }).catch((err) => {
+        log.warn('[GenerationPreview] Failed to persist classroom to server:', err);
+      });
+
       router.push(`/classroom/${stage.id}`);
     } catch (err) {
       setIsOutlineStreaming(false);

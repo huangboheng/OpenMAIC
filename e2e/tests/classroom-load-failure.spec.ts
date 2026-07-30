@@ -28,8 +28,6 @@ function makeSessionCookieValue(): string {
   return `${encoded}.${signature}`;
 }
 
-const MISSING_CLASSROOM_ID = 'e2e-missing-classroom';
-
 /**
  * Regression for the "classroom stuck on Loading forever" bug.
  *
@@ -40,11 +38,14 @@ const MISSING_CLASSROOM_ID = 'e2e-missing-classroom';
  * timeout safety net and fails loud with a retryable error when neither IndexedDB
  * nor server-side storage yields a stage.
  *
- * This spec exercises the "no data anywhere" path (fresh browser = empty IndexedDB,
- * mocked 500 = server fallback fails) and asserts the page terminates the loading
- * state and shows a clear, retryable error instead of hanging.
+ * This spec exercises both the "no data anywhere" path (fresh browser = empty
+ * IndexedDB, mocked 500 = server fallback fails) and the server-fallback
+ * success path (empty IndexedDB, API returns valid classroom data).
  */
 test.describe('Classroom load failure', () => {
+  const MISSING_CLASSROOM_ID = 'e2e-missing-classroom';
+  const FALLBACK_CLASSROOM_ID = 'e2e-fallback-classroom';
+
   test('shows a retryable error instead of infinite loading when the classroom has no data', async ({
     page,
   }) => {
@@ -90,5 +91,95 @@ test.describe('Classroom load failure', () => {
     // ...and a clear error with a Retry action is shown instead of a blank stage.
     await expect(page.getByText(/no loadable data/i)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+  });
+
+  test('loads classroom from server fallback when IndexedDB is empty but API returns data', async ({
+    page,
+  }) => {
+    // Admit the fresh browser past the OAuth proxy middleware.
+    await page.context().addCookies([
+      {
+        name: 'openmaic_session',
+        value: makeSessionCookieValue(),
+        domain: 'localhost',
+        path: '/',
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+
+    // Bypass the client-side access-code gate.
+    await page.route('**/api/access-code/status', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: true, authenticated: true }),
+      }),
+    );
+
+    // Mock a valid classroom API response so the server fallback succeeds.
+    // Fresh browser context has no IndexedDB, so the API is the only source.
+    await page.route(/\/api\/classroom\?/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          classroom: {
+            stage: {
+              id: FALLBACK_CLASSROOM_ID,
+              name: 'E2E Fallback Course',
+              description: '',
+              style: 'professional',
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            },
+            scenes: [
+              {
+                id: 'e2e-fallback-scene-1',
+                stageId: FALLBACK_CLASSROOM_ID,
+                type: 'slide',
+                title: 'Welcome',
+                order: 1,
+                content: {
+                  type: 'slide',
+                  canvas: {
+                    id: 'e2e-slide-1',
+                    viewportSize: 1000,
+                    viewportRatio: 0.5625,
+                    elements: [
+                      {
+                        id: 'e2e-title-el',
+                        type: 'text',
+                        text: 'Hello from fallback',
+                        width: 400,
+                        height: 60,
+                        x: 100,
+                        y: 200,
+                        fontSize: 32,
+                      },
+                    ],
+                  },
+                },
+                actions: [],
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+              },
+            ],
+          },
+        }),
+      }),
+    );
+
+    await page.goto(`/classroom/${FALLBACK_CLASSROOM_ID}`);
+
+    // The loading indicator must disappear.
+    await expect(page.getByText('Loading classroom...')).toBeHidden({ timeout: 15_000 });
+
+    // The classroom should load successfully — no error shown.
+    await expect(page.getByText(/no loadable data/i)).toBeHidden();
+
+    // The stage should render — verify the fallback scene content appears.
+    await expect(page.getByText('Hello from fallback')).toBeVisible({ timeout: 10_000 });
   });
 });
