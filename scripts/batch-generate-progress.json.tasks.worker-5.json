@@ -1,0 +1,170 @@
+[
+  {
+    "slug": "socratic-workplace",
+    "course_title": "苏格拉底式职场",
+    "id": 31,
+    "chapter_number": 1,
+    "title": "苏格拉底方法入门",
+    "description": "什么是苏格拉底诘问法？从古希腊雅典广场到现代会议室，理解这一古老思维工具的核心原理与三个步骤：定义→质疑→重构。"
+  },
+  {
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 37,
+    "chapter_number": 1,
+    "title": "焦虑是自由的头晕",
+    "description": "从克尔凯郭尔的焦虑概念出发，理解为何当代人的不安感恰恰是自由的证明。存在先于本质——你没有被任何\"天性\"定义。"
+  },
+  {
+    "slug": "masterworks-reading",
+    "course_title": "哲学原著精读会",
+    "id": 46,
+    "chapter_number": 5,
+    "title": "《论道德的谱系》：好坏vs善恶",
+    "description": "尼采最具挑衅性的著作之一。精读第一篇，追踪\"好/坏\"如何被\"善/恶\"取代，理解奴隶道德起义。"
+  },
+  {
+    "slug": "debate-academy",
+    "course_title": "AI哲学辩论学院",
+    "id": 52,
+    "chapter_number": 6,
+    "title": "结业辩论赛",
+    "description": "完整辩论赛：立论→质询→自由辩论→总结陈词。AI裁判给出评分报告和Elo排名更新。"
+  },
+  {
+    "slug": "writing-workshop",
+    "course_title": "哲学写作工坊",
+    "id": 58,
+    "chapter_number": 2,
+    "title": "论题锻造工坊",
+    "description": "好的哲学论题长什么样？从模糊直觉到精确命题的五个步骤。AI将帮你检验论题的可辩驳性、范围适当性和哲学价值。"
+  },
+  {
+    "slug": "philosophy-plus",
+    "course_title": "哲学+X",
+    "id": 64,
+    "chapter_number": 3,
+    "title": "哲学与艺术",
+    "description": "什么是美？艺术的定义权之争。从杜尚的《泉》到AI绘画，哲学如何帮助我们理解艺术的边界与价值。"
+  },
+  {
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 70,
+    "chapter_number": 4,
+    "title": "禅宗公案",
+    "description": "不立文字，直指人心。\"只手之声\"、\"庭前柏树子\"——与AI禅师参悟10则经典公案，体验禅宗独特的教学法。"
+  },
+  {
+    "slug": "grad-exam-cram",
+    "course_title": "考研哲学冲刺营",
+    "id": 76,
+    "chapter_number": 2,
+    "title": "西方哲学史：近代到现代",
+    "description": "笛卡尔、康德、黑格尔、尼采、海德格尔、维特根斯坦——梳理近代哲学的主线，建立清晰的概念地图。"
+  },
+  {
+    "slug": "ethics-lab",
+    "course_title": "伦理学实验室",
+    "id": 82,
+    "chapter_number": 2,
+    "title": "义务论：撒谎的绝对禁令？",
+    "description": "康德的定言命令实操：可普遍化检验。如果纳粹敲门问犹太人藏在哪里——你会对康德怎么说？道德坐标可视化。"
+  },
+  {
+    "slug": "east-west-dialogue",
+    "course_title": "东西方哲学对话录",
+    "id": 88,
+    "chapter_number": 3,
+    "title": "知识与智慧",
+    "description": "苏格拉底的\"无知之知\"vs庄子的\"吾丧我\"——两种\"知道你不知道\"的路径。智识谦逊的东西方版本。"
+  },
+  {
+    "slug": "daily-philosophy",
+    "course_title": "哲学即生活",
+    "id": 99,
+    "chapter_number": 3,
+    "title": "道家无为",
+    "description": "不内耗的行动哲学，引用《道德经》第三十七章、《庄子·逍遥游》"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 105,
+    "chapter_number": 3,
+    "title": "算法偏见与分配正义",
+    "description": "罗尔斯无知之幕，引用《正义论》"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 111,
+    "chapter_number": 9,
+    "title": "AI治理与全球正义",
+    "description": "全球视野下的AI治理框架"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 117,
+    "chapter_number": 5,
+    "title": "企业社会责任的哲学根基",
+    "description": "康德'人是目的'《道德形而上学基础》"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 123,
+    "chapter_number": 1,
+    "title": "什么是美",
+    "description": "柏拉图美的理念到当代"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 129,
+    "chapter_number": 7,
+    "title": "数字时代的美学",
+    "description": "AI艺术是艺术吗？算法审美与人类创造力"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 135,
+    "chapter_number": 5,
+    "title": "社群主义批评",
+    "description": "桑德尔与麦金太尔"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 141,
+    "chapter_number": 1,
+    "title": "科学是什么",
+    "description": "科学与非科学的划界问题"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 147,
+    "chapter_number": 7,
+    "title": "科学解释的模型",
+    "description": "DN模型与因果模型"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 153,
+    "chapter_number": 3,
+    "title": "亚隆的存在主义心理治疗",
+    "description": "死亡/自由/孤独/无意义四大终极关怀"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 159,
+    "chapter_number": 9,
+    "title": "构建你的哲学疗愈工具箱",
+    "description": "综合实践：建立个人哲学疗愈方案"
+  }
+]

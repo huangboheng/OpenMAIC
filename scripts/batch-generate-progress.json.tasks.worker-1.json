@@ -1,0 +1,170 @@
+[
+  {
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 93,
+    "chapter_number": 2,
+    "title": "认识你自己",
+    "description": "苏格拉底说\"未经审视的人生不值得过\"。本章通过苏格拉底对话法，引导你追问：我相信的真的对吗？我知道的真的知道吗？我是我想成为的那种人吗？"
+  },
+  {
+    "slug": "socratic-workplace",
+    "course_title": "苏格拉底式职场",
+    "id": 33,
+    "chapter_number": 3,
+    "title": "逻辑谬误雷达",
+    "description": "职场常见12种逻辑谬误识别训练：稻草人、假两难、诉诸权威、滑坡论证……学会在会议中实时检测并优雅指出。"
+  },
+  {
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 39,
+    "chapter_number": 3,
+    "title": "意义危机的四张面孔",
+    "description": "加缪的荒谬、托尔斯泰的绝望、尼采的上帝之死、弗兰克尔的意义疗法——四种诊断，四种药方。找到属于你的那个。"
+  },
+  {
+    "slug": "debate-academy",
+    "course_title": "AI哲学辩论学院",
+    "id": 48,
+    "chapter_number": 2,
+    "title": "论证的三层结构",
+    "description": "Toulmin论证模型实战：主张→理由→保证→支撑→反驳。用AI分析经典辩论片段，学习构建\"打了补丁\"的论证。"
+  },
+  {
+    "slug": "little-philosophers",
+    "course_title": "小小哲学家",
+    "id": 54,
+    "chapter_number": 2,
+    "title": "糖该怎么分",
+    "description": "借用\"你切我选\"的经典思想实验，引导孩子思考公平的含义。什么是公平？是每个人都一样，还是按需分配？"
+  },
+  {
+    "slug": "writing-workshop",
+    "course_title": "哲学写作工坊",
+    "id": 60,
+    "chapter_number": 4,
+    "title": "哲学写作的风格与清晰性",
+    "description": "简明不是简单。学习如何写出分析哲学家推崇的\"水晶般透明\"的句子。AI五维批改：清晰度、逻辑性、原创性、文献、表达。"
+  },
+  {
+    "slug": "philosophy-plus",
+    "course_title": "哲学+X",
+    "id": 66,
+    "chapter_number": 5,
+    "title": "综合项目：跨学科思维导图",
+    "description": "自选一个跨学科主题（如\"气候变化\"或\"基因编辑\"），用5种哲学视角分析，生成你的跨学科思维地图。"
+  },
+  {
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 72,
+    "chapter_number": 6,
+    "title": "宋明理学",
+    "description": "朱熹的格物致知、王阳明的心即理——理学与心学的数百年之争。理解\"理\"与\"气\"、\"知\"与\"行\"的辩证关系。"
+  },
+  {
+    "slug": "grad-exam-cram",
+    "course_title": "考研哲学冲刺营",
+    "id": 78,
+    "chapter_number": 4,
+    "title": "伦理学与政治哲学",
+    "description": "功利主义、义务论、德性伦理、契约论、正义理论。横向对比+纵向演进的交叉复习法。"
+  },
+  {
+    "slug": "ethics-lab",
+    "course_title": "伦理学实验室",
+    "id": 84,
+    "chapter_number": 4,
+    "title": "应用伦理：在灰色地带中航行",
+    "description": "自动驾驶的伦理选择、基因编辑的边界、AI的道德主体性——4个真实前沿案例，分组辩论+白板推理树。"
+  },
+  {
+    "slug": "east-west-dialogue",
+    "course_title": "东西方哲学对话录",
+    "id": 90,
+    "chapter_number": 5,
+    "title": "自然与人类",
+    "description": "道家\"天人合一\"vs基督教\"管理自然\"vs深层生态学——三种自然观如何塑造了不同文明的科技发展路径？"
+  },
+  {
+    "slug": "daily-philosophy",
+    "course_title": "哲学即生活",
+    "id": 101,
+    "chapter_number": 5,
+    "title": "亚里士多德习惯论",
+    "description": "德性作为日常练习，引用《尼各马可伦理学》第二卷"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 107,
+    "chapter_number": 5,
+    "title": "大模型幻觉与责任归属",
+    "description": "因果链与道德主体"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 113,
+    "chapter_number": 1,
+    "title": "利润之上的目的论",
+    "description": "亚里士多德《尼各马可伦理学》目的论"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 119,
+    "chapter_number": 7,
+    "title": "组织正义与制度设计",
+    "description": "罗尔斯/诺齐克"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 125,
+    "chapter_number": 3,
+    "title": "尼采的悲剧美学",
+    "description": "酒神与日神，引用《悲剧的诞生》"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 131,
+    "chapter_number": 1,
+    "title": "为什么需要政治哲学",
+    "description": "从'我觉得不公平'到系统分析"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 137,
+    "chapter_number": 7,
+    "title": "公民不服从与公共理性",
+    "description": "从梭罗到罗尔斯"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 143,
+    "chapter_number": 3,
+    "title": "波普尔的证伪主义",
+    "description": "引用《科学发现的逻辑》"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 149,
+    "chapter_number": 9,
+    "title": "科学争议案例分析",
+    "description": "气候变化/转基因/AI风险"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 155,
+    "chapter_number": 5,
+    "title": "克尔凯郭尔的焦虑概念",
+    "description": "引用《恐惧与颤栗》"
+  }
+]
