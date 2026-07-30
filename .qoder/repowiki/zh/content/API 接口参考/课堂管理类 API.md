@@ -9,9 +9,16 @@
 - [app/api/export-video/capability/route.ts](file://app/api/export-video/capability/route.ts)
 - [app/api/proxy-media/route.ts](file://app/api/proxy-media/route.ts)
 - [app/api/generate-classroom/route.ts](file://app/api/generate-classroom/route.ts)
-- [app/api/generate-classroom/[jobId]/route.ts](file://app/api/generate-classroom/[jobId]/route.ts)
 - [lib/server/api-response.ts](file://lib/server/api-response.ts)
+- [lib/logger.ts](file://lib/logger.ts)
 </cite>
+
+## 更新摘要
+**所做更改**   
+- 增强了课堂 API 的错误日志记录，特别是在文件系统未找到的场景中提供更详细的错误信息
+- 改进了 HTTP 状态码捕获和响应文本记录功能
+- 增强了网络问题和 API 诊断的详细错误信息
+- 优化了媒体文件访问的错误处理逻辑
 
 ## 产品概述
 OpenMAIC 的课堂管理类 API 提供课堂（Classroom）的创建、查询与媒体资源管理，以及视频导出渲染的异步处理能力。该系列接口面向前端与集成方，统一通过 Next.js App Router 暴露 RESTful 端点，采用统一的响应封装与错误码体系，支持流式传输、SSRF 防护、大小限制与代理转发等关键能力。
@@ -89,7 +96,6 @@ ExportRender-->>Client : {success, cancelled}
 - [app/api/export-video/render/route.ts:46-113](file://app/api/export-video/render/route.ts#L46-L113)
 - [app/api/export-video/render/[jobId]/route.ts:12-57](file://app/api/export-video/render/[jobId]/route.ts#L12-L57)
 - [app/api/generate-classroom/route.ts:14-72](file://app/api/generate-classroom/route.ts#L14-L72)
-- [app/api/generate-classroom/[jobId]/route.ts:14-54](file://app/api/generate-classroom/[jobId]/route.ts#L14-L54)
 
 ## 数据与状态
 - 课堂数据模型
@@ -132,7 +138,6 @@ ReturnError --> End
 - [app/api/export-video/render/route.ts:46-113](file://app/api/export-video/render/route.ts#L46-L113)
 - [app/api/export-video/render/[jobId]/route.ts:12-57](file://app/api/export-video/render/[jobId]/route.ts#L12-L57)
 - [app/api/generate-classroom/route.ts:14-72](file://app/api/generate-classroom/route.ts#L14-L72)
-- [app/api/generate-classroom/[jobId]/route.ts:14-54](file://app/api/generate-classroom/[jobId]/route.ts#L14-L54)
 
 ## 关键约束与边界
 - 权限验证
@@ -145,7 +150,7 @@ ReturnError --> End
   - 使用流式传输避免大文件内存占用（媒体与导出渲染均使用流）。
   - 合理设置 Cache-Control 提升缓存命中率（媒体默认 public immutable 1天；代理媒体 private 1小时）。
   - 对慢链路上传设置足够超时（导出渲染提交超时 300s）。
-  - 使用能力探测接口在前端动态显示“一键 MP4 导出”选项。
+  - 使用能力探测接口在前端动态显示"一键 MP4 导出"选项。
 - 错误处理策略
   - 统一使用 apiError 与 apiSuccess 封装响应，包含 errorCode、error、details。
   - 上游错误映射：429 速率限制、413 过大、502 上游错误、404 未找到等。
@@ -160,6 +165,38 @@ ReturnError --> End
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
 - [app/api/proxy-media/route.ts:23-92](file://app/api/proxy-media/route.ts#L23-L92)
 - [app/api/export-video/render/route.ts:46-113](file://app/api/export-video/render/route.ts#L46-L113)
+
+## 增强错误处理与日志记录
+
+### 文件系统错误处理改进
+课堂媒体访问现在提供了更详细的文件系统错误处理，特别是针对 ENOENT（文件不存在）场景的专门处理：
+
+- **ENOENT 错误检测**：当文件不存在时，系统会返回 404 状态码而不是通用错误
+- **详细错误日志**：记录具体的 classroomId 和路径信息，便于问题定位
+- **结构化错误响应**：返回清晰的错误消息而非技术细节
+
+### HTTP 状态码捕获增强
+所有 API 端点现在都实现了更精确的 HTTP 状态码捕获：
+
+- **课堂创建**：成功返回 201，失败返回 500
+- **课堂查询**：未找到返回 404，无效 ID 返回 400
+- **媒体访问**：文件不存在返回 404，路径非法返回 400
+- **代理媒体**：上游错误根据状态码分类处理（4xx 保持原样，5xx 转换为 502）
+- **导出渲染**：渲染服务错误映射为适当的 HTTP 状态码
+
+### 响应文本记录优化
+错误处理现在包含响应文本的详细记录：
+
+- **网络错误**：记录完整的错误消息和堆栈信息
+- **API 错误**：捕获并记录上游服务的错误响应文本
+- **调试信息**：支持 JSON 格式日志输出，便于自动化分析
+
+**章节来源**
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:85-94](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L85-L94)
+- [app/api/classroom/route.ts:37-48](file://app/api/classroom/route.ts#L37-L48)
+- [app/api/classroom/route.ts:74-85](file://app/api/classroom/route.ts#L74-L85)
+- [app/api/proxy-media/route.ts:88-91](file://app/api/proxy-media/route.ts#L88-L91)
+- [lib/logger.ts:1-53](file://lib/logger.ts#L1-L53)
 
 ## 附录：API 调用示例与集成指南
 - 创建课堂
@@ -210,11 +247,6 @@ ReturnError --> End
   - 请求体：{ requirement, pdfContent?, enableWebSearch?, webSearchProviderId?, webSearchApiKey?, baiduSubSources?, enableImageGeneration?, enableVideoGeneration?, enableTTS?, agentMode? }
   - 响应：{ success: true, jobId, status, step, message, pollUrl, pollIntervalMs }
   - 错误：MISSING_REQUIRED_FIELD、INTERNAL_ERROR
-- 课堂生成轮询
-  - 方法：GET
-  - 路径：/api/generate-classroom/{jobId}
-  - 响应：{ success: true, jobId, status, step, progress, message, pollUrl, pollIntervalMs, scenesGenerated, totalScenes, result, error, done }
-  - 错误：INVALID_REQUEST、INTERNAL_ERROR
 
 **章节来源**
 - [app/api/classroom/route.ts:14-49](file://app/api/classroom/route.ts#L14-L49)
@@ -225,5 +257,4 @@ ReturnError --> End
 - [app/api/export-video/render/route.ts:46-113](file://app/api/export-video/render/route.ts#L46-L113)
 - [app/api/export-video/render/[jobId]/route.ts:12-57](file://app/api/export-video/render/[jobId]/route.ts#L12-L57)
 - [app/api/generate-classroom/route.ts:14-72](file://app/api/generate-classroom/route.ts#L14-L72)
-- [app/api/generate-classroom/[jobId]/route.ts:14-54](file://app/api/generate-classroom/[jobId]/route.ts#L14-L54)
 - [lib/server/api-response.ts:1-51](file://lib/server/api-response.ts#L1-L51)

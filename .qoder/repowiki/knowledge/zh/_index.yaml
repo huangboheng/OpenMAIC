@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: custom-main
 nodes_managed: true
-exported_at: "2026-07-30T05:54:03Z"
+exported_at: "2026-07-30T15:56:24Z"
 modules:
     "":
         dir_name: OpenMAIC 应用根目录（Next.js App Router 入口与路由层）
