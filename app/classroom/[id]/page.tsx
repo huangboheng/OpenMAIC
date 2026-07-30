@@ -49,6 +49,18 @@ export default function ClassroomDetailPage() {
   const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
     onComplete: () => {
       log.info('[Classroom] All scenes generated');
+      // Persist completed classroom to server-side filesystem so the API
+      // fallback works for cross-browser / cache-cleared scenarios.
+      const state = useStageStore.getState();
+      if (state.stage && state.scenes.length > 0) {
+        fetch('/api/classroom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage: state.stage, scenes: state.scenes }),
+        }).catch((err) =>
+          log.warn('[Classroom] Server persist failed after generation complete:', err),
+        );
+      }
     },
   });
 

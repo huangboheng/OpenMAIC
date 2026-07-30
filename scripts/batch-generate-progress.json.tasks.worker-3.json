@@ -1,0 +1,170 @@
+[
+  {
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 95,
+    "chapter_number": 4,
+    "title": "东西方哲学地图",
+    "description": "从先秦诸子到希腊三哲，从印度吠檀多到德国观念论——一张全景地图，帮你找到自己在哲学大陆上的位置。每条路径配一位AI哲学家导游。"
+  },
+  {
+    "slug": "socratic-workplace",
+    "course_title": "苏格拉底式职场",
+    "id": 35,
+    "chapter_number": 5,
+    "title": "优雅反驳与伦理边界",
+    "description": "如何在不得罪人的前提下指出逻辑漏洞？从\"我觉得你说得不对\"到\"让我们一起来检验这个假设\"——沟通艺术的哲学底色。"
+  },
+  {
+    "slug": "masterworks-reading",
+    "course_title": "哲学原著精读会",
+    "id": 44,
+    "chapter_number": 3,
+    "title": "《第一哲学沉思集》：我思故我在",
+    "description": "笛卡尔如何从普遍怀疑出发重建知识大厦？精读第一、第二沉思，追踪\"我思\"论证的每一个推理步骤。"
+  },
+  {
+    "slug": "debate-academy",
+    "course_title": "AI哲学辩论学院",
+    "id": 50,
+    "chapter_number": 4,
+    "title": "质询与交叉盘问",
+    "description": "辩论中最激烈的环节。如何设计引导性问题？如何应对刁钻反问？模拟法庭交叉质询的5种战术。"
+  },
+  {
+    "slug": "little-philosophers",
+    "course_title": "小小哲学家",
+    "id": 56,
+    "chapter_number": 4,
+    "title": "说谎会怎样",
+    "description": "康德的绝对命令儿童版：如果你说的话变成所有人都遵守的规则，世界会怎样？鼓励诚实，但不简单地否定善意的谎言。"
+  },
+  {
+    "slug": "philosophy-plus",
+    "course_title": "哲学+X",
+    "id": 62,
+    "chapter_number": 1,
+    "title": "哲学与科学",
+    "description": "科学方法论的哲学根基：证伪主义、范式革命、科学实在论vs反实在论。为什么最顶尖的科学家最终都会问哲学问题？"
+  },
+  {
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 68,
+    "chapter_number": 2,
+    "title": "老子与道",
+    "description": "与AI老子一起\"无为\"：什么是\"道\"？为什么\"道可道非常道\"？从《道德经》中理解道家对语言、知识和权力的深刻反思。"
+  },
+  {
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 74,
+    "chapter_number": 8,
+    "title": "三方辩论：儒道佛对话",
+    "description": "孔子、老子、慧能三方对话：何为理想人生？何为善政？何为人性？全景展示中国哲学三大传统的交锋与融合。"
+  },
+  {
+    "slug": "grad-exam-cram",
+    "course_title": "考研哲学冲刺营",
+    "id": 80,
+    "chapter_number": 6,
+    "title": "全真模拟与AI批改",
+    "description": "3套综合模拟试卷，AI苏格拉底逐题追问+批改。不仅告诉你对错，更重要的是追问你的思考过程。"
+  },
+  {
+    "slug": "east-west-dialogue",
+    "course_title": "东西方哲学对话录",
+    "id": 86,
+    "chapter_number": 1,
+    "title": "存在与生成",
+    "description": "巴门尼德的\"存在\"遇上老子的\"道\"——是永恒不变的存在，还是生生不息的流转？双Agent对话：巴门尼德vs老子。"
+  },
+  {
+    "slug": "daily-philosophy",
+    "course_title": "哲学即生活",
+    "id": 97,
+    "chapter_number": 1,
+    "title": "斯多葛晨间仪式",
+    "description": "消极想象与可控/不可控区分，引用马可·奥勒留《沉思录》"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 103,
+    "chapter_number": 1,
+    "title": "技术中立论的破产",
+    "description": "导论：技术不是中性的，它内嵌价值选择"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 109,
+    "chapter_number": 7,
+    "title": "AI意识与道德地位",
+    "description": "心灵哲学视角"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 115,
+    "chapter_number": 3,
+    "title": "长期主义哲学",
+    "description": "亚里士多德目的论vs短期功利"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 121,
+    "chapter_number": 9,
+    "title": "数据驱动决策的伦理边界",
+    "description": "数据主义的哲学反思"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 127,
+    "chapter_number": 5,
+    "title": "中国美学",
+    "description": "意境、气韵与留白，引用《文心雕龙》、宗白华《美学散步》"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 133,
+    "chapter_number": 3,
+    "title": "罗尔斯正义论",
+    "description": "无知之幕与差别原则，引用《正义论》"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 139,
+    "chapter_number": 9,
+    "title": "数字时代的权力与自由",
+    "description": "福柯/韩炳哲"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 145,
+    "chapter_number": 5,
+    "title": "费耶阿本德的'怎么都行'",
+    "description": "认识论无政府主义"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 151,
+    "chapter_number": 1,
+    "title": "哲学与心理治疗的历史渊源",
+    "description": "从古希腊到当代"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 157,
+    "chapter_number": 7,
+    "title": "正念与禅宗哲学",
+    "description": "东方智慧与西方心理治疗的交汇"
+  }
+]

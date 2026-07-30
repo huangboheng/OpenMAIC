@@ -440,13 +440,26 @@ export function isServerConfiguredProvider(section: ProviderSection, providerId:
   return !!getConfig()[section][providerId];
 }
 
+// ── Multi-key round-robin ──
+const _keyCounters = new Map<string, number>();
+
+/** If apiKey is comma-separated (key1,key2,...), round-robin across keys. */
+function resolveKey(key: string): string {
+  if (!key || !key.includes(',')) return key;
+  const parts = key.split(',').map(k => k.trim()).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || '';
+  const count = (_keyCounters.get(key) || 0) % parts.length;
+  _keyCounters.set(key, count + 1);
+  return parts[count];
+}
+
 function resolveSectionApiKey(
   section: ProviderSection,
   providerId: string,
   clientKey?: string,
 ): string {
   const entry = getConfig()[section][providerId];
-  if (entry) return entry.apiKey || ''; // managed: server key is authoritative
+  if (entry) return resolveKey(entry.apiKey) || ''; // managed: server key is authoritative
   return clientKey || ''; // unmanaged: client-supplied key only
 }
 

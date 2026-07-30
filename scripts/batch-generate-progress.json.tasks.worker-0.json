@@ -1,0 +1,170 @@
+[
+  {
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 92,
+    "chapter_number": 1,
+    "title": "哲学是什么",
+    "description": "从泰勒斯观测星空到柏拉图洞穴寓言，从笛卡尔的炉边沉思到AI时代的伦理困境——哲学不是一套答案，而是一种追问的方式。本章带你理解\"哲学的惊奇\"。"
+  },
+  {
+    "slug": "socratic-workplace",
+    "course_title": "苏格拉底式职场",
+    "id": 32,
+    "chapter_number": 2,
+    "title": "提问的艺术",
+    "description": "掌握苏格拉底式提问的5种武器：澄清性问题、探究假设、追问证据、换位视角、反思后果。每项配职场真实对话案例。"
+  },
+  {
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 38,
+    "chapter_number": 2,
+    "title": "选择恐惧与自我欺骗",
+    "description": "萨特的\"自欺\"理论：当我们说\"别无选择\"时，真的是别无选择，还是在逃避责任？解构职场、婚恋、消费中的选择困境。"
+  },
+  {
+    "slug": "debate-academy",
+    "course_title": "AI哲学辩论学院",
+    "id": 47,
+    "chapter_number": 1,
+    "title": "逻辑基本功",
+    "description": "演绎vs归纳、有效性vs健全性、必要vs充分条件。不是背定义，是动手拆解真实辩论中的逻辑结构。附20道逻辑诊断练习。"
+  },
+  {
+    "slug": "little-philosophers",
+    "course_title": "小小哲学家",
+    "id": 53,
+    "chapter_number": 1,
+    "title": "为什么天是蓝的",
+    "description": "哲学始于惊奇。跟随AI哲学家变身的故事角色，探索\"提问\"本身的快乐。鼓励孩子问出\"傻问题\"——因为最傻的问题往往最深。"
+  },
+  {
+    "slug": "writing-workshop",
+    "course_title": "哲学写作工坊",
+    "id": 59,
+    "chapter_number": 3,
+    "title": "论证的七种武器",
+    "description": "演绎论证、归纳论证、类比论证、归谬法、思想实验、案例分析法、谱系学方法。每种配实例训练和AI点评。"
+  },
+  {
+    "slug": "philosophy-plus",
+    "course_title": "哲学+X",
+    "id": 65,
+    "chapter_number": 4,
+    "title": "哲学与商业",
+    "description": "企业伦理、利益相关者理论、商业中的目的论vs义务论。为什么硅谷CEO们开始读斯多葛哲学？"
+  },
+  {
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 71,
+    "chapter_number": 5,
+    "title": "墨家与法家",
+    "description": "兼爱与非攻：墨子的功利主义先驱。法、术、势：韩非子的组织管理哲学。为何这两个学派最终退出历史舞台？"
+  },
+  {
+    "slug": "grad-exam-cram",
+    "course_title": "考研哲学冲刺营",
+    "id": 77,
+    "chapter_number": 3,
+    "title": "中国哲学史",
+    "description": "先秦诸子、两汉经学、魏晋玄学、隋唐佛学、宋明理学、清代朴学——系统梳理考研重点人物和学派。"
+  },
+  {
+    "slug": "ethics-lab",
+    "course_title": "伦理学实验室",
+    "id": 83,
+    "chapter_number": 3,
+    "title": "德性伦理：你是什么样的人",
+    "description": "亚里士多德的中道学说：勇敢不是鲁莽与怯懦的平均。德性可以被教授吗？当代德性伦理学的复兴。"
+  },
+  {
+    "slug": "east-west-dialogue",
+    "course_title": "东西方哲学对话录",
+    "id": 89,
+    "chapter_number": 4,
+    "title": "道德推理的东西方差异",
+    "description": "康德式普遍规则vs儒家情境伦理——为什么西方人觉得\"亲亲相隐\"不道德，中国人觉得\"大义灭亲\"不近人情？"
+  },
+  {
+    "slug": "daily-philosophy",
+    "course_title": "哲学即生活",
+    "id": 100,
+    "chapter_number": 4,
+    "title": "存在主义选择",
+    "description": "在不确定中创造意义，引用萨特《存在主义是一种人道主义》"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 106,
+    "chapter_number": 4,
+    "title": "数据隐私与数字权利",
+    "description": "洛克财产权vs公共品"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 112,
+    "chapter_number": 10,
+    "title": "构建你的AI伦理框架",
+    "description": "综合实践：建立个人伦理决策矩阵"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 118,
+    "chapter_number": 6,
+    "title": "创新与破坏性思维",
+    "description": "尼采重估一切价值"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 124,
+    "chapter_number": 2,
+    "title": "康德的审美判断",
+    "description": "无目的的合目的性，引用《判断力批判》"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 130,
+    "chapter_number": 8,
+    "title": "构建你的审美坐标系",
+    "description": "综合实践：建立个人审美判断框架"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 136,
+    "chapter_number": 6,
+    "title": "自由与平等能否兼得",
+    "description": "核心张力分析"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 142,
+    "chapter_number": 2,
+    "title": "逻辑实证主义",
+    "description": "维也纳学派与可证实性原则"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 148,
+    "chapter_number": 8,
+    "title": "科学中的价值与客观性",
+    "description": "价值负载与科学诚信"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 154,
+    "chapter_number": 4,
+    "title": "斯多葛与认知行为疗法",
+    "description": "Epictetus与CBT的哲学根源，引用《手册》"
+  }
+]
