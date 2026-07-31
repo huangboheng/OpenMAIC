@@ -25,7 +25,27 @@ export async function writeJsonFileAtomic(filePath: string, data: unknown) {
   const tempFilePath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   const content = JSON.stringify(data, null, 2);
   await fs.writeFile(tempFilePath, content, 'utf-8');
-  await fs.rename(tempFilePath, filePath);
+
+  // Retry rename up to 3 times (Windows Defender / file watcher can cause transient EPERM)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await fs.rename(tempFilePath, filePath);
+      return;
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException)?.code;
+      if (code === 'EPERM' || code === 'EACCES') {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+          continue;
+        }
+        // Final fallback: direct write + cleanup tmp
+        await fs.writeFile(filePath, content, 'utf-8');
+        await fs.unlink(tempFilePath).catch(() => {});
+        return;
+      }
+      throw err;
+    }
+  }
 }
 
 export function buildRequestOrigin(req: NextRequest): string {

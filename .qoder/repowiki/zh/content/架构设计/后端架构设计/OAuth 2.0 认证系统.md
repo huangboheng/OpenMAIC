@@ -15,12 +15,15 @@
 - [app/api/classroom/route.ts](file://app/api/classroom/route.ts)
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts](file://app/api/classroom-media/[classroomId]/[...path]/route.ts)
 - [lib/server/classroom-storage.ts](file://lib/server/classroom-storage.ts)
+- [lib/classroom/load-classroom.ts](file://lib/classroom/load-classroom.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**   
 - **新增** GET-only 认证白名单机制，允许未认证访问者读取教室数据和媒体资源
-- 增强代理中间件支持 `/api/classroom` 和 `/api/classroom-media/` 的 GET 请求免认证访问
+- **增强**代理中间件支持 `/api/classroom` 和 `/api/classroom-media/` 的 GET 请求免认证访问
+- **引入** ClassroomAuthError 哨兵错误机制，用于区分401认证错误与其他类型失败
+- **改进**认证错误处理机制，提供更精确的错误分类和用户反馈
 - 利用 nanoid 生成的不可猜测教室 ID 确保只读数据安全暴露
 - 保持页面级认证保护（307 重定向），仅开放 API 数据层的只读访问
 - 维持速率限制防护，防止滥用未认证访问
@@ -32,6 +35,7 @@
 - 提供"访问码"模式作为轻量级鉴权补充（适用于无 OIDC 或快速部署场景）
 - **新增**无缝认证集成，支持 Philochora SSO 与 OpenMAIC 教室的直接认证
 - **新增**GET-only 认证白名单，允许安全的只读数据访问而无需完整认证流程
+- **新增**增强的错误处理机制，通过 ClassroomAuthError 精确区分认证失败与其他错误
 - 前端根据后端状态动态展示访问码弹窗并维持登录态
 
 适用场景：
@@ -126,6 +130,9 @@ SetCookie --> Allow
 - **新增**GET-only 认证白名单机制
   - 职责：允许特定 GET 端点无需认证访问，同时保持速率限制防护
   - 验收要点：仅允许 GET 方法；应用适当的速率限制；保持页面级认证保护
+- **新增**增强的错误处理机制
+  - 职责：通过 ClassroomAuthError 哨兵错误精确区分认证失败与其他错误类型
+  - 验收要点：401 错误被正确识别并抛出 ClassroomAuthError；其他错误类型正常处理
 - 访问码鉴权（可选）
   - 职责：前端检测状态并弹出模态框；后端常量时间比较访问码；成功后下发短期访问令牌 Cookie
   - 验收要点：timingSafeEqual 防时序攻击；Cookie 安全属性正确；前端默认安全策略（失败即视为需认证）
@@ -199,19 +206,24 @@ class AccessToken {
 +string signature
 +boolean isValid()
 }
+class ClassroomAuthError {
++string message
++string name
+}
 ```
 
 **图表来源** 
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
-- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
-- [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
-- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
+- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-53)
+- [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-17)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-8)
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
 
 **章节来源**
-- [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
-- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
-- [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
-- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
+- [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-22)
+- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-53)
+- [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-17)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-8)
 
 ## 关键约束与边界
 - 安全约束
@@ -232,16 +244,18 @@ class AccessToken {
   - 生产环境建议开启 secure Cookie 与 SameSite=Lax
   - **新增**统一授权模型：OAuth session 和无缝 access token 任一有效即可通过认证
   - **新增**页面级认证保护保持不变，仅 API 数据层提供只读访问
+  - **新增**增强的错误处理：认证失败抛出 ClassroomAuthError，便于前端精确处理
 
 **章节来源**
-- [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-L23)
-- [lib/server/oauth-client.ts:92-101](file://lib/server/oauth-client.ts#L92-L101)
-- [lib/server/session-cookie.ts:70-99](file://lib/server/session-cookie.ts#L70-L99)
-- [lib/server/access-token.ts:10-25](file://lib/server/access-token.ts#L10-L25)
-- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
-- [lib/server/oauth-config.ts:25-60](file://lib/server/oauth-config.ts#L25-L60)
-- [proxy.ts:101-112](file://proxy.ts#L101-L112)
-- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-L55)
+- [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-23)
+- [lib/server/oauth-client.ts:92-101](file://lib/server/oauth-client.ts#L92-101)
+- [lib/server/session-cookie.ts:70-99](file://lib/server/session-cookie.ts#L70-99)
+- [lib/server/access-token.ts:10-25](file://lib/server/access-token.ts#L10-25)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-71)
+- [lib/server/oauth-config.ts:25-60](file://lib/server/oauth-config.ts#L25-60)
+- [proxy.ts:101-112](file://proxy.ts#L101-112)
+- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-55)
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
 
 ## GET-only 认证白名单详解
 
@@ -270,9 +284,9 @@ Proxy-->>Client : 流式传输媒体数据
 ```
 
 **图表来源** 
-- [proxy.ts:101-116](file://proxy.ts#L101-L116)
-- [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-L86)
-- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
+- [proxy.ts:101-116](file://proxy.ts#L101-116)
+- [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-86)
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-95)
 
 ### 技术实现
 - **白名单配置**：GET_AUTH_WHITELIST 数组定义允许的 GET 端点路径
@@ -292,12 +306,48 @@ Proxy-->>Client : 流式传输媒体数据
 教室页面在加载时会尝试通过白名单 API 获取数据，如果认证失败但仍能访问数据端点，则可以直接渲染教室内容，提供更好的用户体验。
 
 **章节来源**
-- [proxy.ts:43-50](file://proxy.ts#L43-L50)
-- [proxy.ts:72-74](file://proxy.ts#L72-L74)
-- [proxy.ts:101-116](file://proxy.ts#L101-L116)
-- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-L55)
-- [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-L86)
-- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
+- [proxy.ts:43-50](file://proxy.ts#L43-50)
+- [proxy.ts:72-74](file://proxy.ts#L72-74)
+- [proxy.ts:101-116](file://proxy.ts#L101-116)
+- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-55)
+- [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-86)
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-95)
+
+## 增强的错误处理机制
+
+### ClassroomAuthError 哨兵错误
+系统引入了专门的 ClassroomAuthError 类来精确区分认证失败与其他类型的错误，提供更清晰的错误处理和用户反馈。
+
+```mermaid
+sequenceDiagram
+participant Client as "客户端"
+participant LoadClassroom as "loadClassroom"
+participant API as "教室 API"
+Note over Client,API : 认证错误处理流程
+Client->>LoadClassroom : 调用 loadClassroom(classroomId)
+LoadClassroom->>API : 获取教室数据
+API-->>LoadClassroom : 返回 401 认证失败
+LoadClassroom->>LoadClassroom : 抛出 ClassroomAuthError
+LoadClassroom-->>Client : 传播认证错误
+Client->>Client : 显示认证过期提示
+Client->>Client : 提供重试选项
+```
+
+**图表来源** 
+- [lib/classroom/load-classroom.ts:210-245](file://lib/classroom/load-classroom.ts#L210-245)
+
+### 技术实现
+- **错误分类**：HTTP 401 状态码被识别为认证失败，抛出 ClassroomAuthError
+- **错误传播**：认证错误被正确传播到调用方，而不是被静默处理
+- **用户反馈**：前端可以捕获 ClassroomAuthError 并提供具体的错误消息和操作选项
+- **兼容性**：其他类型的错误继续按原有方式处理，不影响现有功能
+
+### 前端集成
+前端组件可以捕获 ClassroomAuthError 并显示相应的用户友好提示，如"认证已过期，请重新进入教室"，并提供重试按钮让用户重新尝试。
+
+**章节来源**
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
+- [lib/classroom/load-classroom.ts:210-245](file://lib/classroom/load-classroom.ts#L210-245)
 
 ## 无缝认证集成详解
 
@@ -324,8 +374,8 @@ Proxy-->>User : 允许访问
 ```
 
 **图表来源** 
-- [proxy.ts:101-112](file://proxy.ts#L101-L112)
-- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
+- [proxy.ts:101-112](file://proxy.ts#L101-112)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-71)
 
 ### 技术实现
 - **Edge 兼容验证**：verifyAccessTokenEdge 函数使用 Web Crypto API 而非 Node.js crypto，确保在 Next.js middleware 环境中正常工作
@@ -336,6 +386,6 @@ Proxy-->>User : 允许访问
 访问码状态端点已更新以识别两种认证方法，修复了仅具有 OAuth session 的用户被 AccessCodeModal 错误阻止的问题。
 
 **章节来源**
-- [proxy.ts:101-112](file://proxy.ts#L101-L112)
-- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-L71)
-- [app/api/access-code/status/route.ts:17-27](file://app/api/access-code/status/route.ts#L17-L27)
+- [proxy.ts:101-112](file://proxy.ts#L101-112)
+- [lib/server/access-token.ts:51-71](file://lib/server/access-token.ts#L51-71)
+- [app/api/access-code/status/route.ts:17-27](file://app/api/access-code/status/route.ts#L17-27)

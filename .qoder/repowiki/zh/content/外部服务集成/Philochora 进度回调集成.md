@@ -207,7 +207,7 @@ end
 - [components/scene-renderers/next-lesson.tsx:40-56](file://components/scene-renderers/next-lesson.tsx#L40-L56)
 - [app/api/philochora/chapter-complete/route.ts:30-93](file://app/api/philochora/chapter-complete/route.ts#L30-L93)
 - [lib/server/classroom-generation.ts:40-59](file://lib/server/classroom-generation.ts#L40-L59)
-- [lib/server/classroom-job-store.ts:17-41](file://lib/server/classroom-job-store.ts#L17-L41)
+- [lib/server/classroom-job-store.ts:17-41](file://lib/server/classroom-job-store.ts#L17-41)
 
 ## 关键约束与边界
 - **环境依赖**
