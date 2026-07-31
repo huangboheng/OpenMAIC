@@ -157,15 +157,16 @@ async function main() {
     const paragraphs = splitParagraphs(text, 500);
     console.log("  Split into " + paragraphs.length + " paragraphs");
 
-    // Delete old placeholder paragraphs
+    // Delete old translation tasks + placeholder paragraphs
+    await c.query("DELETE FROM translation_tasks WHERE paragraph_id IN (SELECT id FROM classics_paragraphs WHERE chapter_id IN (SELECT id FROM classics_chapters WHERE book_id=$1))", [book.id]);
     await c.query("DELETE FROM classics_paragraphs WHERE chapter_id IN (SELECT id FROM classics_chapters WHERE book_id=$1)", [book.id]);
 
     // Insert new paragraphs
     const chId = (await c.query("SELECT id FROM classics_chapters WHERE book_id=$1 LIMIT 1", [book.id])).rows[0].id;
     for (let i = 0; i < paragraphs.length; i++) {
       await c.query(
-        "INSERT INTO classics_paragraphs (chapter_id, paragraph_number, content_en, sort_order) VALUES ($1,$2,$3,$4)",
-        [chId, i + 1, paragraphs[i], i]
+        "INSERT INTO classics_paragraphs (chapter_id, paragraph_number, content_en, content_zh, sort_order) VALUES ($1,$2,$3,$4,$5)",
+        [chId, i + 1, paragraphs[i], paragraphs[i], i]
       );
       // Create translation task
       await c.query(
