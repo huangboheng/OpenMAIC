@@ -1,170 +1,146 @@
 [
   {
-    "slug": "philosophy-101",
-    "course_title": "哲学第一课",
-    "id": 93,
-    "chapter_number": 2,
-    "title": "认识你自己",
-    "description": "苏格拉底说\"未经审视的人生不值得过\"。本章通过苏格拉底对话法，引导你追问：我相信的真的对吗？我知道的真的知道吗？我是我想成为的那种人吗？"
-  },
-  {
-    "slug": "socratic-workplace",
-    "course_title": "苏格拉底式职场",
-    "id": 33,
+    "slug": "masterworks-reading",
+    "course_title": "哲学原著精读会",
+    "id": 44,
     "chapter_number": 3,
-    "title": "逻辑谬误雷达",
-    "description": "职场常见12种逻辑谬误识别训练：稻草人、假两难、诉诸权威、滑坡论证……学会在会议中实时检测并优雅指出。"
-  },
-  {
-    "slug": "existential-self-help",
-    "course_title": "存在主义自救手册",
-    "id": 39,
-    "chapter_number": 3,
-    "title": "意义危机的四张面孔",
-    "description": "加缪的荒谬、托尔斯泰的绝望、尼采的上帝之死、弗兰克尔的意义疗法——四种诊断，四种药方。找到属于你的那个。"
+    "title": "《第一哲学沉思集》：我思故我在",
+    "description": "笛卡尔如何从普遍怀疑出发重建知识大厦？精读第一、第二沉思，追踪\"我思\"论证的每一个推理步骤。"
   },
   {
     "slug": "debate-academy",
     "course_title": "AI哲学辩论学院",
-    "id": 48,
-    "chapter_number": 2,
-    "title": "论证的三层结构",
-    "description": "Toulmin论证模型实战：主张→理由→保证→支撑→反驳。用AI分析经典辩论片段，学习构建\"打了补丁\"的论证。"
+    "id": 50,
+    "chapter_number": 4,
+    "title": "质询与交叉盘问",
+    "description": "辩论中最激烈的环节。如何设计引导性问题？如何应对刁钻反问？模拟法庭交叉质询的5种战术。"
   },
   {
     "slug": "little-philosophers",
     "course_title": "小小哲学家",
-    "id": 54,
-    "chapter_number": 2,
-    "title": "糖该怎么分",
-    "description": "借用\"你切我选\"的经典思想实验，引导孩子思考公平的含义。什么是公平？是每个人都一样，还是按需分配？"
-  },
-  {
-    "slug": "writing-workshop",
-    "course_title": "哲学写作工坊",
-    "id": 60,
+    "id": 56,
     "chapter_number": 4,
-    "title": "哲学写作的风格与清晰性",
-    "description": "简明不是简单。学习如何写出分析哲学家推崇的\"水晶般透明\"的句子。AI五维批改：清晰度、逻辑性、原创性、文献、表达。"
+    "title": "说谎会怎样",
+    "description": "康德的绝对命令儿童版：如果你说的话变成所有人都遵守的规则，世界会怎样？鼓励诚实，但不简单地否定善意的谎言。"
   },
   {
     "slug": "philosophy-plus",
     "course_title": "哲学+X",
-    "id": 66,
-    "chapter_number": 5,
-    "title": "综合项目：跨学科思维导图",
-    "description": "自选一个跨学科主题（如\"气候变化\"或\"基因编辑\"），用5种哲学视角分析，生成你的跨学科思维地图。"
+    "id": 62,
+    "chapter_number": 1,
+    "title": "哲学与科学",
+    "description": "科学方法论的哲学根基：证伪主义、范式革命、科学实在论vs反实在论。为什么最顶尖的科学家最终都会问哲学问题？"
   },
   {
     "slug": "chinese-philosophy",
     "course_title": "中国哲学通识课",
-    "id": 72,
-    "chapter_number": 6,
-    "title": "宋明理学",
-    "description": "朱熹的格物致知、王阳明的心即理——理学与心学的数百年之争。理解\"理\"与\"气\"、\"知\"与\"行\"的辩证关系。"
+    "id": 69,
+    "chapter_number": 3,
+    "title": "庄子与逍遥",
+    "description": "逍遥游、齐物论、庖丁解牛——与AI庄子探讨自由的真谛。蝴蝶梦中的\"物化\"如何颠覆笛卡尔式的自我观？"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 78,
-    "chapter_number": 4,
-    "title": "伦理学与政治哲学",
-    "description": "功利主义、义务论、德性伦理、契约论、正义理论。横向对比+纵向演进的交叉复习法。"
-  },
-  {
-    "slug": "ethics-lab",
-    "course_title": "伦理学实验室",
-    "id": 84,
-    "chapter_number": 4,
-    "title": "应用伦理：在灰色地带中航行",
-    "description": "自动驾驶的伦理选择、基因编辑的边界、AI的道德主体性——4个真实前沿案例，分组辩论+白板推理树。"
+    "id": 80,
+    "chapter_number": 6,
+    "title": "全真模拟与AI批改",
+    "description": "3套综合模拟试卷，AI苏格拉底逐题追问+批改。不仅告诉你对错，更重要的是追问你的思考过程。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 90,
-    "chapter_number": 5,
-    "title": "自然与人类",
-    "description": "道家\"天人合一\"vs基督教\"管理自然\"vs深层生态学——三种自然观如何塑造了不同文明的科技发展路径？"
+    "id": 86,
+    "chapter_number": 1,
+    "title": "存在与生成",
+    "description": "巴门尼德的\"存在\"遇上老子的\"道\"——是永恒不变的存在，还是生生不息的流转？双Agent对话：巴门尼德vs老子。"
   },
   {
     "slug": "daily-philosophy",
     "course_title": "哲学即生活",
-    "id": 101,
-    "chapter_number": 5,
-    "title": "亚里士多德习惯论",
-    "description": "德性作为日常练习，引用《尼各马可伦理学》第二卷"
+    "id": 97,
+    "chapter_number": 1,
+    "title": "斯多葛晨间仪式",
+    "description": "消极想象与可控/不可控区分，引用马可·奥勒留《沉思录》"
   },
   {
     "slug": "ai-ethics",
     "course_title": "AI时代的哲学罗盘",
-    "id": 107,
-    "chapter_number": 5,
-    "title": "大模型幻觉与责任归属",
-    "description": "因果链与道德主体"
-  },
-  {
-    "slug": "philosophy-business",
-    "course_title": "哲学CEO",
-    "id": 113,
+    "id": 103,
     "chapter_number": 1,
-    "title": "利润之上的目的论",
-    "description": "亚里士多德《尼各马可伦理学》目的论"
+    "title": "技术中立论的破产",
+    "description": "导论：技术不是中性的，它内嵌价值选择"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 109,
+    "chapter_number": 7,
+    "title": "AI意识与道德地位",
+    "description": "心灵哲学视角"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 119,
-    "chapter_number": 7,
-    "title": "组织正义与制度设计",
-    "description": "罗尔斯/诺齐克"
+    "id": 115,
+    "chapter_number": 3,
+    "title": "长期主义哲学",
+    "description": "亚里士多德目的论vs短期功利"
+  },
+  {
+    "slug": "philosophy-business",
+    "course_title": "哲学CEO",
+    "id": 121,
+    "chapter_number": 9,
+    "title": "数据驱动决策的伦理边界",
+    "description": "数据主义的哲学反思"
   },
   {
     "slug": "aesthetics-philosophy",
     "course_title": "看见美",
-    "id": 125,
-    "chapter_number": 3,
-    "title": "尼采的悲剧美学",
-    "description": "酒神与日神，引用《悲剧的诞生》"
+    "id": 127,
+    "chapter_number": 5,
+    "title": "中国美学",
+    "description": "意境、气韵与留白，引用《文心雕龙》、宗白华《美学散步》"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 131,
-    "chapter_number": 1,
-    "title": "为什么需要政治哲学",
-    "description": "从'我觉得不公平'到系统分析"
+    "id": 133,
+    "chapter_number": 3,
+    "title": "罗尔斯正义论",
+    "description": "无知之幕与差别原则，引用《正义论》"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 137,
-    "chapter_number": 7,
-    "title": "公民不服从与公共理性",
-    "description": "从梭罗到罗尔斯"
-  },
-  {
-    "slug": "philosophy-of-science",
-    "course_title": "科学的边界",
-    "id": 143,
-    "chapter_number": 3,
-    "title": "波普尔的证伪主义",
-    "description": "引用《科学发现的逻辑》"
-  },
-  {
-    "slug": "philosophy-of-science",
-    "course_title": "科学的边界",
-    "id": 149,
+    "id": 139,
     "chapter_number": 9,
-    "title": "科学争议案例分析",
-    "description": "气候变化/转基因/AI风险"
+    "title": "数字时代的权力与自由",
+    "description": "福柯/韩炳哲"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 145,
+    "chapter_number": 5,
+    "title": "费耶阿本德的'怎么都行'",
+    "description": "认识论无政府主义"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 155,
-    "chapter_number": 5,
-    "title": "克尔凯郭尔的焦虑概念",
-    "description": "引用《恐惧与颤栗》"
+    "id": 151,
+    "chapter_number": 1,
+    "title": "哲学与心理治疗的历史渊源",
+    "description": "从古希腊到当代"
+  },
+  {
+    "slug": "philosophy-therapy",
+    "course_title": "哲学疗愈室",
+    "id": 157,
+    "chapter_number": 7,
+    "title": "正念与禅宗哲学",
+    "description": "东方智慧与西方心理治疗的交汇"
   }
 ]

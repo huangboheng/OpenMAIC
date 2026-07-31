@@ -1,170 +1,138 @@
 [
   {
-    "slug": "philosophy-101",
-    "course_title": "哲学第一课",
-    "id": 96,
-    "chapter_number": 5,
-    "title": "测验与反思",
-    "description": "综合测验：10道选择题覆盖前4章核心概念。反思写作：用300字回答\"在你看来，哲学有什么用？\"，AI苏格拉底给你个性化点评。"
-  },
-  {
-    "slug": "socratic-workplace",
-    "course_title": "苏格拉底式职场",
-    "id": 36,
-    "chapter_number": 6,
-    "title": "毕业项目：一次真实的苏格拉底式对话",
-    "description": "选择一个你正在面临的职场困境，与AI苏格拉底进行完整的诘问式对话，生成分析报告和行动方案。"
-  },
-  {
-    "slug": "masterworks-reading",
-    "course_title": "哲学原著精读会",
-    "id": 45,
-    "chapter_number": 4,
-    "title": "《道德形而上学奠基》：绝对命令",
-    "description": "康德伦理学的核心文本。从\"善良意志\"到\"定言命令\"的三个公式。AI白板逐句拆解论证链。"
-  },
-  {
     "slug": "debate-academy",
     "course_title": "AI哲学辩论学院",
-    "id": 51,
-    "chapter_number": 5,
-    "title": "哲学专题辩论",
-    "description": "5个经典哲学辩题：自由意志存在吗？AI可以有意识吗？道德是相对的还是绝对的？与AI辩论对手/裁判进行完整辩论。"
+    "id": 47,
+    "chapter_number": 1,
+    "title": "逻辑基本功",
+    "description": "演绎vs归纳、有效性vs健全性、必要vs充分条件。不是背定义，是动手拆解真实辩论中的逻辑结构。附20道逻辑诊断练习。"
+  },
+  {
+    "slug": "little-philosophers",
+    "course_title": "小小哲学家",
+    "id": 53,
+    "chapter_number": 1,
+    "title": "为什么天是蓝的",
+    "description": "哲学始于惊奇。跟随AI哲学家变身的故事角色，探索\"提问\"本身的快乐。鼓励孩子问出\"傻问题\"——因为最傻的问题往往最深。"
   },
   {
     "slug": "writing-workshop",
     "course_title": "哲学写作工坊",
-    "id": 57,
-    "chapter_number": 1,
-    "title": "以写作为目的的阅读",
-    "description": "如何从哲学文本中提取论证？三步笔记法：结构还原→论证拆解→批判性回应。以罗尔斯的\"原初状态\"论证为范例。"
+    "id": 59,
+    "chapter_number": 3,
+    "title": "论证的七种武器",
+    "description": "演绎论证、归纳论证、类比论证、归谬法、思想实验、案例分析法、谱系学方法。每种配实例训练和AI点评。"
   },
   {
     "slug": "philosophy-plus",
     "course_title": "哲学+X",
-    "id": 63,
-    "chapter_number": 2,
-    "title": "哲学与科技",
-    "description": "AI伦理、意识上传、模拟假说、技术奇点——用哲学工具分析当下最热的科技议题。从\"中文屋\"到\"对齐问题\"。"
-  },
-  {
-    "slug": "chinese-philosophy",
-    "course_title": "中国哲学通识课",
-    "id": 69,
-    "chapter_number": 3,
-    "title": "庄子与逍遥",
-    "description": "逍遥游、齐物论、庖丁解牛——与AI庄子探讨自由的真谛。蝴蝶梦中的\"物化\"如何颠覆笛卡尔式的自我观？"
+    "id": 65,
+    "chapter_number": 4,
+    "title": "哲学与商业",
+    "description": "企业伦理、利益相关者理论、商业中的目的论vs义务论。为什么硅谷CEO们开始读斯多葛哲学？"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 75,
-    "chapter_number": 1,
-    "title": "西方哲学史：古希腊到中世纪",
-    "description": "从泰勒斯到奥卡姆，AI苏格拉底逐人追问：每个哲学家的核心命题、论证结构、历史影响。5级追问链确保真正理解。"
+    "id": 77,
+    "chapter_number": 3,
+    "title": "中国哲学史",
+    "description": "先秦诸子、两汉经学、魏晋玄学、隋唐佛学、宋明理学、清代朴学——系统梳理考研重点人物和学派。"
   },
   {
     "slug": "ethics-lab",
     "course_title": "伦理学实验室",
-    "id": 81,
-    "chapter_number": 1,
-    "title": "后果论：电车难题与功利计算",
-    "description": "从电车难题的5个变种出发，理解边沁的功利原则、密尔的质的功利主义。思想实验：器官移植医生该不该杀一救五？"
+    "id": 83,
+    "chapter_number": 3,
+    "title": "德性伦理：你是什么样的人",
+    "description": "亚里士多德的中道学说：勇敢不是鲁莽与怯懦的平均。德性可以被教授吗？当代德性伦理学的复兴。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 87,
-    "chapter_number": 2,
-    "title": "自我与社会",
-    "description": "儒家\"修身齐家治国平天下\"vs柏拉图\"灵魂的三分结构\"——东西方如何定义\"好人\"？概念谱系图对比。"
+    "id": 89,
+    "chapter_number": 4,
+    "title": "道德推理的东西方差异",
+    "description": "康德式普遍规则vs儒家情境伦理——为什么西方人觉得\"亲亲相隐\"不道德，中国人觉得\"大义灭亲\"不近人情？"
   },
   {
     "slug": "daily-philosophy",
     "course_title": "哲学即生活",
-    "id": 98,
-    "chapter_number": 2,
-    "title": "伊壁鸠鲁快乐计算",
-    "description": "欲望分类与减法生活，引用《致美诺寇斯信》"
-  },
-  {
-    "slug": "ai-ethics",
-    "course_title": "AI时代的哲学罗盘",
-    "id": 104,
-    "chapter_number": 2,
-    "title": "自动驾驶电车难题",
-    "description": "功利主义vs义务论，引用边沁《道德与立法原理》、康德《道德形而上学基础》"
-  },
-  {
-    "slug": "ai-ethics",
-    "course_title": "AI时代的哲学罗盘",
-    "id": 110,
-    "chapter_number": 8,
-    "title": "技术异化与劳动哲学",
-    "description": "马克思《1844年经济学哲学手稿》vs韩炳哲《倦怠社会》"
-  },
-  {
-    "slug": "philosophy-business",
-    "course_title": "哲学CEO",
-    "id": 116,
+    "id": 100,
     "chapter_number": 4,
-    "title": "谈判中的逻辑与修辞",
-    "description": "亚里士多德《修辞学》"
+    "title": "存在主义选择",
+    "description": "在不确定中创造意义，引用萨特《存在主义是一种人道主义》"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 106,
+    "chapter_number": 4,
+    "title": "数据隐私与数字权利",
+    "description": "洛克财产权vs公共品"
+  },
+  {
+    "slug": "ai-ethics",
+    "course_title": "AI时代的哲学罗盘",
+    "id": 112,
+    "chapter_number": 10,
+    "title": "构建你的AI伦理框架",
+    "description": "综合实践：建立个人伦理决策矩阵"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 122,
-    "chapter_number": 10,
-    "title": "构建你的商业哲学宣言",
-    "description": "综合实践：撰写个人商业哲学"
+    "id": 118,
+    "chapter_number": 6,
+    "title": "创新与破坏性思维",
+    "description": "尼采重估一切价值"
   },
   {
     "slug": "aesthetics-philosophy",
     "course_title": "看见美",
-    "id": 128,
+    "id": 124,
+    "chapter_number": 2,
+    "title": "康德的审美判断",
+    "description": "无目的的合目的性，引用《判断力批判》"
+  },
+  {
+    "slug": "aesthetics-philosophy",
+    "course_title": "看见美",
+    "id": 130,
+    "chapter_number": 8,
+    "title": "构建你的审美坐标系",
+    "description": "综合实践：建立个人审美判断框架"
+  },
+  {
+    "slug": "political-philosophy",
+    "course_title": "正义的尺度",
+    "id": 136,
     "chapter_number": 6,
-    "title": "杜威的艺术即经验",
-    "description": "引用《艺术即经验》"
-  },
-  {
-    "slug": "political-philosophy",
-    "course_title": "正义的尺度",
-    "id": 134,
-    "chapter_number": 4,
-    "title": "自由至上主义",
-    "description": "诺齐克的最小国家，引用《无政府、国家与乌托邦》"
-  },
-  {
-    "slug": "political-philosophy",
-    "course_title": "正义的尺度",
-    "id": 140,
-    "chapter_number": 10,
-    "title": "实践：分析真实公共政策争议",
-    "description": "综合实践：结构化政策分析"
+    "title": "自由与平等能否兼得",
+    "description": "核心张力分析"
   },
   {
     "slug": "philosophy-of-science",
     "course_title": "科学的边界",
-    "id": 146,
-    "chapter_number": 6,
-    "title": "科学实在论vs反实在论",
-    "description": "科学理论是否描述真实？"
-  },
-  {
-    "slug": "philosophy-therapy",
-    "course_title": "哲学疗愈室",
-    "id": 152,
+    "id": 142,
     "chapter_number": 2,
-    "title": "弗兰克尔的意义疗法",
-    "description": "引用《活出生命的意义》"
+    "title": "逻辑实证主义",
+    "description": "维也纳学派与可证实性原则"
+  },
+  {
+    "slug": "philosophy-of-science",
+    "course_title": "科学的边界",
+    "id": 148,
+    "chapter_number": 8,
+    "title": "科学中的价值与客观性",
+    "description": "价值负载与科学诚信"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 158,
-    "chapter_number": 8,
-    "title": "哲学咨询的基本方法",
-    "description": "苏格拉底式对话在咨询中的应用"
+    "id": 154,
+    "chapter_number": 4,
+    "title": "斯多葛与认知行为疗法",
+    "description": "Epictetus与CBT的哲学根源，引用《手册》"
   }
 ]
