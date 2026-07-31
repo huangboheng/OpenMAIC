@@ -1,138 +1,106 @@
 [
   {
-    "slug": "debate-academy",
-    "course_title": "AI哲学辩论学院",
-    "id": 47,
-    "chapter_number": 1,
-    "title": "逻辑基本功",
-    "description": "演绎vs归纳、有效性vs健全性、必要vs充分条件。不是背定义，是动手拆解真实辩论中的逻辑结构。附20道逻辑诊断练习。"
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 96,
+    "chapter_number": 5,
+    "title": "测验与反思",
+    "description": "综合测验：10道选择题覆盖前4章核心概念。反思写作：用300字回答\"在你看来，哲学有什么用？\"，AI苏格拉底给你个性化点评。"
   },
   {
-    "slug": "little-philosophers",
-    "course_title": "小小哲学家",
-    "id": 53,
-    "chapter_number": 1,
-    "title": "为什么天是蓝的",
-    "description": "哲学始于惊奇。跟随AI哲学家变身的故事角色，探索\"提问\"本身的快乐。鼓励孩子问出\"傻问题\"——因为最傻的问题往往最深。"
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 40,
+    "chapter_number": 4,
+    "title": "拥抱荒诞：推石头的幸福",
+    "description": "深度解读《西西弗神话》：如果人生本质上是荒诞的，我们为什么不去自杀？加缪的三个答案——自杀、哲学自杀、反抗。"
+  },
+  {
+    "slug": "debate-academy",
+    "course_title": "AI哲学辩论学院",
+    "id": 50,
+    "chapter_number": 4,
+    "title": "质询与交叉盘问",
+    "description": "辩论中最激烈的环节。如何设计引导性问题？如何应对刁钻反问？模拟法庭交叉质询的5种战术。"
   },
   {
     "slug": "writing-workshop",
     "course_title": "哲学写作工坊",
-    "id": 59,
-    "chapter_number": 3,
-    "title": "论证的七种武器",
-    "description": "演绎论证、归纳论证、类比论证、归谬法、思想实验、案例分析法、谱系学方法。每种配实例训练和AI点评。"
+    "id": 60,
+    "chapter_number": 4,
+    "title": "哲学写作的风格与清晰性",
+    "description": "简明不是简单。学习如何写出分析哲学家推崇的\"水晶般透明\"的句子。AI五维批改：清晰度、逻辑性、原创性、文献、表达。"
   },
   {
-    "slug": "philosophy-plus",
-    "course_title": "哲学+X",
-    "id": 65,
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 70,
     "chapter_number": 4,
-    "title": "哲学与商业",
-    "description": "企业伦理、利益相关者理论、商业中的目的论vs义务论。为什么硅谷CEO们开始读斯多葛哲学？"
+    "title": "禅宗公案",
+    "description": "不立文字，直指人心。\"只手之声\"、\"庭前柏树子\"——与AI禅师参悟10则经典公案，体验禅宗独特的教学法。"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 77,
-    "chapter_number": 3,
-    "title": "中国哲学史",
-    "description": "先秦诸子、两汉经学、魏晋玄学、隋唐佛学、宋明理学、清代朴学——系统梳理考研重点人物和学派。"
-  },
-  {
-    "slug": "ethics-lab",
-    "course_title": "伦理学实验室",
-    "id": 83,
-    "chapter_number": 3,
-    "title": "德性伦理：你是什么样的人",
-    "description": "亚里士多德的中道学说：勇敢不是鲁莽与怯懦的平均。德性可以被教授吗？当代德性伦理学的复兴。"
+    "id": 80,
+    "chapter_number": 6,
+    "title": "全真模拟与AI批改",
+    "description": "3套综合模拟试卷，AI苏格拉底逐题追问+批改。不仅告诉你对错，更重要的是追问你的思考过程。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 89,
-    "chapter_number": 4,
-    "title": "道德推理的东西方差异",
-    "description": "康德式普遍规则vs儒家情境伦理——为什么西方人觉得\"亲亲相隐\"不道德，中国人觉得\"大义灭亲\"不近人情？"
-  },
-  {
-    "slug": "daily-philosophy",
-    "course_title": "哲学即生活",
-    "id": 100,
-    "chapter_number": 4,
-    "title": "存在主义选择",
-    "description": "在不确定中创造意义，引用萨特《存在主义是一种人道主义》"
+    "id": 90,
+    "chapter_number": 5,
+    "title": "自然与人类",
+    "description": "道家\"天人合一\"vs基督教\"管理自然\"vs深层生态学——三种自然观如何塑造了不同文明的科技发展路径？"
   },
   {
     "slug": "ai-ethics",
     "course_title": "AI时代的哲学罗盘",
-    "id": 106,
-    "chapter_number": 4,
-    "title": "数据隐私与数字权利",
-    "description": "洛克财产权vs公共品"
-  },
-  {
-    "slug": "ai-ethics",
-    "course_title": "AI时代的哲学罗盘",
-    "id": 112,
-    "chapter_number": 10,
-    "title": "构建你的AI伦理框架",
-    "description": "综合实践：建立个人伦理决策矩阵"
+    "id": 105,
+    "chapter_number": 3,
+    "title": "算法偏见与分配正义",
+    "description": "罗尔斯无知之幕，引用《正义论》"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 118,
-    "chapter_number": 6,
-    "title": "创新与破坏性思维",
-    "description": "尼采重估一切价值"
+    "id": 115,
+    "chapter_number": 3,
+    "title": "长期主义哲学",
+    "description": "亚里士多德目的论vs短期功利"
   },
   {
     "slug": "aesthetics-philosophy",
     "course_title": "看见美",
-    "id": 124,
-    "chapter_number": 2,
-    "title": "康德的审美判断",
-    "description": "无目的的合目的性，引用《判断力批判》"
-  },
-  {
-    "slug": "aesthetics-philosophy",
-    "course_title": "看见美",
-    "id": 130,
-    "chapter_number": 8,
-    "title": "构建你的审美坐标系",
-    "description": "综合实践：建立个人审美判断框架"
+    "id": 125,
+    "chapter_number": 3,
+    "title": "尼采的悲剧美学",
+    "description": "酒神与日神，引用《悲剧的诞生》"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 136,
-    "chapter_number": 6,
-    "title": "自由与平等能否兼得",
-    "description": "核心张力分析"
+    "id": 135,
+    "chapter_number": 5,
+    "title": "社群主义批评",
+    "description": "桑德尔与麦金太尔"
   },
   {
     "slug": "philosophy-of-science",
     "course_title": "科学的边界",
-    "id": 142,
-    "chapter_number": 2,
-    "title": "逻辑实证主义",
-    "description": "维也纳学派与可证实性原则"
-  },
-  {
-    "slug": "philosophy-of-science",
-    "course_title": "科学的边界",
-    "id": 148,
-    "chapter_number": 8,
-    "title": "科学中的价值与客观性",
-    "description": "价值负载与科学诚信"
+    "id": 145,
+    "chapter_number": 5,
+    "title": "费耶阿本德的'怎么都行'",
+    "description": "认识论无政府主义"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 154,
-    "chapter_number": 4,
-    "title": "斯多葛与认知行为疗法",
-    "description": "Epictetus与CBT的哲学根源，引用《手册》"
+    "id": 155,
+    "chapter_number": 5,
+    "title": "克尔凯郭尔的焦虑概念",
+    "description": "引用《恐惧与颤栗》"
   }
 ]

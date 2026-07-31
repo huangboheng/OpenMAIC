@@ -1,146 +1,106 @@
 [
   {
-    "slug": "masterworks-reading",
-    "course_title": "哲学原著精读会",
-    "id": 43,
-    "chapter_number": 2,
-    "title": "《理想国》卷一：正义是什么",
-    "description": "逐句精读色拉叙马霍斯与苏格拉底的著名辩论。什么是正义？强者的利益还是灵魂的和谐？AI将帮你标注每句话的逻辑结构。"
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 92,
+    "chapter_number": 1,
+    "title": "哲学是什么",
+    "description": "从泰勒斯观测星空到柏拉图洞穴寓言，从笛卡尔的炉边沉思到AI时代的伦理困境——哲学不是一套答案，而是一种追问的方式。本章带你理解\"哲学的惊奇\"。"
   },
   {
-    "slug": "debate-academy",
-    "course_title": "AI哲学辩论学院",
-    "id": 49,
-    "chapter_number": 3,
-    "title": "谬误检测与反击",
-    "description": "20种常见谬误的识别与反驳策略：诉诸情感、循环论证、滑坡谬误、红鲱鱼……配AI谬误检测引擎实时评分。"
+    "slug": "socratic-workplace",
+    "course_title": "苏格拉底式职场",
+    "id": 36,
+    "chapter_number": 6,
+    "title": "毕业项目：一次真实的苏格拉底式对话",
+    "description": "选择一个你正在面临的职场困境，与AI苏格拉底进行完整的诘问式对话，生成分析报告和行动方案。"
+  },
+  {
+    "slug": "masterworks-reading",
+    "course_title": "哲学原著精读会",
+    "id": 46,
+    "chapter_number": 5,
+    "title": "《论道德的谱系》：好坏vs善恶",
+    "description": "尼采最具挑衅性的著作之一。精读第一篇，追踪\"好/坏\"如何被\"善/恶\"取代，理解奴隶道德起义。"
   },
   {
     "slug": "little-philosophers",
     "course_title": "小小哲学家",
-    "id": 55,
-    "chapter_number": 3,
-    "title": "好朋友是什么",
-    "description": "亚里士多德论友谊的三个层次。孩子们将通过角色扮演，讨论\"什么样的朋友才是真正的好朋友\"。"
+    "id": 56,
+    "chapter_number": 4,
+    "title": "说谎会怎样",
+    "description": "康德的绝对命令儿童版：如果你说的话变成所有人都遵守的规则，世界会怎样？鼓励诚实，但不简单地否定善意的谎言。"
   },
   {
-    "slug": "writing-workshop",
-    "course_title": "哲学写作工坊",
-    "id": 61,
+    "slug": "philosophy-plus",
+    "course_title": "哲学+X",
+    "id": 66,
     "chapter_number": 5,
-    "title": "修改是写作的灵魂",
-    "description": "好文章是改出来的。逐段修改一篇学生习作，展示从初稿到终稿的完整演化。AI教练将批改你自己的论文。"
-  },
-  {
-    "slug": "chinese-philosophy",
-    "course_title": "中国哲学通识课",
-    "id": 67,
-    "chapter_number": 1,
-    "title": "孔子与仁",
-    "description": "与AI孔子对话，理解\"仁\"的多层含义：爱人、克己复礼、己所不欲勿施于人。从《论语》选段中体会儒家核心精神。"
+    "title": "综合项目：跨学科思维导图",
+    "description": "自选一个跨学科主题（如\"气候变化\"或\"基因编辑\"），用5种哲学视角分析，生成你的跨学科思维地图。"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 79,
-    "chapter_number": 5,
-    "title": "逻辑学与认识论",
-    "description": "演绎推理规则、形式谬误、知识定义、葛梯尔问题、基础主义与融贯论——概念精讲与真题训练。"
-  },
-  {
-    "slug": "ethics-lab",
-    "course_title": "伦理学实验室",
-    "id": 85,
-    "chapter_number": 5,
-    "title": "元伦理：道德的来源",
-    "description": "道德是客观存在的还是人类发明？道德自然主义、错误理论、表达主义——当你发现\"对\"和\"错\"本身都值得怀疑时，你站在了元伦理学的门口。"
+    "id": 76,
+    "chapter_number": 2,
+    "title": "西方哲学史：近代到现代",
+    "description": "笛卡尔、康德、黑格尔、尼采、海德格尔、维特根斯坦——梳理近代哲学的主线，建立清晰的概念地图。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 91,
-    "chapter_number": 6,
-    "title": "对话的对话：元层面的反思",
-    "description": "当孔子和亚里士多德坐下来讨论\"幸福\"——他们能彼此理解吗？跨文化哲学对话的可能与限度。双Agent对话实录。"
+    "id": 86,
+    "chapter_number": 1,
+    "title": "存在与生成",
+    "description": "巴门尼德的\"存在\"遇上老子的\"道\"——是永恒不变的存在，还是生生不息的流转？双Agent对话：巴门尼德vs老子。"
   },
   {
     "slug": "daily-philosophy",
     "course_title": "哲学即生活",
-    "id": 102,
-    "chapter_number": 6,
-    "title": "禅宗正念",
-    "description": "注意力作为哲学实践，引用《六祖坛经》"
+    "id": 101,
+    "chapter_number": 5,
+    "title": "亚里士多德习惯论",
+    "description": "德性作为日常练习，引用《尼各马可伦理学》第二卷"
   },
   {
     "slug": "ai-ethics",
     "course_title": "AI时代的哲学罗盘",
-    "id": 108,
-    "chapter_number": 6,
-    "title": "推荐算法与信息茧房",
-    "description": "自由意志与操纵"
+    "id": 111,
+    "chapter_number": 9,
+    "title": "AI治理与全球正义",
+    "description": "全球视野下的AI治理框架"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 114,
-    "chapter_number": 2,
-    "title": "利益相关者vs股东至上",
-    "description": "弗里曼vs弗里德曼"
-  },
-  {
-    "slug": "philosophy-business",
-    "course_title": "哲学CEO",
-    "id": 120,
-    "chapter_number": 8,
-    "title": "领导力与德性伦理",
-    "description": "德性伦理在管理中的应用"
-  },
-  {
-    "slug": "aesthetics-philosophy",
-    "course_title": "看见美",
-    "id": 126,
-    "chapter_number": 4,
-    "title": "黑格尔的艺术终结论",
-    "description": "艺术是否已死？"
+    "id": 121,
+    "chapter_number": 9,
+    "title": "数据驱动决策的伦理边界",
+    "description": "数据主义的哲学反思"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 132,
-    "chapter_number": 2,
-    "title": "社会契约论",
-    "description": "霍布斯/洛克/卢梭，引用《利维坦》《政府论》《社会契约论》"
-  },
-  {
-    "slug": "political-philosophy",
-    "course_title": "正义的尺度",
-    "id": 138,
-    "chapter_number": 8,
-    "title": "全球正义",
-    "description": "世界主义 vs 国家主义"
+    "id": 131,
+    "chapter_number": 1,
+    "title": "为什么需要政治哲学",
+    "description": "从'我觉得不公平'到系统分析"
   },
   {
     "slug": "philosophy-of-science",
     "course_title": "科学的边界",
-    "id": 144,
-    "chapter_number": 4,
-    "title": "库恩的范式理论",
-    "description": "引用《科学革命的结构》"
-  },
-  {
-    "slug": "philosophy-of-science",
-    "course_title": "科学的边界",
-    "id": 150,
-    "chapter_number": 10,
-    "title": "科学素养与伪科学识别",
-    "description": "综合实践：伪科学识别训练"
+    "id": 141,
+    "chapter_number": 1,
+    "title": "科学是什么",
+    "description": "科学与非科学的划界问题"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 156,
-    "chapter_number": 6,
-    "title": "海德格尔的向死而生",
-    "description": "与心理治疗的关联"
+    "id": 151,
+    "chapter_number": 1,
+    "title": "哲学与心理治疗的历史渊源",
+    "description": "从古希腊到当代"
   }
 ]

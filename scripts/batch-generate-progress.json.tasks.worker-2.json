@@ -1,146 +1,106 @@
 [
   {
-    "slug": "masterworks-reading",
-    "course_title": "哲学原著精读会",
-    "id": 45,
-    "chapter_number": 4,
-    "title": "《道德形而上学奠基》：绝对命令",
-    "description": "康德伦理学的核心文本。从\"善良意志\"到\"定言命令\"的三个公式。AI白板逐句拆解论证链。"
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 94,
+    "chapter_number": 3,
+    "title": "如何思考哲学问题",
+    "description": "逻辑不是枯燥的符号游戏，而是思维的手术刀。学习区分演绎与归纳、识别常见谬误、构建有效论证。配10道逻辑诊断练习。"
+  },
+  {
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 38,
+    "chapter_number": 2,
+    "title": "选择恐惧与自我欺骗",
+    "description": "萨特的\"自欺\"理论：当我们说\"别无选择\"时，真的是别无选择，还是在逃避责任？解构职场、婚恋、消费中的选择困境。"
   },
   {
     "slug": "debate-academy",
     "course_title": "AI哲学辩论学院",
-    "id": 51,
-    "chapter_number": 5,
-    "title": "哲学专题辩论",
-    "description": "5个经典哲学辩题：自由意志存在吗？AI可以有意识吗？道德是相对的还是绝对的？与AI辩论对手/裁判进行完整辩论。"
+    "id": 48,
+    "chapter_number": 2,
+    "title": "论证的三层结构",
+    "description": "Toulmin论证模型实战：主张→理由→保证→支撑→反驳。用AI分析经典辩论片段，学习构建\"打了补丁\"的论证。"
   },
   {
     "slug": "writing-workshop",
     "course_title": "哲学写作工坊",
-    "id": 57,
-    "chapter_number": 1,
-    "title": "以写作为目的的阅读",
-    "description": "如何从哲学文本中提取论证？三步笔记法：结构还原→论证拆解→批判性回应。以罗尔斯的\"原初状态\"论证为范例。"
+    "id": 58,
+    "chapter_number": 2,
+    "title": "论题锻造工坊",
+    "description": "好的哲学论题长什么样？从模糊直觉到精确命题的五个步骤。AI将帮你检验论题的可辩驳性、范围适当性和哲学价值。"
   },
   {
-    "slug": "philosophy-plus",
-    "course_title": "哲学+X",
-    "id": 63,
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 68,
     "chapter_number": 2,
-    "title": "哲学与科技",
-    "description": "AI伦理、意识上传、模拟假说、技术奇点——用哲学工具分析当下最热的科技议题。从\"中文屋\"到\"对齐问题\"。"
+    "title": "老子与道",
+    "description": "与AI老子一起\"无为\"：什么是\"道\"？为什么\"道可道非常道\"？从《道德经》中理解道家对语言、知识和权力的深刻反思。"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 75,
-    "chapter_number": 1,
-    "title": "西方哲学史：古希腊到中世纪",
-    "description": "从泰勒斯到奥卡姆，AI苏格拉底逐人追问：每个哲学家的核心命题、论证结构、历史影响。5级追问链确保真正理解。"
-  },
-  {
-    "slug": "ethics-lab",
-    "course_title": "伦理学实验室",
-    "id": 81,
-    "chapter_number": 1,
-    "title": "后果论：电车难题与功利计算",
-    "description": "从电车难题的5个变种出发，理解边沁的功利原则、密尔的质的功利主义。思想实验：器官移植医生该不该杀一救五？"
+    "id": 78,
+    "chapter_number": 4,
+    "title": "伦理学与政治哲学",
+    "description": "功利主义、义务论、德性伦理、契约论、正义理论。横向对比+纵向演进的交叉复习法。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 87,
-    "chapter_number": 2,
-    "title": "自我与社会",
-    "description": "儒家\"修身齐家治国平天下\"vs柏拉图\"灵魂的三分结构\"——东西方如何定义\"好人\"？概念谱系图对比。"
-  },
-  {
-    "slug": "daily-philosophy",
-    "course_title": "哲学即生活",
-    "id": 98,
-    "chapter_number": 2,
-    "title": "伊壁鸠鲁快乐计算",
-    "description": "欲望分类与减法生活，引用《致美诺寇斯信》"
+    "id": 88,
+    "chapter_number": 3,
+    "title": "知识与智慧",
+    "description": "苏格拉底的\"无知之知\"vs庄子的\"吾丧我\"——两种\"知道你不知道\"的路径。智识谦逊的东西方版本。"
   },
   {
     "slug": "ai-ethics",
     "course_title": "AI时代的哲学罗盘",
-    "id": 104,
-    "chapter_number": 2,
-    "title": "自动驾驶电车难题",
-    "description": "功利主义vs义务论，引用边沁《道德与立法原理》、康德《道德形而上学基础》"
-  },
-  {
-    "slug": "ai-ethics",
-    "course_title": "AI时代的哲学罗盘",
-    "id": 110,
-    "chapter_number": 8,
-    "title": "技术异化与劳动哲学",
-    "description": "马克思《1844年经济学哲学手稿》vs韩炳哲《倦怠社会》"
+    "id": 103,
+    "chapter_number": 1,
+    "title": "技术中立论的破产",
+    "description": "导论：技术不是中性的，它内嵌价值选择"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 116,
-    "chapter_number": 4,
-    "title": "谈判中的逻辑与修辞",
-    "description": "亚里士多德《修辞学》"
-  },
-  {
-    "slug": "philosophy-business",
-    "course_title": "哲学CEO",
-    "id": 122,
-    "chapter_number": 10,
-    "title": "构建你的商业哲学宣言",
-    "description": "综合实践：撰写个人商业哲学"
+    "id": 113,
+    "chapter_number": 1,
+    "title": "利润之上的目的论",
+    "description": "亚里士多德《尼各马可伦理学》目的论"
   },
   {
     "slug": "aesthetics-philosophy",
     "course_title": "看见美",
-    "id": 128,
-    "chapter_number": 6,
-    "title": "杜威的艺术即经验",
-    "description": "引用《艺术即经验》"
+    "id": 123,
+    "chapter_number": 1,
+    "title": "什么是美",
+    "description": "柏拉图美的理念到当代"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 134,
-    "chapter_number": 4,
-    "title": "自由至上主义",
-    "description": "诺齐克的最小国家，引用《无政府、国家与乌托邦》"
-  },
-  {
-    "slug": "political-philosophy",
-    "course_title": "正义的尺度",
-    "id": 140,
-    "chapter_number": 10,
-    "title": "实践：分析真实公共政策争议",
-    "description": "综合实践：结构化政策分析"
+    "id": 133,
+    "chapter_number": 3,
+    "title": "罗尔斯正义论",
+    "description": "无知之幕与差别原则，引用《正义论》"
   },
   {
     "slug": "philosophy-of-science",
     "course_title": "科学的边界",
-    "id": 146,
-    "chapter_number": 6,
-    "title": "科学实在论vs反实在论",
-    "description": "科学理论是否描述真实？"
+    "id": 143,
+    "chapter_number": 3,
+    "title": "波普尔的证伪主义",
+    "description": "引用《科学发现的逻辑》"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 152,
-    "chapter_number": 2,
-    "title": "弗兰克尔的意义疗法",
-    "description": "引用《活出生命的意义》"
-  },
-  {
-    "slug": "philosophy-therapy",
-    "course_title": "哲学疗愈室",
-    "id": 158,
-    "chapter_number": 8,
-    "title": "哲学咨询的基本方法",
-    "description": "苏格拉底式对话在咨询中的应用"
+    "id": 153,
+    "chapter_number": 3,
+    "title": "亚隆的存在主义心理治疗",
+    "description": "死亡/自由/孤独/无意义四大终极关怀"
   }
 ]

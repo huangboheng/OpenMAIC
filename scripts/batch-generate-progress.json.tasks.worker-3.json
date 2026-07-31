@@ -1,146 +1,106 @@
 [
   {
-    "slug": "masterworks-reading",
-    "course_title": "哲学原著精读会",
-    "id": 46,
-    "chapter_number": 5,
-    "title": "《论道德的谱系》：好坏vs善恶",
-    "description": "尼采最具挑衅性的著作之一。精读第一篇，追踪\"好/坏\"如何被\"善/恶\"取代，理解奴隶道德起义。"
+    "slug": "philosophy-101",
+    "course_title": "哲学第一课",
+    "id": 95,
+    "chapter_number": 4,
+    "title": "东西方哲学地图",
+    "description": "从先秦诸子到希腊三哲，从印度吠檀多到德国观念论——一张全景地图，帮你找到自己在哲学大陆上的位置。每条路径配一位AI哲学家导游。"
+  },
+  {
+    "slug": "existential-self-help",
+    "course_title": "存在主义自救手册",
+    "id": 39,
+    "chapter_number": 3,
+    "title": "意义危机的四张面孔",
+    "description": "加缪的荒谬、托尔斯泰的绝望、尼采的上帝之死、弗兰克尔的意义疗法——四种诊断，四种药方。找到属于你的那个。"
   },
   {
     "slug": "debate-academy",
     "course_title": "AI哲学辩论学院",
-    "id": 52,
-    "chapter_number": 6,
-    "title": "结业辩论赛",
-    "description": "完整辩论赛：立论→质询→自由辩论→总结陈词。AI裁判给出评分报告和Elo排名更新。"
+    "id": 49,
+    "chapter_number": 3,
+    "title": "谬误检测与反击",
+    "description": "20种常见谬误的识别与反驳策略：诉诸情感、循环论证、滑坡谬误、红鲱鱼……配AI谬误检测引擎实时评分。"
   },
   {
     "slug": "writing-workshop",
     "course_title": "哲学写作工坊",
-    "id": 58,
-    "chapter_number": 2,
-    "title": "论题锻造工坊",
-    "description": "好的哲学论题长什么样？从模糊直觉到精确命题的五个步骤。AI将帮你检验论题的可辩驳性、范围适当性和哲学价值。"
+    "id": 59,
+    "chapter_number": 3,
+    "title": "论证的七种武器",
+    "description": "演绎论证、归纳论证、类比论证、归谬法、思想实验、案例分析法、谱系学方法。每种配实例训练和AI点评。"
   },
   {
-    "slug": "philosophy-plus",
-    "course_title": "哲学+X",
-    "id": 64,
+    "slug": "chinese-philosophy",
+    "course_title": "中国哲学通识课",
+    "id": 69,
     "chapter_number": 3,
-    "title": "哲学与艺术",
-    "description": "什么是美？艺术的定义权之争。从杜尚的《泉》到AI绘画，哲学如何帮助我们理解艺术的边界与价值。"
+    "title": "庄子与逍遥",
+    "description": "逍遥游、齐物论、庖丁解牛——与AI庄子探讨自由的真谛。蝴蝶梦中的\"物化\"如何颠覆笛卡尔式的自我观？"
   },
   {
     "slug": "grad-exam-cram",
     "course_title": "考研哲学冲刺营",
-    "id": 76,
-    "chapter_number": 2,
-    "title": "西方哲学史：近代到现代",
-    "description": "笛卡尔、康德、黑格尔、尼采、海德格尔、维特根斯坦——梳理近代哲学的主线，建立清晰的概念地图。"
-  },
-  {
-    "slug": "ethics-lab",
-    "course_title": "伦理学实验室",
-    "id": 82,
-    "chapter_number": 2,
-    "title": "义务论：撒谎的绝对禁令？",
-    "description": "康德的定言命令实操：可普遍化检验。如果纳粹敲门问犹太人藏在哪里——你会对康德怎么说？道德坐标可视化。"
+    "id": 79,
+    "chapter_number": 5,
+    "title": "逻辑学与认识论",
+    "description": "演绎推理规则、形式谬误、知识定义、葛梯尔问题、基础主义与融贯论——概念精讲与真题训练。"
   },
   {
     "slug": "east-west-dialogue",
     "course_title": "东西方哲学对话录",
-    "id": 88,
-    "chapter_number": 3,
-    "title": "知识与智慧",
-    "description": "苏格拉底的\"无知之知\"vs庄子的\"吾丧我\"——两种\"知道你不知道\"的路径。智识谦逊的东西方版本。"
-  },
-  {
-    "slug": "daily-philosophy",
-    "course_title": "哲学即生活",
-    "id": 99,
-    "chapter_number": 3,
-    "title": "道家无为",
-    "description": "不内耗的行动哲学，引用《道德经》第三十七章、《庄子·逍遥游》"
+    "id": 89,
+    "chapter_number": 4,
+    "title": "道德推理的东西方差异",
+    "description": "康德式普遍规则vs儒家情境伦理——为什么西方人觉得\"亲亲相隐\"不道德，中国人觉得\"大义灭亲\"不近人情？"
   },
   {
     "slug": "ai-ethics",
     "course_title": "AI时代的哲学罗盘",
-    "id": 105,
-    "chapter_number": 3,
-    "title": "算法偏见与分配正义",
-    "description": "罗尔斯无知之幕，引用《正义论》"
-  },
-  {
-    "slug": "ai-ethics",
-    "course_title": "AI时代的哲学罗盘",
-    "id": 111,
-    "chapter_number": 9,
-    "title": "AI治理与全球正义",
-    "description": "全球视野下的AI治理框架"
+    "id": 104,
+    "chapter_number": 2,
+    "title": "自动驾驶电车难题",
+    "description": "功利主义vs义务论，引用边沁《道德与立法原理》、康德《道德形而上学基础》"
   },
   {
     "slug": "philosophy-business",
     "course_title": "哲学CEO",
-    "id": 117,
-    "chapter_number": 5,
-    "title": "企业社会责任的哲学根基",
-    "description": "康德'人是目的'《道德形而上学基础》"
+    "id": 114,
+    "chapter_number": 2,
+    "title": "利益相关者vs股东至上",
+    "description": "弗里曼vs弗里德曼"
   },
   {
     "slug": "aesthetics-philosophy",
     "course_title": "看见美",
-    "id": 123,
-    "chapter_number": 1,
-    "title": "什么是美",
-    "description": "柏拉图美的理念到当代"
-  },
-  {
-    "slug": "aesthetics-philosophy",
-    "course_title": "看见美",
-    "id": 129,
-    "chapter_number": 7,
-    "title": "数字时代的美学",
-    "description": "AI艺术是艺术吗？算法审美与人类创造力"
+    "id": 124,
+    "chapter_number": 2,
+    "title": "康德的审美判断",
+    "description": "无目的的合目的性，引用《判断力批判》"
   },
   {
     "slug": "political-philosophy",
     "course_title": "正义的尺度",
-    "id": 135,
-    "chapter_number": 5,
-    "title": "社群主义批评",
-    "description": "桑德尔与麦金太尔"
+    "id": 134,
+    "chapter_number": 4,
+    "title": "自由至上主义",
+    "description": "诺齐克的最小国家，引用《无政府、国家与乌托邦》"
   },
   {
     "slug": "philosophy-of-science",
     "course_title": "科学的边界",
-    "id": 141,
-    "chapter_number": 1,
-    "title": "科学是什么",
-    "description": "科学与非科学的划界问题"
-  },
-  {
-    "slug": "philosophy-of-science",
-    "course_title": "科学的边界",
-    "id": 147,
-    "chapter_number": 7,
-    "title": "科学解释的模型",
-    "description": "DN模型与因果模型"
+    "id": 144,
+    "chapter_number": 4,
+    "title": "库恩的范式理论",
+    "description": "引用《科学革命的结构》"
   },
   {
     "slug": "philosophy-therapy",
     "course_title": "哲学疗愈室",
-    "id": 153,
-    "chapter_number": 3,
-    "title": "亚隆的存在主义心理治疗",
-    "description": "死亡/自由/孤独/无意义四大终极关怀"
-  },
-  {
-    "slug": "philosophy-therapy",
-    "course_title": "哲学疗愈室",
-    "id": 159,
-    "chapter_number": 9,
-    "title": "构建你的哲学疗愈工具箱",
-    "description": "综合实践：建立个人哲学疗愈方案"
+    "id": 154,
+    "chapter_number": 4,
+    "title": "斯多葛与认知行为疗法",
+    "description": "Epictetus与CBT的哲学根源，引用《手册》"
   }
 ]
