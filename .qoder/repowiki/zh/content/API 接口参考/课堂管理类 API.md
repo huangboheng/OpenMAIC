@@ -9,23 +9,26 @@
 - [app/api/export-video/capability/route.ts](file://app/api/export-video/capability/route.ts)
 - [app/api/proxy-media/route.ts](file://app/api/proxy-media/route.ts)
 - [app/api/generate-classroom/route.ts](file://app/api/generate-classroom/route.ts)
+- [proxy.ts](file://proxy.ts)
 - [lib/server/api-response.ts](file://lib/server/api-response.ts)
 - [lib/logger.ts](file://lib/logger.ts)
 </cite>
 
 ## 更新摘要
 **所做更改**   
-- 增强了课堂 API 的错误日志记录，特别是在文件系统未找到的场景中提供更详细的错误信息
-- 改进了 HTTP 状态码捕获和响应文本记录功能
-- 增强了网络问题和 API 诊断的详细错误信息
-- 优化了媒体文件访问的错误处理逻辑
+- 更新了认证机制说明，新增 GET-only 白名单功能，允许 /api/classroom 和 /api/classroom-media/ 的只读访问无需认证
+- 详细说明了页面级 OAuth 重定向与 API 级认证的分离机制
+- 增强了错误处理与日志记录功能的描述
+- 优化了媒体文件访问的安全策略说明
 
 ## 产品概述
 OpenMAIC 的课堂管理类 API 提供课堂（Classroom）的创建、查询与媒体资源管理，以及视频导出渲染的异步处理能力。该系列接口面向前端与集成方，统一通过 Next.js App Router 暴露 RESTful 端点，采用统一的响应封装与错误码体系，支持流式传输、SSRF 防护、大小限制与代理转发等关键能力。
 
+**重要安全特性**：系统实现了分层认证机制，页面级访问需要完整的 OAuth 认证流程，而课堂数据读取 API 通过 GET-only 白名单实现无认证访问，确保内容可被公开访问的同时保持安全性。
+
 ## 核心业务流程
-- 课堂创建与获取：POST /api/classroom 创建课堂并持久化；GET /api/classroom?id=... 获取课堂详情。
-- 课堂媒体访问：GET /api/classroom-media/:classroomId/media|audio/... 安全地读取本地媒体文件，支持流式输出与缓存头。
+- 课堂创建与获取：POST /api/classroom 创建课堂并持久化；GET /api/classroom?id=... 获取课堂详情（无需认证）。
+- 课堂媒体访问：GET /api/classroom-media/:classroomId/media|audio/... 安全地读取本地媒体文件，支持流式输出与缓存头（无需认证）。
 - 远程媒体代理：POST /api/proxy-media 代理下载远端媒体，进行 SSRF 校验、重定向处理与类型白名单过滤。
 - 视频导出渲染：POST /api/export-video/render 提交 ZIP 包到渲染服务；GET /api/export-video/render/:jobId 轮询状态；DELETE /api/export-video/render/:jobId 取消任务；GET /api/export-video/capability 探测渲染能力。
 - 课堂生成（可选扩展）：POST /api/generate-classroom 创建生成任务；GET /api/generate-classroom/:jobId 轮询进度与结果。
@@ -33,16 +36,19 @@ OpenMAIC 的课堂管理类 API 提供课堂（Classroom）的创建、查询与
 ```mermaid
 sequenceDiagram
 participant Client as "客户端"
+participant Auth as "认证中间件"
 participant ClassroomAPI as "课堂API"
 participant MediaAPI as "媒体API"
 participant ProxyMedia as "代理媒体API"
 participant ExportRender as "导出渲染API"
 participant RenderService as "渲染服务(外部)"
-Client->>ClassroomAPI : POST /api/classroom (stage, scenes)
-ClassroomAPI-->>Client : {success, id, url}
-Client->>ClassroomAPI : GET /api/classroom?id={id}
+Note over Client,Auth : 页面访问需要完整OAuth认证
+Client->>Auth : 访问 /classroom/{id}
+Auth-->>Client : 307 重定向到 OAuth
+Note over Client,Auth : API访问使用GET白名单
+Client->>ClassroomAPI : GET /api/classroom?id={id} (无需认证)
 ClassroomAPI-->>Client : {success, classroom}
-Client->>MediaAPI : GET /api/classroom-media/{classroomId}/media/...
+Client->>MediaAPI : GET /api/classroom-media/{classroomId}/media/... (无需认证)
 MediaAPI-->>Client : 二进制流(带Content-Type/Length/Cache-Control)
 Client->>ProxyMedia : POST /api/proxy-media {url}
 ProxyMedia->>ProxyMedia : SSRF校验/重定向/大小限制
@@ -68,14 +74,15 @@ ExportRender-->>Client : {success, cancelled}
 - [app/api/proxy-media/route.ts:23-92](file://app/api/proxy-media/route.ts#L23-L92)
 - [app/api/export-video/render/route.ts:46-113](file://app/api/export-video/render/route.ts#L46-L113)
 - [app/api/export-video/render/[jobId]/route.ts:12-57](file://app/api/export-video/render/[jobId]/route.ts#L12-L57)
+- [proxy.ts:43-50](file://proxy.ts#L43-L50)
 
 ## 功能模块清单
 - 课堂 CRUD
   - 创建课堂：POST /api/classroom，接收 stage 与 scenes，返回 id 与 url。
-  - 获取课堂：GET /api/classroom?id=...，返回 classroom 对象。
+  - 获取课堂：GET /api/classroom?id=...，返回 classroom 对象（**无需认证**）。
   - 删除/更新：当前路由未直接实现，可通过上层存储层或前端调用其他接口完成（本仓库未包含对应路由）。
 - 课堂媒体管理
-  - 读取媒体：GET /api/classroom-media/:classroomId/{media|audio}/...，仅允许 media 与 audio 子目录，防止路径穿越，流式输出。
+  - 读取媒体：GET /api/classroom-media/:classroomId/{media|audio}/...，仅允许 media 与 audio 子目录，防止路径穿越，流式输出（**无需认证**）。
 - 远程媒体代理
   - 代理下载：POST /api/proxy-media，校验 URL、限制重定向次数、限制大小、强制安全 Content-Type。
 - 视频导出渲染
@@ -140,8 +147,11 @@ ReturnError --> End
 - [app/api/generate-classroom/route.ts:14-72](file://app/api/generate-classroom/route.ts#L14-L72)
 
 ## 关键约束与边界
-- 权限验证
-  - 当前路由未内置鉴权中间件；如需鉴权，应在反向代理或网关层实现，或在应用层增加认证检查。
+- **权限验证机制**
+  - **GET-only 白名单**：/api/classroom 和 /api/classroom-media/ 的 GET 请求无需认证，允许公开访问课堂数据和媒体资源。
+  - **页面级认证**：所有页面访问（如 /classroom/{id}）仍需完整的 OAuth 认证流程，未认证用户会被重定向到授权页面。
+  - **其他 API**：除白名单外的所有 API 都需要有效的会话认证或服务密钥。
+  - **速率限制**：即使白名单 API 也受速率限制保护，防止滥用。
 - 文件大小限制
   - 课堂媒体：无显式上限，但受限于服务器磁盘与网络带宽。
   - 代理媒体：最大 25 MiB。
@@ -159,8 +169,11 @@ ReturnError --> End
   - 路径穿越防护：媒体读取严格校验子目录与真实路径。
   - SSRF 防护：代理媒体对初始 URL 与每次重定向目标进行校验。
   - 内容类型白名单：仅允许 image/*、video/*、audio/*，其余回退为 octet-stream。
+  - **安全设计原则**：课堂 ID 使用不可猜测的 10 字符 nanoid，确保即使 API 公开访问也不会泄露敏感内容。
 
 **章节来源**
+- [proxy.ts:43-50](file://proxy.ts#L43-L50)
+- [proxy.ts:101-116](file://proxy.ts#L101-L116)
 - [lib/server/api-response.ts:1-51](file://lib/server/api-response.ts#L1-L51)
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
 - [app/api/proxy-media/route.ts:23-92](file://app/api/proxy-media/route.ts#L23-L92)
@@ -209,11 +222,13 @@ ReturnError --> End
   - 方法：GET
   - 路径：/api/classroom?id={id}
   - 响应：{ success: true, classroom: object }
+  - **无需认证**，可直接访问
   - 错误：INVALID_REQUEST、INTERNAL_ERROR
 - 读取课堂媒体
   - 方法：GET
   - 路径：/api/classroom-media/{classroomId}/media/{...path} 或 /api/classroom-media/{classroomId}/audio/{...path}
   - 响应：二进制流（Content-Type、Content-Length、Cache-Control）
+  - **无需认证**，可直接访问
   - 错误：INVALID_REQUEST、NOT_FOUND、INTERNAL_ERROR
 - 代理远程媒体
   - 方法：POST

@@ -20,11 +20,12 @@
 - 更新核心业务流程，包含新的异步作业处理和回调机制
 - 新增回调 URL 配置和服务间认证功能
 - 扩展数据模型以支持章节映射和批量写入
+- **新增增强功能**：课堂生成作业运行器现在在通知 Philochora 时传递场景数量和总时长元数据，为下游系统提供更好的资源规划和进度跟踪能力
 
 ## 产品概述
 本章节聚焦 OpenMAIC 与 Philochora 的"连续学习"进度回传能力。当 OpenMAIC 课堂通过 Philochora 课程详情页以 iframe 形式嵌入时，OpenMAIC 会在课堂完成页自动上报当前章节完成状态至 Philochora，用于记录学习进度、同步章节高亮等。该能力由前端组件触发、服务端代理签名转发，并通过 URL 参数传递上下文信息，确保在跨页面跳转中保持用户与课程标识一致。
 
-**更新** 新增了课堂生成系统的增强功能，支持在课堂内容生成完成后自动通知外部服务（如 Philochora），实现端到端的自动化流程。
+**更新** 新增了课堂生成系统的增强功能，支持在课堂内容生成完成后自动通知外部服务（如 Philochora），实现端到端的自动化流程。最新的增强包括传递场景数量和总时长信息，为下游系统提供宝贵的元数据。
 
 ## 核心业务流程
 - **传统流程**：Philochora 将带有 chapters、chapterIndex、philochoraUserId、courseSlug 等参数的 URL 打开 OpenMAIC 课堂。
@@ -38,6 +39,7 @@
 - **进度跟踪**：GET /api/generate-classroom/[jobId] 提供实时进度查询
 - **自动回调**：生成成功后自动调用配置的 callbackUrl 通知外部服务
 - **认证机制**：通过 x-openmaic-api-key 头进行服务间认证
+- **增强元数据**：回调时传递场景数量和总时长信息，支持更好的资源规划
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +58,7 @@ API-->>FE : {ok : true} 或错误
 FE-->>U : 静默失败不影响体验
 ```
 
-**更新** 新增课堂生成回调流程图：
+**更新** 新增课堂生成回调流程图，包含增强的元数据传递：
 
 ```mermaid
 sequenceDiagram
@@ -71,9 +73,9 @@ API->>Store : 创建作业记录
 API-->>Client : 返回 jobId + pollUrl
 API->>Job : 启动异步作业
 Job->>Gen : 执行课堂生成
-Gen-->>Job : 返回生成结果
+Gen-->>Job : 返回生成结果 (含 scenesCount, totalDuration)
 Job->>Store : 标记作业成功
-Job->>External : POST 回调通知 (含 classroomId, chapters)
+Job->>External : POST 回调通知 (含 classroomId, chapters, scenesCount, totalDuration)
 External-->>Job : 确认接收
 Job-->>Store : 清理作业状态
 ```
@@ -82,6 +84,7 @@ Job-->>Store : 清理作业状态
 - [components/scene-renderers/next-lesson.tsx:40-56](file://components/scene-renderers/next-lesson.tsx#L40-L56)
 - [app/api/philochora/chapter-complete/route.ts:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
 - [lib/server/classroom-job-runner.ts:14-53](file://lib/server/classroom-job-runner.ts#L14-L53)
+- [lib/server/classroom-generation.ts:546-570](file://lib/server/classroom-generation.ts#L546-L570)
 
 **章节来源**
 - [components/scene-renderers/next-lesson.tsx:40-56](file://components/scene-renderers/next-lesson.tsx#L40-L56)
@@ -115,6 +118,9 @@ Job-->>Store : 清理作业状态
 - **回调通知系统（notifyPhilochora）**
   - 职责：在课堂生成成功后调用外部服务，传递课程信息和章节映射。
   - 验收要点：支持服务间认证、错误处理、日志记录。
+- **增强的元数据传递**
+  - 职责：在回调通知中包含场景数量和总时长信息。
+  - 验收要点：scenesCount 字段准确反映生成的场景数量；totalDuration 字段以分钟为单位估算总时长。
 
 **章节来源**
 - [lib/hooks/use-continuous-learning.ts:1-168](file://lib/hooks/use-continuous-learning.ts#L1-L168)
@@ -122,7 +128,7 @@ Job-->>Store : 清理作业状态
 - [app/api/philochora/chapter-complete/route.ts:1-94](file://app/api/philochora/chapter-complete/route.ts#L1-L94)
 - [components/scene-renderers/classroom-complete.tsx:480-507](file://components/scene-renderers/classroom-complete.tsx#L480-L507)
 - [app/api/generate-classroom/route.ts:1-77](file://app/api/generate-classroom/route.ts#L1-L77)
-- [lib/server/classroom-job-runner.ts:1-98](file://lib/server/classroom-job-runner.ts#L1-L98)
+- [lib/server/classroom-job-runner.ts:1-102](file://lib/server/classroom-job-runner.ts#L1-L102)
 
 ## 数据与状态
 - **URL 参数**
@@ -153,10 +159,12 @@ Job-->>Store : 清理作业状态
   - step：当前步骤（initializing | researching | generating_outlines | ...）。
   - progress：进度百分比（0-100）。
   - result：生成结果（包含 classroomId、url、scenesCount）。
-- **回调载荷**
+- **增强的回调载荷**
   - courseSlug：课程标识。
   - classroomId：生成的课堂 ID。
   - chapters：章节映射数组 [{ chapterNumber, classroomId }]。
+  - **scenesCount**：生成的场景数量，用于资源规划。
+  - **totalDuration**：估算的总时长（分钟），用于进度跟踪和资源分配。
 
 ```mermaid
 flowchart TD
@@ -180,7 +188,7 @@ Create["POST /api/generate-classroom"] --> CreateJob["创建作业记录"]
 CreateJob --> AsyncJob["启动异步作业"]
 AsyncJob --> Generate["执行课堂生成"]
 Generate --> Success{"生成成功?"}
-Success --> |是| Notify["调用 callbackUrl 通知"]
+Success --> |是| Notify["调用 callbackUrl 通知<br/>含 scenesCount, totalDuration"]
 Notify --> Complete["作业完成"]
 Success --> |否| Fail["标记作业失败"]
 Fail --> Complete
@@ -192,6 +200,7 @@ end
 - [components/scene-renderers/next-lesson.tsx:40-56](file://components/scene-renderers/next-lesson.tsx#L40-L56)
 - [app/api/philochora/chapter-complete/route.ts:30-93](file://app/api/philochora/chapter-complete/route.ts#L30-L93)
 - [lib/server/classroom-job-runner.ts:55-98](file://lib/server/classroom-job-runner.ts#L55-L98)
+- [lib/server/classroom-generation.ts:546-570](file://lib/server/classroom-generation.ts#L546-L570)
 
 **章节来源**
 - [lib/hooks/use-continuous-learning.ts:27-63](file://lib/hooks/use-continuous-learning.ts#L27-L63)
@@ -227,6 +236,9 @@ end
 - **错误处理**
   - 回调失败不影响主流程，仅记录警告日志。
   - 网络异常时重试机制有限制，避免无限重试。
+- **元数据准确性**
+  - scenesCount 必须准确反映实际生成的场景数量。
+  - totalDuration 基于 speech actions 和其他 action 类型估算，提供合理的时长预估。
 
 **章节来源**
 - [app/api/philochora/chapter-complete/route.ts:17-43](file://app/api/philochora/chapter-complete/route.ts#L17-L43)
@@ -236,3 +248,4 @@ end
 - [e2e/tests/continuous-learning-callback.spec.ts:117-141](file://e2e/tests/continuous-learning-callback.spec.ts#L117-L141)
 - [lib/server/classroom-job-runner.ts:14-53](file://lib/server/classroom-job-runner.ts#L14-L53)
 - [lib/server/classroom-job-store.ts:96-98](file://lib/server/classroom-job-store.ts#L96-98)
+- [lib/server/classroom-generation.ts:546-570](file://lib/server/classroom-generation.ts#L546-L570)
