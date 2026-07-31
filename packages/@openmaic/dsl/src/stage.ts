@@ -95,6 +95,12 @@ export interface Stage {
   // Stage metadata
   languageDirective?: string;
   style?: string;
+  /** 总时长（分钟）— 课程预估总时长 */
+  totalDuration?: number;
+  /** 预估时长（分钟）— 基于内容估算的时长 */
+  estimatedDuration?: number;
+  /** 难度等级 — 课程难度标识 */
+  difficulty?: string;
   // Whiteboard data
   whiteboard?: Whiteboard[];
   // Generated video requests keyed by the mediaRef used by PPTVideoElement.

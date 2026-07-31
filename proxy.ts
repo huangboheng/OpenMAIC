@@ -40,6 +40,15 @@ const AUTH_WHITELIST = [
   '/logos/',
 ];
 
+// GET-only paths excluded from auth (still subject to rate limiting).
+// Classroom data is addressed by unguessable 10-char nanoid; the classroom
+// PAGE itself is still auth-gated (307 → OAuth), so exposing the read-only
+// data endpoint does not leak content to unauthenticated browsers.
+const GET_AUTH_WHITELIST = [
+  '/api/classroom',        // GET /api/classroom?id=xxx (read classroom JSON)
+  '/api/classroom-media/', // GET /api/classroom-media/:id/:path (media assets)
+];
+
 // SEC-03: Rate limit patterns
 const HIGH_COST_PATTERN = /^\/api\/(generate-classroom|generate\/(image|video|tts|voice)|export-video|pbl)/;
 const GENERAL_API_PATTERN = /^\/api\//;
@@ -58,6 +67,10 @@ function getClientIp(request: NextRequest): string {
 
 function isWhitelisted(pathname: string): boolean {
   return AUTH_WHITELIST.some((p) => pathname.startsWith(p));
+}
+
+function isGetWhitelisted(pathname: string, method: string): boolean {
+  return method === 'GET' && GET_AUTH_WHITELIST.some((p) => pathname.startsWith(p));
 }
 
 /** SEC-01: Verify service-to-service API key (Philochora -> OpenMAIC) */
@@ -82,6 +95,23 @@ export async function proxy(request: NextRequest) {
 
   // Skip auth for whitelisted paths
   if (isWhitelisted(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Skip auth for GET-only whitelisted paths (classroom data read).
+  // Rate limiting still applies below.
+  if (isGetWhitelisted(pathname, request.method)) {
+    // Fall through to rate limiting section, then return next()
+    if (GENERAL_API_PATTERN.test(pathname)) {
+      const ip = getClientIp(request);
+      const result = checkRateLimit(`api:${ip}`, 60, 60_000);
+      if (!result.allowed) {
+        return NextResponse.json(
+          { success: false, errorCode: 'RATE_LIMITED', error: 'Too many requests. Please wait.' },
+          { status: 429, headers: { 'Retry-After': String(Math.ceil((result.resetAt - Date.now()) / 1000)) } },
+        );
+      }
+    }
     return NextResponse.next();
   }
 

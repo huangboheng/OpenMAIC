@@ -14,6 +14,8 @@ const runningJobs = new Map<string, Promise<void>>();
 async function notifyPhilochora(
   input: GenerateClassroomInput,
   classroomId: string,
+  scenesCount?: number,
+  totalDuration?: number,
 ): Promise<void> {
   const { callbackUrl, courseSlug, chapterMapping, serviceApiKey } = input;
   if (!callbackUrl || !courseSlug) return;
@@ -33,6 +35,8 @@ async function notifyPhilochora(
         courseSlug,
         classroomId,
         chapters: chapterMapping,
+        scenesCount,
+        totalDuration,
       }),
     });
 
@@ -77,7 +81,7 @@ export function runClassroomGenerationJob(
 
       // 通知 Philochora 课堂生成完成
       if (input.callbackUrl && input.courseSlug) {
-        await notifyPhilochora(input, result.id);
+        await notifyPhilochora(input, result.id, result.scenesCount, result.stage.totalDuration);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

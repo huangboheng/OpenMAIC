@@ -25,6 +25,14 @@ export interface ClassroomPayload {
   scenes: Scene[];
 }
 
+/** Thrown when the classroom API returns 401 — the user's session/access cookie expired. */
+export class ClassroomAuthError extends Error {
+  constructor(message = 'Authentication expired, please re-enter the classroom from the course page') {
+    super(message);
+    this.name = 'ClassroomAuthError';
+  }
+}
+
 interface Logger {
   info: (...args: unknown[]) => void;
   warn: (...args: unknown[]) => void;
@@ -203,6 +211,12 @@ export async function fetchClassroomFromApi(classroomId: string): Promise<Classr
       signal: AbortSignal.timeout(CLASSROOM_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        console.warn(
+          `[Classroom] API auth failed for "${classroomId}": HTTP 401 — session or access cookie expired`,
+        );
+        throw new ClassroomAuthError();
+      }
       console.warn(
         `[Classroom] API fetch failed for "${classroomId}": HTTP ${res.status} ${res.statusText}`,
       );
@@ -222,6 +236,9 @@ export async function fetchClassroomFromApi(classroomId: string): Promise<Classr
     }
     return json.classroom;
   } catch (err) {
+    // Let auth errors propagate so runClassroomLoad shows an actionable message
+    // instead of the generic "no loadable data".
+    if (err instanceof ClassroomAuthError) throw err;
     console.warn(`[Classroom] API fetch error for "${classroomId}":`, err);
     return null;
   }

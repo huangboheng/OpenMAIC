@@ -543,6 +543,32 @@ export async function generateClassroom(
     }
   }
 
+  // 计算总时长：从 scenes 的 speech actions 中累加估算时长
+  // 估算公式：中文约 4 字/秒，英文约 2 词/秒，加上其他 action 的固定时长
+  const totalDurationSeconds = scenes.reduce((total, scene) => {
+    const sceneDuration = (scene.actions || []).reduce((acc, action) => {
+      if (action.type === 'speech') {
+        // 估算 speech 时长：中文 4 字/秒，英文 2 词/秒
+        const text = action.text || '';
+        const chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+        const englishWords = (text.match(/[a-zA-Z]+/g) || []).length;
+        const speechSeconds = chineseChars / 4 + englishWords / 2;
+        return acc + speechSeconds;
+      }
+      // 其他同步 action 估算 2 秒
+      if (['wb_open', 'wb_draw_text', 'wb_draw_shape', 'wb_draw_chart', 'wb_draw_latex', 'wb_draw_table', 'wb_draw_line', 'wb_draw_code', 'wb_edit_code', 'wb_clear', 'wb_delete', 'wb_close', 'discussion', 'play_video'].includes(action.type)) {
+        return acc + 2;
+      }
+      return acc;
+    }, 0);
+    return total + sceneDuration;
+  }, 0);
+
+  // 转换为分钟（向上取整）
+  const totalDurationMinutes = Math.ceil(totalDurationSeconds / 60);
+  stage.totalDuration = totalDurationMinutes;
+  stage.estimatedDuration = totalDurationMinutes;
+
   await options.onProgress?.({
     step: 'persisting',
     progress: 98,
