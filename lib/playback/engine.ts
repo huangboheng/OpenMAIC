@@ -391,6 +391,17 @@ export class PlaybackEngine {
     // action and AudioPlayer.play() picks up the new voice automatically.
   }
 
+  /**
+   * Consume a discussion and immediately publish a progress snapshot.
+   * `onProgress` otherwise fires before a discussion action executes (the id
+   * is not yet consumed) and a discussion is the scene's last action, so
+   * without this emit the consumption fact would never reach persistence.
+   */
+  private markDiscussionConsumed(id: string): void {
+    this.consumedDiscussions.add(id);
+    this.callbacks.onProgress?.(this.getSnapshot());
+  }
+
   /** User clicks "Join" on ProactiveCard → save cursor → live */
   confirmDiscussion(): void {
     if (!this.currentTrigger) {
@@ -400,7 +411,7 @@ export class PlaybackEngine {
     this.invalidatePlaybackGeneration();
 
     // Mark consumed so it won't re-trigger on replay
-    this.consumedDiscussions.add(this.currentTrigger.id);
+    this.markDiscussionConsumed(this.currentTrigger.id);
 
     // Save lecture state — keep actionIndex as-is (past the discussion).
     // Discussions are placed after all speech actions, so the preceding
@@ -425,7 +436,7 @@ export class PlaybackEngine {
   /** User clicks "Skip" on ProactiveCard → consumed → processNext */
   skipDiscussion(): void {
     if (this.currentTrigger) {
-      this.consumedDiscussions.add(this.currentTrigger.id);
+      this.markDiscussionConsumed(this.currentTrigger.id);
       this.currentTrigger = null;
     }
     const generation = this.invalidatePlaybackGeneration();
@@ -761,7 +772,7 @@ export class PlaybackEngine {
           this.callbacks.isAgentSelected &&
           !this.callbacks.isAgentSelected(discussionAction.agentId)
         ) {
-          this.consumedDiscussions.add(discussionAction.id);
+          this.markDiscussionConsumed(discussionAction.id);
           this.processNext(generation);
           return;
         }

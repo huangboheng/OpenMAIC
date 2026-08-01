@@ -21,7 +21,6 @@ import {
   applyClassroomStageAndScenes,
   defaultClassroomLoadDeps,
   runClassroomLoad,
-  saveGeneratedAgentsForCurrentLoad,
 } from '@/lib/classroom/load-classroom';
 
 const log = createLogger('Classroom');
@@ -82,13 +81,12 @@ export default function ClassroomDetailPage() {
             isCurrent,
             applyStageAndScenes: applyClassroomStageAndScenes,
           }),
-        saveGeneratedAgents: (stageId, agents) =>
-          saveGeneratedAgentsForCurrentLoad(stageId, agents, isCurrent),
         loadRestoredMediaTasks: defaultClassroomLoadDeps.loadRestoredMediaTasks,
         applyRestoredMediaTasks: defaultClassroomLoadDeps.applyRestoredMediaTasks,
         discardRestoredMediaTasks: defaultClassroomLoadDeps.discardRestoredMediaTasks,
-        loadGeneratedAgentRecords: defaultClassroomLoadDeps.loadGeneratedAgentRecords,
-        applyGeneratedAgentRecords: defaultClassroomLoadDeps.applyGeneratedAgentRecords,
+        loadLegacyAgentFallbacks: defaultClassroomLoadDeps.loadLegacyAgentFallbacks,
+        commitMigratedAgentConfigs: defaultClassroomLoadDeps.commitMigratedAgentConfigs,
+        applyGeneratedAgents: defaultClassroomLoadDeps.applyGeneratedAgents,
         getSettings: () => useSettingsStore.getState(),
         getAgent: (id) => useAgentRegistry.getState().getAgent(id),
         restoreAgentSelection: defaultClassroomLoadDeps.restoreAgentSelection,
