@@ -49,6 +49,14 @@ const GET_AUTH_WHITELIST = [
   '/api/classroom-media/', // GET /api/classroom-media/:id/:path (media assets)
 ];
 
+// SEC-02: Entry tightening — OpenMAIC has NO public homepage.
+// The only legal page entry is the classroom page (linked from Philochora
+// course pages). Root path, eval/generation-preview pages and any other
+// non-whitelisted page path must return 404 (application-layer defense,
+// Nginx layer enforces the same rule to avoid single point of failure).
+const PAGE_ENTRY_PATTERN =
+  /^\/classroom\/|^\/api\/|^\/_next(\/|$)|^\/favicon\.ico$|^\/logos\//;
+
 // SEC-03: Rate limit patterns
 const HIGH_COST_PATTERN = /^\/api\/(generate-classroom|generate\/(image|video|tts|voice)|export-video|pbl)/;
 const GENERAL_API_PATTERN = /^\/api\//;
@@ -92,6 +100,13 @@ function verifyServiceApiKey(request: NextRequest): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   let modifiedHeaders: Headers | undefined;
+
+  // SEC-02: Reject any non-whitelisted page path (root /, /eval/*, /generation-preview, ...)
+  // before any auth/redirect logic runs. Classroom pages and API endpoints are
+  // the only legal entries; everything else is treated as non-existent.
+  if (!PAGE_ENTRY_PATTERN.test(pathname)) {
+    return new NextResponse('Not Found', { status: 404 });
+  }
 
   // Skip auth for whitelisted paths
   if (isWhitelisted(pathname)) {

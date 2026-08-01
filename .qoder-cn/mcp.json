@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "keymetrics": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.keymetrics.io/mcp"]
+    },
+    "plur": {
+      "command": "npx",
+      "args": ["-y", "@plur-ai/mcp@latest"]
+    }
+  }
+}
