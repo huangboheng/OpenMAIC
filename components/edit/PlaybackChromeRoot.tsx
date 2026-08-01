@@ -858,6 +858,18 @@ export const PlaybackChromeRoot = forwardRef<PlaybackChromeRootHandle, PlaybackC
       audioPlayerRef.current.setPlaybackRate(playbackSpeed);
     }, [playbackSpeed]);
 
+    // Mentor voice switch → replay the current sentence with the new voice.
+    // AudioPlayer.play() resolves the voice at call time (IndexedDB suffix
+    // swap / {voice} URL template), so re-triggering the engine's current
+    // speech action is sufficient for an instant audible switch.
+    const ttsVoice = useSettingsStore((s) => s.ttsVoice);
+    const prevVoiceRef = useRef(ttsVoice);
+    useEffect(() => {
+      if (prevVoiceRef.current === ttsVoice) return;
+      prevVoiceRef.current = ttsVoice;
+      engineRef.current?.replayCurrentSpeech();
+    }, [ttsVoice]);
+
     /**
      * Handle discussion SSE — POST /api/chat and push events to engine
      */

@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   webServer: {
     command: process.env.CI ? 'pnpm build && pnpm start' : 'pnpm dev',
-    url: 'http://localhost:3002',
+    url: 'http://localhost:3002/favicon.ico',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     // Enable the MAIC Editor (Pro mode) so editor e2e can reach it, and skip

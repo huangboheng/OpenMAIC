@@ -355,6 +355,42 @@ export class PlaybackEngine {
     this.currentTrigger = null;
   }
 
+  /**
+   * Re-play the current speech action with fresh audio resolution.
+   * Called after a mentor voice switch so the user hears the new voice
+   * immediately instead of waiting for the next sentence.
+   *
+   * AudioPlayer.play() resolves the voice at call time (IndexedDB suffix
+   * swap / {voice} URL template), so re-triggering the same action is
+   * sufficient — no cache invalidation needed.
+   *
+   * No-op unless the last-started action is a speech and the engine is
+   * playing or paused.
+   */
+  replayCurrentSpeech(): void {
+    if (this.mode !== 'playing' && this.mode !== 'paused') return;
+    const replayIndex = this.actionIndex - 1;
+    const scene = this.scenes[this.sceneIndex];
+    const action = scene?.actions?.[replayIndex];
+    if (!action || action.type !== 'speech') return;
+
+    const generation = this.invalidatePlaybackGeneration();
+    // Cancel in-flight audio + reading timer + browser TTS
+    this.audioPlayer.stop();
+    this.cancelBrowserTTS();
+    if (this.speechTimer) {
+      clearTimeout(this.speechTimer);
+      this.speechTimer = null;
+    }
+    this.speechTimerRemaining = 0;
+
+    if (this.mode === 'playing') {
+      this.processSpeechAction(action as SpeechAction, generation);
+    }
+    // If paused: cursor stays put; resume() → processNext replays the same
+    // action and AudioPlayer.play() picks up the new voice automatically.
+  }
+
   /** User clicks "Join" on ProactiveCard → save cursor → live */
   confirmDiscussion(): void {
     if (!this.currentTrigger) {
@@ -545,6 +581,82 @@ export class PlaybackEngine {
     this.callbacks.onProactiveHide?.();
   }
 
+  /**
+   * Execute a speech action: fire onSpeechStart, wire the ended callback,
+   * and attempt pre-generated audio playback with browser-TTS / reading-timer
+   * fallbacks. Extracted from processNext so replayCurrentSpeech (voice
+   * switch) can re-trigger the same action without duplicating the logic.
+   */
+  private processSpeechAction(speechAction: SpeechAction, generation: number): void {
+    this.callbacks.onSpeechStart?.(speechAction.text);
+
+    // onEnded → processNext; if paused, resume() will call processNext
+    this.audioPlayer.onEnded(() => {
+      if (!this.isCurrentGeneration(generation)) return;
+      this.callbacks.onSpeechEnd?.();
+      if (this.mode === 'playing') {
+        this.processNext(generation);
+      }
+    });
+
+    // Estimated reading time when no pre-generated audio (TTS disabled).
+    // The estimate (CJK vs word-based pace, 2s floor, speed-adjusted) lives
+    // in @/lib/choreography so the video exporter dwells identically.
+    // Cancelled on pause; resume() calls processNext directly.
+    const scheduleReadingTimer = () => {
+      if (!this.isCurrentGeneration(generation)) return;
+      const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
+      const readingMs = estimateSpeechDurationMs(speechAction.text, { speed });
+      this.speechTimerStart = Date.now();
+      this.speechTimerRemaining = readingMs;
+      this.speechTimer = setTimeout(() => {
+        if (!this.isCurrentGeneration(generation)) return;
+        this.speechTimer = null;
+        this.speechTimerRemaining = 0;
+        this.callbacks.onSpeechEnd?.();
+        if (this.mode === 'playing') this.processNext(generation);
+      }, readingMs);
+    };
+
+    // A speech line with no text (e.g. a freshly inserted blank slide's
+    // seeded clip, or one the user cleared) has nothing to synthesize —
+    // route it straight to the reading timer for a short dwell. Speaking an
+    // empty SpeechSynthesisUtterance doesn't reliably fire onend in Chromium,
+    // which would hang playback on that slide.
+    const hasText = !!speechAction.text.trim();
+
+    this.audioPlayer
+      .play(speechAction.audioId || '', speechAction.audioUrl)
+      .then((audioStarted) => {
+        if (!this.isCurrentGeneration(generation)) return;
+        if (!audioStarted) {
+          // No pre-generated audio — try browser-native TTS only when it is
+          // the selected provider AND actually enabled (opt-in, #665).
+          const settings = useSettingsStore.getState();
+          if (
+            hasText &&
+            settings.ttsEnabled &&
+            settings.ttsProviderId === 'browser-native-tts' &&
+            isTTSProviderEnabled(
+              'browser-native-tts',
+              settings.ttsProvidersConfig?.['browser-native-tts'],
+            ) &&
+            typeof window !== 'undefined' &&
+            window.speechSynthesis
+          ) {
+            this.playBrowserTTS(speechAction, generation);
+          } else {
+            scheduleReadingTimer();
+          }
+        }
+      })
+      .catch((err) => {
+        if (!this.isCurrentGeneration(generation)) return;
+        log.error('TTS error:', err);
+        scheduleReadingTimer();
+      });
+  }
+
   private setMode(mode: EngineMode): void {
     if (this.mode === mode) return;
     this.mode = mode;
@@ -610,74 +722,7 @@ export class PlaybackEngine {
 
     switch (action.type) {
       case 'speech': {
-        const speechAction = action as SpeechAction;
-        this.callbacks.onSpeechStart?.(speechAction.text);
-
-        // onEnded → processNext; if paused, resume() will call processNext
-        this.audioPlayer.onEnded(() => {
-          if (!this.isCurrentGeneration(generation)) return;
-          this.callbacks.onSpeechEnd?.();
-          if (this.mode === 'playing') {
-            this.processNext(generation);
-          }
-        });
-
-        // Estimated reading time when no pre-generated audio (TTS disabled).
-        // The estimate (CJK vs word-based pace, 2s floor, speed-adjusted) lives
-        // in @/lib/choreography so the video exporter dwells identically.
-        // Cancelled on pause; resume() calls processNext directly.
-        const scheduleReadingTimer = () => {
-          if (!this.isCurrentGeneration(generation)) return;
-          const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
-          const readingMs = estimateSpeechDurationMs(speechAction.text, { speed });
-          this.speechTimerStart = Date.now();
-          this.speechTimerRemaining = readingMs;
-          this.speechTimer = setTimeout(() => {
-            if (!this.isCurrentGeneration(generation)) return;
-            this.speechTimer = null;
-            this.speechTimerRemaining = 0;
-            this.callbacks.onSpeechEnd?.();
-            if (this.mode === 'playing') this.processNext(generation);
-          }, readingMs);
-        };
-
-        // A speech line with no text (e.g. a freshly inserted blank slide's
-        // seeded clip, or one the user cleared) has nothing to synthesize —
-        // route it straight to the reading timer for a short dwell. Speaking an
-        // empty SpeechSynthesisUtterance doesn't reliably fire onend in Chromium,
-        // which would hang playback on that slide.
-        const hasText = !!speechAction.text.trim();
-
-        this.audioPlayer
-          .play(speechAction.audioId || '', speechAction.audioUrl)
-          .then((audioStarted) => {
-            if (!this.isCurrentGeneration(generation)) return;
-            if (!audioStarted) {
-              // No pre-generated audio — try browser-native TTS only when it is
-              // the selected provider AND actually enabled (opt-in, #665).
-              const settings = useSettingsStore.getState();
-              if (
-                hasText &&
-                settings.ttsEnabled &&
-                settings.ttsProviderId === 'browser-native-tts' &&
-                isTTSProviderEnabled(
-                  'browser-native-tts',
-                  settings.ttsProvidersConfig?.['browser-native-tts'],
-                ) &&
-                typeof window !== 'undefined' &&
-                window.speechSynthesis
-              ) {
-                this.playBrowserTTS(speechAction, generation);
-              } else {
-                scheduleReadingTimer();
-              }
-            }
-          })
-          .catch((err) => {
-            if (!this.isCurrentGeneration(generation)) return;
-            log.error('TTS error:', err);
-            scheduleReadingTimer();
-          });
+        this.processSpeechAction(action as SpeechAction, generation);
         break;
       }
 

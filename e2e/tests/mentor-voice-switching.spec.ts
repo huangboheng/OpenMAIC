@@ -70,13 +70,18 @@ async function bypassAuth(page: import('@playwright/test').Page) {
 }
 
 /**
- * 导师声音切换 E2E（课堂内按钮 + 重生成闭环）。
+ * 导师声音切换 E2E（预生成多音色瞬时切换架构）。
+ *
+ * 课堂生成时已为每个 speech action 预生成全部音色的音频，切换音色仅更新
+ * store 中的 ttsVoice，播放引擎在下次 play() 调用时自动解析到对应音频：
+ * - audioUrl 路径：{voice} 模板替换为当前音色文件名；
+ * - IndexedDB 路径：audioId 的默认音色后缀替换为当前音色后缀。
  *
  * 覆盖：
- * 1. 成功路径：点声音按钮 → 选音色 → 确认弹层 → 确认 → 进度态 → 完成 toast。
- * 2. 失败路径：TTS 接口失败 → 错误 toast + 重试入口。
- *
- * TTS 接口使用 page.route() mock，不依赖真实 API。
+ * 1. 瞬时切换：选择音色后 pill 立即更新，无确认弹层、无等待。
+ * 2. 播放中切换：当前句立即以新音色重播（音频请求 URL 含新音色文件名）。
+ * 3. 服务端托管 provider：pill 显示真实音色、弹层列出全部可选项。
+ * 4. 试看模式不阻断声音切换。
  */
 
 const TEST_STAGE_ID = 'e2e-voice-stage';
@@ -98,7 +103,32 @@ const SERVER_MANAGED_SETTINGS = createSettingsStorage({
   autoConfigApplied: false,
 });
 
-/** 种子一个含 2 条 speech 的场景的课堂（重生成才有目标）。 */
+/** 生成一段静音 WAV（8kHz mono 8-bit），供音频路由 mock 返回。 */
+function makeSilentWav(seconds = 10): Buffer {
+  const sampleRate = 8000;
+  const dataSize = sampleRate * seconds;
+  const buf = Buffer.alloc(44 + dataSize);
+  buf.write('RIFF', 0);
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write('WAVE', 8);
+  buf.write('fmt ', 12);
+  buf.writeUInt32LE(16, 16); // fmt chunk size
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(1, 22); // mono
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate, 28); // byte rate
+  buf.writeUInt16LE(1, 32); // block align
+  buf.writeUInt16LE(8, 34); // bits per sample
+  buf.write('data', 36);
+  buf.writeUInt32LE(dataSize, 40);
+  buf.fill(0x80, 44); // 8-bit unsigned silence
+  return buf;
+}
+
+/**
+ * 种子一个含 2 条 speech 的场景的课堂。
+ * audioUrl 使用 {voice} 模板（与服务端预生成管线一致），播放时按当前音色解析。
+ */
 async function seedDatabase(
   page: import('@playwright/test').Page,
   settings: string = SETTINGS_STORAGE,
@@ -116,10 +146,20 @@ async function seedDatabase(
   await page.evaluate(
     ({ stageId, theme }) => {
       return new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open('MAIC-Database');
-        request.onsuccess = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          const tx = db.transaction(['stages', 'scenes', 'stageOutlines'], 'readwrite');
+        // SEC-02 returns a bare 404 for '/', so the app's Dexie bootstrap never
+        // runs and MAIC-Database may not exist yet. indexedDB.open() without a
+        // version then yields an EMPTY database (no object stores) and
+        // db.transaction() would throw synchronously, hanging this promise.
+        // Detect the missing stores and reopen with a bumped version to create
+        // them (Dexie upgrades further to its own version on app boot).
+        const STORES: Array<[string, string]> = [
+          ['stages', 'id'],
+          ['scenes', 'id'],
+          ['stageOutlines', 'stageId'],
+        ];
+
+        const seed = (db: IDBDatabase) => {
+          const tx = db.transaction(STORES.map(([name]) => name), 'readwrite');
           const now = Date.now();
 
           tx.objectStore('stages').put({
@@ -151,8 +191,20 @@ async function seedDatabase(
               },
             },
             actions: [
-              { id: 'speech-1', type: 'speech', text: 'Hello world.' },
-              { id: 'speech-2', type: 'speech', text: 'Second line.' },
+              {
+                id: 'speech-1',
+                type: 'speech',
+                text: 'Hello world.',
+                audioId: 'tts_s0_speech-1_female-yujie',
+                audioUrl: 'http://localhost:3002/audio-test/tts_s0_speech-1_{voice}.mp3',
+              },
+              {
+                id: 'speech-2',
+                type: 'speech',
+                text: 'Second line.',
+                audioId: 'tts_s0_speech-2_female-yujie',
+                audioUrl: 'http://localhost:3002/audio-test/tts_s0_speech-2_{voice}.mp3',
+              },
             ],
             createdAt: now,
             updatedAt: now,
@@ -171,39 +223,34 @@ async function seedDatabase(
           };
           tx.onerror = () => reject(tx.error);
         };
+
+        const request = indexedDB.open('MAIC-Database');
+        request.onsuccess = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          const missing = STORES.filter(([name]) => !db.objectStoreNames.contains(name));
+          if (missing.length === 0) {
+            seed(db);
+            return;
+          }
+          const version = db.version;
+          db.close();
+          const upgrade = indexedDB.open('MAIC-Database', version + 1);
+          upgrade.onupgradeneeded = (e) => {
+            const udb = (e.target as IDBOpenDBRequest).result;
+            for (const [name, keyPath] of STORES) {
+              if (!udb.objectStoreNames.contains(name)) {
+                udb.createObjectStore(name, { keyPath });
+              }
+            }
+          };
+          upgrade.onsuccess = (e) => seed((e.target as IDBOpenDBRequest).result);
+          upgrade.onerror = () => reject(upgrade.error);
+        };
         request.onerror = () => reject(request.error);
       });
     },
     { stageId: TEST_STAGE_ID, theme: defaultTheme },
   );
-}
-
-/** mock TTS 成功（带小延迟，便于观察进度态）。 */
-async function mockTtsSuccess(page: import('@playwright/test').Page) {
-  await page.route('**/api/generate/tts', async (route) => {
-    await new Promise((r) => setTimeout(r, 400));
-    await route.fulfill({
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        success: true,
-        base64: btoa('fake-audio-bytes'),
-        format: 'mp3',
-        audioId: 'mock-audio',
-      }),
-    });
-  });
-}
-
-/** mock TTS 失败（400 不可重试，快速失败）。 */
-async function mockTtsFailure(page: import('@playwright/test').Page) {
-  await page.route('**/api/generate/tts', async (route) => {
-    await route.fulfill({
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ success: false, error: 'TTS provider error' }),
-    });
-  });
 }
 
 /** mock 服务端托管 minimax-tts（覆盖 base fixture 的空 server-providers）。 */
@@ -225,55 +272,72 @@ async function mockServerManagedTts(page: import('@playwright/test').Page) {
   });
 }
 
-/** 打开声音弹层并选定一个音色，触发确认弹层。 */
+/** 打开声音弹层并选定一个音色（瞬时切换，无确认步骤）。 */
 async function openVoicePickerAndSelect(page: import('@playwright/test').Page) {
   const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
   await expect(voiceButton).toBeVisible({ timeout: 10_000 });
   await voiceButton.click();
-  // minimax 音色名为常量（中文），与界面语言无关。
-  await page.getByRole('button', { name: '精英青年', exact: true }).first().click();
+  // minimax 音色名为常量（中文），与界面语言无关。按钮可访问名含性别符号
+  // （如 "精英青年♂"），故用正则部分匹配。
+  await page.getByRole('button', { name: /精英青年/ }).first().click();
 }
 
-test.describe('Mentor Voice Switching', () => {
+test.describe('Mentor Voice Switching — instant switch', () => {
   test.beforeEach(async ({ page }) => {
-    // 服务端托管 minimax-tts，确保声音选择器有可选项（客户端配置路径在
-    // E2E 环境下 hydration 不稳定，服务端托管路径可靠）。
     await mockServerManagedTts(page);
     await seedDatabase(page);
   });
 
-  test('成功路径：确认弹层 → 进度态 → 完成 toast', async ({ page }) => {
-    await mockTtsSuccess(page);
+  test('选择音色后 pill 立即更新，无确认弹层', async ({ page }) => {
     const classroom = new ClassroomPage(page);
     await classroom.goto(TEST_STAGE_ID);
     await classroom.waitForLoaded();
 
+    const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
+    await expect(voiceButton).toContainText('御姐音色', { timeout: 10_000 });
+
     await openVoicePickerAndSelect(page);
 
-    // 切换前确认弹层：明确告知将重新生成全部讲课音频
-    await expect(page.getByText('Switch Mentor Voice')).toBeVisible();
-    await expect(page.getByText(/regenerate all lecture audio/i)).toBeVisible();
-
-    // 确认后进入重生成，显示进度
-    await page.getByRole('button', { name: 'Switch', exact: true }).click();
-    await expect(page.getByText(/Regenerating mentor voice/i)).toBeVisible({ timeout: 10_000 });
-
-    // 全部完成后成功 toast
-    await expect(page.getByText('Mentor voice fully updated')).toBeVisible({ timeout: 20_000 });
+    // 瞬时切换：pill 立即显示新音色，无确认弹层、无进度、无 toast
+    await expect(voiceButton).toContainText('精英青年');
+    await expect(page.getByText('Switch Mentor Voice')).not.toBeVisible();
+    await expect(page.getByText(/Regenerating/i)).not.toBeVisible();
   });
 
-  test('失败路径：错误 toast + 重试入口', async ({ page }) => {
-    await mockTtsFailure(page);
+  test('播放中切换音色：当前句立即以新音色重播（音频请求验证）', async ({ page }) => {
+    // 记录音频请求 URL（{voice} 模板解析后的真实路径）
+    const audioRequests: string[] = [];
+    await page.route('**/audio-test/**', (route) => {
+      audioRequests.push(route.request().url());
+      route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'audio/wav' },
+        body: makeSilentWav(10),
+      });
+    });
+
     const classroom = new ClassroomPage(page);
     await classroom.goto(TEST_STAGE_ID);
     await classroom.waitForLoaded();
 
-    await openVoicePickerAndSelect(page);
-    await page.getByRole('button', { name: 'Switch', exact: true }).click();
+    // 启动播放
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
 
-    // 失败不静默：错误 toast + 重试按钮
-    await expect(page.getByText(/failed to generate/i)).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    // 等待第一句音频以默认音色（female-yujie）请求
+    await expect.poll(() => audioRequests.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(1);
+    expect(audioRequests[0]).toContain('tts_s0_speech-1_female-yujie');
+
+    // 播放中途切换音色（force: 播放中浮动层可能短暂遮挡头部按钮）
+    const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
+    await voiceButton.click({ force: true });
+    await page.getByRole('button', { name: /精英青年/ }).first().click({ force: true });
+
+    // 核心断言：当前句立即以新音色重新请求音频（无需手动刷新页面）
+    await expect
+      .poll(() => audioRequests.some((url) => url.includes('male-qn-jingying')), {
+        timeout: 10_000,
+      })
+      .toBe(true);
   });
 });
 
@@ -293,29 +357,33 @@ test.describe('Mentor Voice Switching — server-managed provider', () => {
     const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
     await expect(voiceButton).toBeVisible({ timeout: 10_000 });
 
-    // 服务端同步后自动选中 minimax 默认音色（精英青年），而非 stale 的 "default"。
-    await expect(voiceButton).toContainText('精英青年', { timeout: 10_000 });
+    // 服务端同步后自动选中 minimax 默认音色（御姐音色 = DEFAULT_TTS_VOICES），
+    // 而非 stale 的 "default"。
+    await expect(voiceButton).toContainText('御姐音色', { timeout: 10_000 });
     await expect(voiceButton).not.toContainText('default');
 
     // 弹层列出 minimax 全部音色，可自由选择。
     await voiceButton.click();
-    await expect(page.getByRole('button', { name: '精英青年', exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: '少女音色', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /精英青年/ }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /少女音色/ }).first()).toBeVisible();
   });
 
-  test('服务端托管 provider：切换音色闭环（确认 → 重生成 → 完成 toast）', async ({ page }) => {
+  test('服务端托管 provider：切换音色即时生效（pill 立即更新）', async ({ page }) => {
     await mockServerManagedTts(page);
-    await mockTtsSuccess(page);
     await seedDatabase(page, SERVER_MANAGED_SETTINGS);
 
     const classroom = new ClassroomPage(page);
     await classroom.goto(TEST_STAGE_ID);
     await classroom.waitForLoaded();
 
-    await openVoicePickerAndSelect(page);
-    await page.getByRole('button', { name: 'Switch', exact: true }).click();
+    const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
+    await expect(voiceButton).toBeVisible({ timeout: 10_000 });
+    await expect(voiceButton).toContainText('御姐音色', { timeout: 10_000 });
 
-    await expect(page.getByText('Mentor voice fully updated')).toBeVisible({ timeout: 20_000 });
+    // 切换到少女音色 — 瞬时生效
+    await voiceButton.click();
+    await page.getByRole('button', { name: /少女音色/ }).first().click();
+    await expect(voiceButton).toContainText('少女音色');
   });
 });
 
@@ -323,9 +391,8 @@ test.describe('Mentor Voice Switching — trial mode no longer blocks', () => {
   // 修复前：试看期间（isTrial=true）声音切换按钮被 disabled，用户永远无法切换。
   // 修复后：试看不再阻断声音切换，按钮始终可操作。
 
-  test('试看期间声音切换按钮可用（不被 isTrial 禁用）', async ({ page }) => {
+  test('试看期间声音切换按钮可用且瞬时生效', async ({ page }) => {
     await mockServerManagedTts(page);
-    await mockTtsSuccess(page);
     await seedDatabase(page);
 
     const classroom = new ClassroomPage(page);
@@ -339,11 +406,10 @@ test.describe('Mentor Voice Switching — trial mode no longer blocks', () => {
 
     // 弹层可打开，音色可选择
     await voiceButton.click();
-    await expect(page.getByRole('button', { name: '精英青年', exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /精英青年/ }).first()).toBeVisible();
 
-    // 完整闭环：选择 → 确认 → 重生成 → 成功
-    await page.getByRole('button', { name: '精英青年', exact: true }).first().click();
-    await page.getByRole('button', { name: 'Switch', exact: true }).click();
-    await expect(page.getByText('Mentor voice fully updated')).toBeVisible({ timeout: 20_000 });
+    // 瞬时切换闭环：选择 → pill 立即更新
+    await page.getByRole('button', { name: /精英青年/ }).first().click();
+    await expect(voiceButton).toContainText('精英青年');
   });
 });
