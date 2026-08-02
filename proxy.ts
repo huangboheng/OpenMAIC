@@ -35,6 +35,7 @@ const ACCESS_COOKIE_NAME = 'openmaic_access';
 const AUTH_WHITELIST = [
   '/api/auth/callback',
   '/api/health',
+  '/api/persistence', // 自带 Bearer Token 认证 (server-auth.ts)，不走 OAuth
   '/_next',
   '/favicon.ico',
   '/logos/',
