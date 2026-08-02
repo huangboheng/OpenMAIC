@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+# .githooks/pre-push
+#
+# 硬门禁：工作区存在未提交变更时阻止 push。
+# 规则要求「每次修改项目都必须提交代码」，未提交的修改不得外流。
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks   (已配置)
+#
+# 逃生口: SKIP_DIRTY=1 git push
+
+set -e
+
+if [ "${SKIP_DIRTY:-0}" = "1" ]; then
+  echo "[pre-push] SKIP_DIRTY=1 — 跳过脏工作区检查"
+  exit 0
+fi
+
+DIRTY=$(git status --porcelain 2>/dev/null || true)
+
+if [ -n "$DIRTY" ]; then
+  cat <<'EOF'
++======================================================+
+|  ⛔ 硬门禁: 存在未提交变更                            |
++======================================================+
+|  工作区还有未提交的修改/暂存/未跟踪文件。            |
+|  规则要求：每次修改必须提交后才能外流。              |
+|                                                      |
+|  请先完成提交：                                      |
+|    git add -A && git commit -m "type(scope): 描述"   |
+|                                                      |
+|  跳过: SKIP_DIRTY=1 git push                         |
++======================================================+
+EOF
+  echo "── 未提交变更清单 ──"
+  echo "$DIRTY" | head -20
+  exit 1
+fi
+
+exit 0
