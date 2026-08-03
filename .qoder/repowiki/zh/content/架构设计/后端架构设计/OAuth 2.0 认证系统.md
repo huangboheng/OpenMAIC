@@ -18,15 +18,16 @@
 - [lib/classroom/load-classroom.ts](file://lib/classroom/load-classroom.ts)
 - [app/api/persistence/[...path]/route.ts](file://app/api/persistence/[...path]/route.ts)
 - [lib/persistence/server-auth.ts](file://lib/persistence/server-auth.ts)
+- [app/api/public/[...path]/route.ts](file://app/api/public/[...path]/route.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**   
-- **新增** `/api/persistence` 端点添加到认证白名单，支持 Bearer Token 认证机制
-- **增强** 代理中间件支持服务器到服务器的直接认证模式，绕过 OAuth 认证流程
-- **引入** 开发专用的持久化存储认证机制，使用 `PERSISTENCE_DEV_TOKEN` 环境变量
-- **改进** 认证白名单架构，区分完整认证白名单和 GET-only 白名单
-- **优化** 内部 API 通信安全，支持无需用户会话的服务器间认证
+- **新增** `/api/public` 端点添加到认证白名单，支持公共资源静态文件访问
+- **增强** 代理中间件支持公共资源路由，绕过 OAuth 认证流程
+- **引入** 应用层 public/ 目录代理服务，解决 Next.js 16 + Turbopack 部署问题
+- **改进** 认证白名单架构，新增公共资源访问类型
+- **优化** 静态资源安全访问，包含路径白名单和目录遍历防护
 
 ## 产品概述
 本系统为 OpenMAIC 的 OAuth 2.0 认证子系统，基于 Authorization Code + PKCE 流程与 OIDC Discovery，完成用户登录、会话建立与访问控制。核心能力包括：
@@ -36,6 +37,7 @@
 - **新增**无缝认证集成，支持 Philochora SSO 与 OpenMAIC 教室的直接认证
 - **新增**GET-only 认证白名单，允许安全的只读数据访问而无需完整认证流程
 - **新增**服务器到服务器认证支持，通过 Bearer Token 实现内部 API 通信
+- **新增**公共资源静态文件访问，支持 basePath 部署模式下的静态资源服务
 - **新增**增强的错误处理机制，通过 ClassroomAuthError 精确区分认证失败与其他错误
 - 前端根据后端状态动态展示访问码弹窗并维持登录态
 
@@ -46,9 +48,10 @@
 - **新增**需要无缝单点登录体验的教育平台集成
 - **新增**需要公开只读教室数据访问的教育资源共享场景
 - **新增**需要服务器到服务器认证的微服务架构
+- **新增**需要静态资源服务的多语言部署场景
 
 ## 核心业务流程
-本节描述四种主要认证路径：OAuth 2.0 授权码流程、访问码流程、无缝认证流程和 GET-only 白名单访问流程。
+本节描述五种主要认证路径：OAuth 2.0 授权码流程、访问码流程、无缝认证流程、GET-only 白名单访问流程和公共资源访问流程。
 
 ```mermaid
 sequenceDiagram
@@ -71,6 +74,13 @@ U->>Proxy : GET /api/classroom?id=xxx (无认证)
 Proxy->>Proxy : 检查 GET_AUTH_WHITELIST
 Proxy->>Proxy : 应用速率限制
 Proxy-->>U : 直接返回教室数据 (无需认证)
+Note over Proxy,APP : 公共资源访问流程
+U->>Proxy : GET /api/public/logos/logo.png
+Proxy->>Proxy : 检查 AUTH_WHITELIST (/api/public)
+Proxy-->>U : 直接转发请求 (跳过 OAuth)
+U->>APP : /api/public/logos/logo.png
+APP->>APP : 验证路径安全性
+APP-->>U : 返回静态文件
 Note over Proxy,APP : 服务器到服务器认证流程
 SVC->>Proxy : POST /api/persistence (Bearer Token)
 Proxy->>Proxy : 检查 AUTH_WHITELIST (/api/persistence)
@@ -82,10 +92,11 @@ SVC-->>SVC : 返回持久化数据
 
 **图表来源** 
 - [app/api/auth/callback/route.ts:73-116](file://app/api/auth/callback/route.ts#L73-L116)
-- [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L1-L130)
+- [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L-L130)
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
 - [lib/server/session-cookie.ts:24-32](file://lib/server/session-cookie.ts#L24-L32)
 - [proxy.ts:92-116](file://proxy.ts#L92-L116)
+- [app/api/public/[...path]/route.ts:52-97](file://app/api/public/[...path]/route.ts#L52-L97)
 - [app/api/persistence/[...path]/route.ts:173-199](file://app/api/persistence/[...path]/route.ts#L173-L199)
 - [lib/persistence/server-auth.ts:29-38](file://lib/persistence/server-auth.ts#L29-L38)
 
@@ -109,10 +120,10 @@ SetCookie --> Allow
 
 **图表来源** 
 - [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
-- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-53)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
 - [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
 - [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
-- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-25)
+- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-L25)
 
 **章节来源**
 - [app/api/auth/callback/route.ts:73-116](file://app/api/auth/callback/route.ts#L73-L116)
@@ -120,10 +131,10 @@ SetCookie --> Allow
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
 - [lib/server/session-cookie.ts:24-99](file://lib/server/session-cookie.ts#L24-L99)
 - [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
-- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-53)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
 - [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
 - [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
-- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-25)
+- [lib/server/access-token.ts:3-25](file://lib/server/access-token.ts#L3-L25)
 
 ## 功能模块清单
 - OAuth 客户端工具（PKCE、State、Token 交换、JWT 解码、授权 URL 构建）
@@ -144,6 +155,9 @@ SetCookie --> Allow
 - **新增**服务器到服务器认证支持
   - 职责：通过 Bearer Token 机制实现内部 API 通信，绕过 OAuth 认证流程
   - 验收要点：`/api/persistence` 端点支持 PERSISTENCE_DEV_TOKEN 认证；authenticatePersistenceRequest 函数正确验证请求
+- **新增**公共资源静态文件服务
+  - 职责：提供应用层 public/ 目录代理服务，解决 Next.js 16 + Turbopack 部署问题
+  - 验收要点：路径白名单验证；目录遍历防护；MIME 类型映射；流式文件传输
 - **新增**增强的错误处理机制
   - 职责：通过 ClassroomAuthError 哨兵错误精确区分认证失败与其他错误类型
   - 验收要点：401 错误被正确识别并抛出 ClassroomAuthError；其他错误类型正常处理
@@ -160,12 +174,13 @@ SetCookie --> Allow
 - [lib/server/session-cookie.ts:24-99](file://lib/server/session-cookie.ts#L24-L99)
 - [lib/server/access-token.ts:27-71](file://lib/server/access-token.ts#L27-L71)
 - [proxy.ts:91-117](file://proxy.ts#L91-L117)
+- [app/api/public/[...path]/route.ts:52-97](file://app/api/public/[...path]/route.ts#L52-L97)
 - [app/api/persistence/[...path]/route.ts:173-199](file://app/api/persistence/[...path]/route.ts#L173-L199)
 - [lib/persistence/server-auth.ts:29-38](file://lib/persistence/server-auth.ts#L29-L38)
 - [app/api/access-code/status/route.ts:6-31](file://app/api/access-code/status/route.ts#L6-L31)
 - [app/api/access-code/verify/route.ts:6-41](file://app/api/access-code/verify/route.ts#L6-L41)
 - [components/access-code-guard.tsx:16-38](file://components/access-code-guard.tsx#L16-L38)
-- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-53)
+- [components/access-code-modal.tsx:27-53](file://components/access-code-modal.tsx#L27-L53)
 
 ## 数据与状态
 - 会话数据结构（SessionData）
@@ -181,6 +196,7 @@ SetCookie --> Allow
   - 回调地址：NEXT_PUBLIC_APP_URL 或 OAUTH_REDIRECT_URI
   - 会话密钥：OPENMAIC_SESSION_SECRET 或 ACCESS_CODE 或开发默认值
   - **新增**持久化存储令牌：PERSISTENCE_DEV_TOKEN（开发专用，编译到前端包中）
+  - **新增**公共资源白名单：avatars、logos、vendor 目录前缀
 
 ```mermaid
 classDiagram
@@ -232,21 +248,28 @@ class PersistenceAuth {
 +function authenticatePersistenceRequest(req)
 +RuntimeHttpPrincipal getPrincipal()
 }
+class PublicResource {
++string[] ALLOWED_PREFIXES
++Set ALLOWED_FILES
++function isPathSafe(parts)
++function serveFile(filePath)
+}
 ```
 
 **图表来源** 
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
-- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-53)
+- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
 - [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
-- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-8)
-- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-L34)
 - [lib/persistence/server-auth.ts:29-38](file://lib/persistence/server-auth.ts#L29-L38)
+- [app/api/public/[...path]/route.ts:39-43](file://app/api/public/[...path]/route.ts#L39-L43)
 
 **章节来源**
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
-- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-53)
+- [lib/server/oauth-client.ts:34-53](file://lib/server/oauth-client.ts#L34-L53)
 - [lib/server/oauth-config.ts:11-17](file://lib/server/oauth-config.ts#L11-L17)
-- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-8)
+- [lib/server/access-token.ts:3-8](file://lib/server/access-token.ts#L3-L8)
 
 ## 关键约束与边界
 - 安全约束
@@ -257,12 +280,14 @@ class PersistenceAuth {
   - **新增**无缝访问令牌验证使用 Edge 兼容的 HMAC-SHA256 实现，确保在 Next.js middleware 中正常工作
   - **新增**GET-only 白名单仅允许 GET 方法，所有其他 HTTP 方法仍需完整认证
   - **新增**服务器到服务器认证使用 Bearer Token 机制，PERSISTENCE_DEV_TOKEN 仅用于开发环境
+  - **新增**公共资源访问实施严格的路径白名单和目录遍历防护
 - 依赖与集成边界
   - 依赖 Philochora OIDC 服务的 discovery 端点；若不可用则回退环境变量
   - 回调地址需与 OIDC 注册一致；支持同域与子路径部署
   - **新增**无缝认证依赖 Philochora 的 /api/openmaic/enter 端点颁发 openmaic_access token
   - **新增**教室数据访问依赖 nanoid 生成的不可猜测 ID，防止枚举攻击
   - **新增**持久化存储认证依赖 PERSISTENCE_DEV_TOKEN 环境变量
+  - **新增**公共资源服务依赖 Next.js 16 + Turbopack 的 public/ 目录结构
 - 业务约束
   - 访问码模式为可选开关，未启用时不强制认证
   - 会话有效期由 expires_at 控制，过期后需重新登录或刷新令牌
@@ -271,9 +296,10 @@ class PersistenceAuth {
   - **新增**页面级认证保护保持不变，仅 API 数据层提供只读访问
   - **新增**增强的错误处理：认证失败抛出 ClassroomAuthError，便于前端精确处理
   - **新增**服务器到服务器认证仅适用于受信任的内部网络环境
+  - **新增**公共资源服务仅支持预定义的白名单目录和文件类型
 
 **章节来源**
-- [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-23)
+- [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-L23)
 - [lib/server/oauth-client.ts:92-101](file://lib/server/oauth-client.ts#L92-L101)
 - [lib/server/session-cookie.ts:70-99](file://lib/server/session-cookie.ts#L70-L99)
 - [lib/server/access-token.ts:10-25](file://lib/server/access-token.ts#L10-L25)
@@ -281,8 +307,9 @@ class PersistenceAuth {
 - [lib/server/oauth-config.ts:25-60](file://lib/server/oauth-config.ts#L25-L60)
 - [proxy.ts:101-112](file://proxy.ts#L101-L112)
 - [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-L55)
-- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
-- [lib/persistence/server-auth.ts:1-13](file://lib/persistence/server-auth.ts#L1-13)
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-L34)
+- [lib/persistence/server-auth.ts:1-13](file://lib/persistence/server-auth.ts#L1-L13)
+- [app/api/public/[...path]/route.ts:44-50](file://app/api/public/[...path]/route.ts#L44-L50)
 
 ## GET-only 认证白名单详解
 
@@ -313,7 +340,7 @@ Proxy-->>Client : 流式传输媒体数据
 **图表来源** 
 - [proxy.ts:101-116](file://proxy.ts#L101-L116)
 - [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-86)
-- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-95)
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
 
 ### 技术实现
 - **白名单配置**：GET_AUTH_WHITELIST 数组定义允许的 GET 端点路径
@@ -333,12 +360,12 @@ Proxy-->>Client : 流式传输媒体数据
 教室页面在加载时会尝试通过白名单 API 获取数据，如果认证失败但仍能访问数据端点，则可以直接渲染教室内容，提供更好的用户体验。
 
 **章节来源**
-- [proxy.ts:43-50](file://proxy.ts#L43-50)
-- [proxy.ts:72-74](file://proxy.ts#L72-74)
+- [proxy.ts:43-50](file://proxy.ts#L43-L50)
+- [proxy.ts:72-74](file://proxy.ts#L72-L74)
 - [proxy.ts:101-116](file://proxy.ts#L101-L116)
-- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-55)
+- [lib/server/classroom-storage.ts:53-55](file://lib/server/classroom-storage.ts#L53-L55)
 - [app/api/classroom/route.ts:51-86](file://app/api/classroom/route.ts#L51-86)
-- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-95)
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-95](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L95)
 
 ## 服务器到服务器认证详解
 
@@ -387,6 +414,55 @@ Proxy-->>Client : 返回响应
 - [app/api/persistence/[...path]/route.ts:173-199](file://app/api/persistence/[...path]/route.ts#L173-L199)
 - [lib/persistence/server-auth.ts:29-38](file://lib/persistence/server-auth.ts#L29-L38)
 
+## 公共资源静态文件服务详解
+
+### 架构设计
+公共资源静态文件服务为 Next.js 16 + Turbopack 部署模式提供应用层 public/ 目录代理服务，解决 basePath 部署时的静态资源访问问题。系统通过严格的路径白名单和安全验证确保资源访问的安全性。
+
+```mermaid
+sequenceDiagram
+participant Browser as "浏览器"
+participant Proxy as "代理中间件"
+participant PublicRoute as "public 路由"
+Note over Browser,PublicRoute : 公共资源访问流程
+Browser->>Proxy : GET /api/public/logos/logo.png
+Proxy->>Proxy : 检查 AUTH_WHITELIST (/api/public)
+Proxy-->>Browser : 跳过 OAuth 认证
+Browser->>PublicRoute : GET /api/public/logos/logo.png
+PublicRoute->>PublicRoute : 验证路径安全性
+PublicRoute->>PublicRoute : 检查白名单前缀
+PublicRoute->>PublicRoute : 读取 public/ 目录文件
+PublicRoute-->>Browser : 返回静态文件 (流式传输)
+```
+
+**图表来源** 
+- [proxy.ts:35-43](file://proxy.ts#L35-L43)
+- [app/api/public/[...path]/route.ts:52-97](file://app/api/public/[...path]/route.ts#L52-L97)
+
+### 技术实现
+- **白名单配置**：AUTH_WHITELIST 包含 `/api/public` 路径，完全跳过 OAuth 认证
+- **路径验证**：isPathSafe 函数验证路径组件，防止目录遍历攻击
+- **前缀白名单**：ALLOWED_PREFIXES 限制可访问的目录前缀（avatars、logos、vendor）
+- **文件白名单**：ALLOWED_FILES 支持特定文件的直接访问
+- **MIME 类型映射**：MIME_BY_EXT 对象提供正确的 Content-Type 响应头
+- **流式传输**：使用 Node.js 流避免大文件内存占用
+
+### 安全考虑
+- **路径白名单**：仅允许预定义的公共资源前缀和文件
+- **目录遍历防护**：双重验证确保文件路径在 public/ 目录下
+- **方法限制**：仅支持 GET 方法，其他方法返回 405
+- **文件大小限制**：通过 statSync 验证文件存在性和类型
+- **缓存控制**：设置合理的 Cache-Control 头优化性能
+
+### 部署兼容性
+- **开发模式**：解决 Next.js 16 + Turbopack 的 basePath 部署问题
+- **生产模式**：作为冗余服务，Next.js 自身也能正确处理 public/ 资源
+- **独立部署**：对 basePath 为空的情况无副作用
+
+**章节来源**
+- [proxy.ts:35-43](file://proxy.ts#L35-L43)
+- [app/api/public/[...path]/route.ts:1-106](file://app/api/public/[...path]/route.ts#L1-L106)
+
 ## 增强的错误处理机制
 
 ### ClassroomAuthError 哨兵错误
@@ -408,7 +484,7 @@ Client->>Client : 提供重试选项
 ```
 
 **图表来源** 
-- [lib/classroom/load-classroom.ts:210-245](file://lib/classroom/load-classroom.ts#L210-245)
+- [lib/classroom/load-classroom.ts:210-245](file://lib/classroom/load-classroom.ts#L210-L245)
 
 ### 技术实现
 - **错误分类**：HTTP 401 状态码被识别为认证失败，抛出 ClassroomAuthError
@@ -420,7 +496,7 @@ Client->>Client : 提供重试选项
 前端组件可以捕获 ClassroomAuthError 并显示相应的用户友好提示，如"认证已过期，请重新进入教室"，并提供重试按钮让用户重新尝试。
 
 **章节来源**
-- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-34)
+- [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-L34)
 - [lib/classroom/load-classroom.ts:210-245](file://lib/classroom/load-classroom.ts#L210-L245)
 
 ## 无缝认证集成详解
@@ -467,11 +543,11 @@ Proxy-->>User : 允许访问
 ## 认证白名单架构详解
 
 ### 白名单类型对比
-系统现在支持三种不同类型的认证白名单，每种都有特定的用途和安全级别：
+系统现在支持四种不同类型的认证白名单，每种都有特定的用途和安全级别：
 
 | 白名单类型 | 路径示例 | 认证要求 | 用途 |
 |-----------|----------|----------|------|
-| AUTH_WHITELIST | `/api/persistence`, `/api/auth/callback` | 完全跳过认证 | 特殊端点，自带独立认证机制 |
+| AUTH_WHITELIST | `/api/persistence`, `/api/auth/callback`, `/api/public` | 完全跳过认证 | 特殊端点，自带独立认证机制或公共资源 |
 | GET_AUTH_WHITELIST | `/api/classroom`, `/api/classroom-media/` | 仅 GET 方法免认证 | 只读数据访问，带速率限制 |
 | 普通 API | 其他 `/api/*` 路径 | 完整 OAuth 认证 | 需要用户会话的 API 端点 |
 
@@ -509,9 +585,11 @@ SeamlessCheck -- 无效 --> Redirect["重定向到 OAuth"]
 - **速率限制**：所有免认证访问都应用速率限制
 - **环境变量管理**：敏感令牌应通过环境变量管理，避免硬编码
 - **开发/生产分离**：开发专用功能应与生产环境隔离
+- **路径验证**：公共资源访问实施严格的路径白名单和目录遍历防护
 
 **章节来源**
 - [proxy.ts:35-51](file://proxy.ts#L35-L51)
 - [proxy.ts:77-83](file://proxy.ts#L77-L83)
 - [proxy.ts:101-132](file://proxy.ts#L101-L132)
-- [lib/persistence/server-auth.ts:1-13](file://lib/persistence/server-auth.ts#L1-13)
+- [lib/persistence/server-auth.ts:1-13](file://lib/persistence/server-auth.ts#L1-L13)
+- [app/api/public/[...path]/route.ts:44-50](file://app/api/public/[...path]/route.ts#L44-L50)

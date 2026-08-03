@@ -12,15 +12,24 @@
 - [mime.ts](file://lib/document/mime.ts)
 - [README.md](file://lib/pdf/README.md)
 - [pbl-renderer.tsx](file://components/scene-renderers/pbl-renderer.tsx)
+- [base-path.ts](file://lib/utils/base-path.ts)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 更新了资源加载机制：Workspace 组件现在使用 withBasePath 工具处理 OpenMAIC mark 图像加载
+- 增强了跨部署模式的一致性：确保头像和资源在所有部署模式下正确加载
+- 改进了静态资源处理：通过 API 路由绕过 Next.js 16 Turbopack 开发模式的限制
 
 ## 产品概述
 本工作空间为 OpenMAIC 的项目制学习（PBL v2）核心交互界面，采用三栏布局：左侧任务导航侧边栏、中间多标签聊天面板、右侧提交与评估面板。支持里程碑进度可视化、微任务列表与完成状态指示；聊天面板提供讲师/角色对话、流式消息渲染、工具调用透明展示与场景角色特殊处理；同时集成文件上传与预览（PDF、图片等），并通过虚拟滚动、消息折叠与内存管理策略保障性能。
 
+**更新** 资源加载机制已全面升级，所有静态资源（包括 OpenMAIC mark 图像、头像等）现在都通过 withBasePath 工具统一处理，确保在独立运行和子路径部署模式下都能正确加载。
+
 ## 核心业务流程
 - 用户进入工作空间后，左侧侧边栏展示项目里程碑树与微任务清单，顶部进度条反映当前里程碑内任务推进情况。
-- 中间聊天面板根据“普通项目”或“场景角色扮演”切换不同智能体线程（讲师或模拟器），支持多轮对话、流式输出与评估结果时间线合并。
-- 右侧面板在场景模式下显示“场景简报”，否则显示提交与评估面板；当里程碑完成后出现“继续到下一阶段”的交接卡片。
+- 中间聊天面板根据"普通项目"或"场景角色扮演"切换不同智能体线程（讲师或模拟器），支持多轮对话、流式输出与评估结果时间线合并。
+- 右侧面板在场景模式下显示"场景简报"，否则显示提交与评估面板；当里程碑完成后出现"继续到下一阶段"的交接卡片。
 - 用户在输入框发送消息后，前端通过 SSE 流式接收事件（token、重置草稿、项目补丁等），实时更新聊天与项目状态。
 - 任务完成时触发评估流程（任务/里程碑/最终评估），评估结果以时间线形式插入聊天流中，保持视觉连贯性。
 
@@ -62,6 +71,7 @@ end
 - 右侧面板：提交与评估面板、场景简报（场景模式）、评估状态同步。
 - 文件上传与预览：支持 PDF、图片等多种格式，解析文本与图像，生成内容映射。
 - 性能优化：虚拟滚动、消息折叠、内存管理、流式缓冲与冲突顺序时钟。
+- **新增** 统一资源加载机制：通过 withBasePath 工具确保所有静态资源在不同部署模式下的一致访问。
 
 **章节来源**
 - [workspace.tsx:56-96](file://components/scene-renderers/pbl/v2/workspace.tsx#L56-L96)
@@ -135,8 +145,94 @@ PBLThread --> PBLChatMessage : "包含"
 - 依赖与集成边界：AI 编排层使用 LangGraph + Vercel AI SDK，课件 DSL 位于 packages/@openmaic/dsl。
 - 业务约束：场景模式中，角色扮演阶段的节拍推进由引擎检测用户行为触发，不允许手动跳过；普通项目无此限制。
 - 性能约束：虚拟滚动用于长列表，消息折叠减少渲染压力，内存管理通过清理流式缓冲与未使用对象。
+- **新增** 资源加载约束：所有静态资源必须通过 withBasePath 工具处理，确保跨部署模式兼容性。
 
 **章节来源**
 - [route.ts:1-171](file://app/api/chat/route.ts#L1-L171)
 - [pbl-renderer.tsx:216-231](file://components/scene-renderers/pbl-renderer.tsx#L216-L231)
 - [mime.ts:57-105](file://lib/document/mime.ts#L57-L105)
+
+## 资源加载机制增强
+
+### withBasePath 工具架构
+OpenMAIC 现在使用统一的 withBasePath 工具来处理所有静态资源的加载，解决了在不同部署模式下的资源访问问题：
+
+**独立运行模式**：basePath 为空时，内置资源自动重写到 `/api/public/` 路径，绕过 Next.js 16 Turbopack 开发模式的限制。
+
+**子路径部署模式**：当被 Philochora 以 `/openmaic` 子路径反向代理嵌入时，withBasePath 会自动添加 basePath 前缀，确保资源路径正确。
+
+**支持的资源类型**：
+- 头像资源：`/avatars/teacher.png`, `/avatars/user.png`, `/avatars/instructor.png`
+- Logo 资源：`/logo-horizontal.png`, `/openmaic-mark.png`
+- 第三方资源：`/vendor/*`
+- 用户上传资源：原样返回，不受影响
+
+```mermaid
+flowchart TD
+A[静态资源请求] --> B{检查资源类型}
+B --> |data:/blob:/http| C[直接返回原路径]
+B --> |内置资源| D[重写为 /api/public/]
+B --> |其他路径| E{basePath 是否为空}
+E --> |是| F[返回原路径]
+E --> |否| G[添加 basePath 前缀]
+D --> H{basePath 是否为空}
+H --> |是| I[返回 /api/public/路径]
+H --> |否| J[添加 basePath 前缀]
+style A fill:#e1f5fe
+style C fill:#c8e6c9
+style D fill:#fff3e0
+style E fill:#fff3e0
+style F fill:#c8e6c9
+style G fill:#c8e6c9
+style H fill:#fff3e0
+style I fill:#c8e6c9
+style J fill:#c8e6c9
+```
+
+**图表来源** 
+- [base-path.ts:65-89](file://lib/utils/base-path.ts#L65-L89)
+
+### Workspace 组件中的具体应用
+在 Workspace 组件中，OpenMAIC mark 图像现在通过 withBasePath 工具加载：
+
+```typescript
+// WorkspaceTopBar 组件中的使用示例
+<Image
+  src={withBasePath('/openmaic-mark.png')}
+  alt="OpenMAIC"
+  width={28}
+  height={28}
+  className="h-6 w-6"
+/>
+```
+
+这种设计确保了：
+1. **部署模式无关性**：无论独立运行还是子路径部署，图像都能正确加载
+2. **开发环境兼容**：绕过 Turbopack 的 public 资源限制
+3. **用户体验一致**：所有部署模式下视觉效果保持一致
+
+**章节来源**
+- [workspace.tsx:445-451](file://components/scene-renderers/pbl/v2/workspace.tsx#L445-L451)
+- [base-path.ts:1-90](file://lib/utils/base-path.ts#L1-L90)
+- [chat.tsx:1146-1150](file://components/scene-renderers/pbl/v2/chat.tsx#L1146-L1150)
+
+## 性能优化策略
+
+### 虚拟滚动与内存管理
+- 长列表使用虚拟滚动技术，只渲染可视区域内的消息
+- 流式缓冲采用增量更新，避免全量重渲染
+- 未使用的流式缓冲和对象及时清理，防止内存泄漏
+
+### 消息渲染优化
+- 消息折叠功能减少大量历史消息的渲染压力
+- 流式文本使用 paced text 技术，按字符逐步显示
+- 头像和静态资源预加载，减少首次渲染延迟
+
+### 网络请求优化
+- SSE 流式响应支持客户端中断，避免不必要的网络消耗
+- 资源请求去重，相同资源只加载一次
+- 错误重试机制保证资源加载的可靠性
+
+**章节来源**
+- [chat.tsx:1231-1313](file://components/scene-renderers/pbl/v2/chat.tsx#L1231-L1313)
+- [base-path.ts:18-26](file://lib/utils/base-path.ts#L18-L26)
