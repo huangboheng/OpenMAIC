@@ -13,18 +13,18 @@ import path from 'node:path';
  * 模板会解析到不存在的文件。修复后的 AudioPlayer 回退链：
  * 当前音色 URL → 默认音色 URL → IndexedDB → 读秒计时（不再静默卡死）。
  *
- * 覆盖：
- * 1. 当前音色文件缺失：先请求缺失音色，随后回退请求默认音色并继续播放。
- * 2. 全部音色文件缺失：播放不卡死，读秒计时后推进到下一条语音。
+ * 场景：同步后默认音色为 female-yujie；先切换到 male-qn-jingying（其文件
+ * 在 mock 中 404），播放时验证回退到 female-yujie 文件并继续播放。
  */
 
 const TEST_STAGE_ID = 'e2e-voice-fallback-stage';
 
-// 当前音色设为 male-qn-jingying（其文件在 mock 中返回 404，触发回退）。
+// 与 mentor-voice-switching 一致：预置 minimax-tts 客户端配置；
+// ttsEnabled 由 server-managed mock 触发的首次同步自动开启。
 const SETTINGS_STORAGE = createSettingsStorage({
   sidebarCollapsed: false,
   ttsProviderId: 'minimax-tts',
-  ttsVoice: 'male-qn-jingying',
+  ttsVoice: 'female-yujie',
   ttsProvidersConfig: {
     'minimax-tts': { enabled: true, apiKey: 'test-key' },
   },
@@ -243,9 +243,37 @@ async function mockAudioRoutes(
   });
 }
 
+/** mock 服务端托管 minimax-tts（触发首次同步自动开启 ttsEnabled）。 */
+async function mockServerManagedTts(page: import('@playwright/test').Page) {
+  await page.route('**/api/server-providers', (route) => {
+    route.fulfill({
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providers: {},
+        tts: { 'minimax-tts': {} },
+        asr: {},
+        pdf: {},
+        image: {},
+        video: {},
+        webSearch: {},
+      }),
+    });
+  });
+}
+
+/** 打开声音弹层并选定精英青年（male-qn-jingying，其文件 mock 为 404）。 */
+async function switchToMissingVoice(page: import('@playwright/test').Page) {
+  const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
+  await expect(voiceButton).toBeVisible({ timeout: 10_000 });
+  await voiceButton.click();
+  await page.getByRole('button', { name: /精英青年/ }).first().click();
+}
+
 test.describe('Missing pre-generated voice fallback', () => {
   test('缺失当前音色文件时回退默认音色并继续播放', async ({ page }) => {
     const audioRequests: string[] = [];
+    await mockServerManagedTts(page);
     await mockAudioRoutes(page, audioRequests);
     await seedDatabase(page);
 
@@ -253,6 +281,8 @@ test.describe('Missing pre-generated voice fallback', () => {
     await classroom.goto(TEST_STAGE_ID);
     await classroom.waitForLoaded();
 
+    // 切换到文件缺失的音色（male-qn-jingying），然后开始播放
+    await switchToMissingVoice(page);
     await page.getByRole('button', { name: 'Play', exact: true }).click();
 
     // 1) 先请求缺失的当前音色（male-qn-jingying）→ 404
