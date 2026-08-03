@@ -17,6 +17,9 @@
  *   - 出现 1002/429 → RPM 减半（下限 8）+ 60s 冷却，重试退避 30/60/120s
  *   - TTS_MINIMAX_API_KEY 支持逗号分隔多 Key，逐请求轮询
  *
+ * 熔断策略：连续 BACKFILL_BALANCE_FAIL_LIMIT（默认 20）次余额不足
+ * （MiniMax status_code 1008）即终止运行，避免无余额时无效空转。
+ *
  * 用法：
  *   node scripts/backfill-missing-tts.mjs                 # 全量补生成
  *   node scripts/backfill-missing-tts.mjs --dry-run       # 只统计缺失，不调用 API
@@ -147,6 +150,11 @@ function nextApiKey() {
 
 const RATE_LIMIT_RETRIES = 3;
 
+// --- 余额不足熔断：连续 N 次 1008 即终止，避免无效空转 ---
+const BALANCE_ERROR_CODE = 1008;
+const BALANCE_FAIL_LIMIT = Number(process.env.BACKFILL_BALANCE_FAIL_LIMIT || 20);
+let consecutiveBalanceFailures = 0;
+
 // --- MiniMax TTS（与 lib/audio/tts-providers.ts generateMiniMaxTTS 一致） ---
 async function generateMiniMaxTTS(text, voice, speed) {
   for (let attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt++) {
@@ -208,9 +216,11 @@ async function generateMiniMaxTTS(text, voice, speed) {
       throw new Error('MiniMax TTS: rate limit exceeded after retries');
     }
     if (data?.base_resp?.status_code && data.base_resp.status_code !== 0) {
-      throw new Error(
+      const err = new Error(
         `MiniMax TTS error ${data.base_resp.status_code}: ${data.base_resp.status_msg}`,
       );
+      err.code = data.base_resp.status_code;
+      throw err;
     }
 
     const hexAudio = data?.data?.audio;
@@ -368,9 +378,27 @@ async function backfillClassroom(classroomId, data) {
           await writeFile(join(audioDir, filename), result.audio);
           existing.push(voiceFile);
           stats.generated += 1;
+          consecutiveBalanceFailures = 0;
         } catch (err) {
           stats.failed += 1;
           console.warn(`  [fail] ${audioId} (voice=${voice}): ${err.message}`);
+          if (err.code === BALANCE_ERROR_CODE) {
+            consecutiveBalanceFailures += 1;
+            if (consecutiveBalanceFailures >= BALANCE_FAIL_LIMIT) {
+              throw new Error(
+                `[circuit-breaker] 连续 ${consecutiveBalanceFailures} 次余额不足` +
+                  `（MiniMax error ${BALANCE_ERROR_CODE}），终止运行。` +
+                  `充值后重跑本脚本即可断点续补。`,
+              );
+            }
+            if (consecutiveBalanceFailures === 1) {
+              console.warn(
+                `  [circuit-breaker] 检测到余额不足，连续 ${BALANCE_FAIL_LIMIT} 次后将自动终止`,
+              );
+            }
+          } else {
+            consecutiveBalanceFailures = 0;
+          }
         }
       }
 
