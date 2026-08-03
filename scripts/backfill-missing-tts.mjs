@@ -67,36 +67,63 @@ if (!API_KEY && !dryRun) {
 }
 
 // --- MiniMax TTS（与 lib/audio/tts-providers.ts generateMiniMaxTTS 一致） ---
+// MiniMax 免费/低价档有严格 RPM 限制（历史课堂生成失败的根因之一），
+// 这里加限速 + 限流重试，保证批量补生成稳定跑完。
+const RPM_LIMIT = Number(process.env.BACKFILL_RPM || 15);
+const REQUEST_INTERVAL_MS = Math.ceil(60_000 / RPM_LIMIT);
+const RATE_LIMIT_RETRIES = 3;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastRequestAt = 0;
+
 async function generateMiniMaxTTS(text, voice, speed) {
-  const response = await fetch(`${BASE_URL}/v1/t2a_v2`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({
-      model: MODEL_ID,
-      text,
-      stream: false,
-      output_format: 'hex',
-      voice_setting: { voice_id: voice, speed: speed || 1.0, vol: 1, pitch: 0 },
-      audio_setting: { sample_rate: 32000, bitrate: 128000, format: FORMAT, channel: 1 },
-      language_boost: 'auto',
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`MiniMax TTS API error ${response.status}: ${await response.text()}`);
+  for (let attempt = 0; attempt <= RATE_LIMIT_RETRIES; attempt++) {
+    const wait = lastRequestAt + REQUEST_INTERVAL_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastRequestAt = Date.now();
+    const response = await fetch(`${BASE_URL}/v1/t2a_v2`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({
+        model: MODEL_ID,
+        text,
+        stream: false,
+        output_format: 'hex',
+        voice_setting: { voice_id: voice, speed: speed || 1.0, vol: 1, pitch: 0 },
+        audio_setting: { sample_rate: 32000, bitrate: 128000, format: FORMAT, channel: 1 },
+        language_boost: 'auto',
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`MiniMax TTS API error ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json();
+    // 限流（status_code 1002）：退避重试
+    if (data?.base_resp?.status_code === 1002) {
+      if (attempt < RATE_LIMIT_RETRIES) {
+        const backoff = 30_000 * (attempt + 1);
+        console.warn(`  [rate-limited] 退避 ${backoff / 1000}s 后重试 (${attempt + 1}/${RATE_LIMIT_RETRIES})`);
+        await sleep(backoff);
+        continue;
+      }
+      throw new Error('MiniMax TTS: rate limit exceeded after retries');
+    }
+    if (data?.base_resp?.status_code && data.base_resp.status_code !== 0) {
+      throw new Error(`MiniMax TTS error ${data.base_resp.status_code}: ${data.base_resp.status_msg}`);
+    }
+    const hexAudio = data?.data?.audio;
+    if (!hexAudio || typeof hexAudio !== 'string') {
+      throw new Error(`MiniMax TTS: no audio returned: ${JSON.stringify(data).slice(0, 300)}`);
+    }
+    const cleaned = hexAudio.trim();
+    if (cleaned.length % 2 !== 0) throw new Error('MiniMax TTS: invalid hex payload length');
+    const audio = Buffer.from(cleaned, 'hex');
+    const format = data?.extra_info?.audio_format || FORMAT;
+    return { audio, format };
   }
-  const data = await response.json();
-  const hexAudio = data?.data?.audio;
-  if (!hexAudio || typeof hexAudio !== 'string') {
-    throw new Error(`MiniMax TTS: no audio returned: ${JSON.stringify(data).slice(0, 300)}`);
-  }
-  const cleaned = hexAudio.trim();
-  if (cleaned.length % 2 !== 0) throw new Error('MiniMax TTS: invalid hex payload length');
-  const audio = Buffer.from(cleaned, 'hex');
-  const format = data?.extra_info?.audio_format || FORMAT;
-  return { audio, format };
+  throw new Error('MiniMax TTS: exhausted retries');
 }
 
 async function fileExists(p) {
