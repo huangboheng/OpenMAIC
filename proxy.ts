@@ -36,6 +36,7 @@ const AUTH_WHITELIST = [
   '/api/auth/callback',
   '/api/health',
   '/api/persistence', // 自带 Bearer Token 认证 (server-auth.ts)，不走 OAuth
+  '/api/public',      // 公共资源代理路由（应用层读 public/ 返回），无需鉴权
   '/_next',
   '/favicon.ico',
   '/logos/',
@@ -251,5 +252,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|logos/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|logos/|api/public/).*)'],
 };
