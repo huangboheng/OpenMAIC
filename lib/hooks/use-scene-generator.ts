@@ -388,12 +388,15 @@ async function generateTTSForScene(
   // Generate + store all voice variants for one action.
   const generateOne = async (action: SpeechAction) => {
     const baseAudioId = `tts_s${sceneOrder}_${action.id}`;
+    const generatedVoiceFiles: string[] = [];
     for (const voice of PREGENERATED_VOICES) {
-      const audioId = `${baseAudioId}_${voiceIdToFileName(voice)}`;
+      const voiceFile = voiceIdToFileName(voice);
+      const audioId = `${baseAudioId}_${voiceFile}`;
       try {
         await generateAndStoreTTS(audioId, action.text, language, signal, undefined, {
           forceVoice: voice,
         });
+        generatedVoiceFiles.push(voiceFile);
       } catch (error) {
         if (isAbortError(error)) throw error;
         failedCount++;
@@ -409,8 +412,15 @@ async function generateTTSForScene(
         });
       }
     }
-    // Set the default voice audioId on the action.
-    action.audioId = `${baseAudioId}_${voiceIdToFileName(DEFAULT_PREGENERATED_VOICE)}`;
+    // Stamp the audioId only when at least one voice variant was stored —
+    // otherwise the id would point at a non-existent IndexedDB record and
+    // playback would silently miss. Prefer the default voice as anchor.
+    if (generatedVoiceFiles.length === 0) return;
+    const defaultVoiceFile = voiceIdToFileName(DEFAULT_PREGENERATED_VOICE);
+    const anchorVoiceFile = generatedVoiceFiles.includes(defaultVoiceFile)
+      ? defaultVoiceFile
+      : generatedVoiceFiles[0];
+    action.audioId = `${baseAudioId}_${anchorVoiceFile}`;
   };
 
   // Speech actions within a scene are independent — use bounded concurrency
