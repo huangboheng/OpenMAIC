@@ -366,8 +366,13 @@ export function applyGeneratedAgentsToRegistry(
   const ids: string[] = [];
   for (const agent of agents) {
     const { voiceConfig, ...rest } = agent;
+    // 服务端持久化的 avatar 字段是历史裸路径（生成 agent 时未走过
+    // withBasePath）。运行时统一补上 basePath 前缀 + 改写到 /api/public/，
+    // 以保证 basePath 部署 / 独立运行两种场景都能正确加载头像。
+    const normalizedAvatar = withBasePath(rest.avatar);
     registry.addAgent({
       ...rest,
+      avatar: normalizedAvatar,
       allowedActions: getActionsForRole(agent.role),
       isDefault: false,
       isGenerated: true,

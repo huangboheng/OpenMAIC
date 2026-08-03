@@ -35,6 +35,7 @@ import { SettingsDialog } from '@/components/settings';
 import { GenerationToolbar } from '@/components/generation/generation-toolbar';
 import { AgentBar } from '@/components/agent/agent-bar';
 import { useTheme } from '@/lib/hooks/use-theme';
+import { withBasePath } from '@/lib/utils/base-path';
 import { nanoid } from 'nanoid';
 import { deleteDocumentBlob, storeDocumentBlob } from '@/lib/utils/image-storage';
 import { normalizeDocumentMimeType } from '@/lib/document/mime';
@@ -567,7 +568,7 @@ function HomePage() {
       >
         {/* ── Logo ── */}
         <motion.img
-          src="/logo-horizontal.png"
+          src={withBasePath('/logo-horizontal.png')}
           alt="OpenMAIC"
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}

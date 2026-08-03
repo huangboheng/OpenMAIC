@@ -14,6 +14,7 @@ import { createBlankSlideScene, duplicateSlideScene } from '@/lib/edit/slide-def
 import { SCENE_CREATION_ENABLED } from '@/lib/edit/scene-creation-enabled';
 import { CHROME_DURATION_MS, CHROME_EASE, CHROME_EASE_CSS } from '@/lib/edit/transitions';
 import type { Scene } from '@/lib/types/stage';
+import { withBasePath } from '@/lib/utils/base-path';
 import { ThumbItem } from './ThumbItem';
 import { InsertionZone } from './InsertionZone';
 
@@ -385,7 +386,7 @@ export function SlideNavRail() {
             title={t('generation.backToHome')}
             className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
           >
-            <img src="/logo-horizontal.png" alt="OpenMAIC" className="h-6" />
+            <img src={withBasePath('/logo-horizontal.png')} alt="OpenMAIC" className="h-6" />
           </button>
         )}
         <div className={cn('flex items-center gap-1', collapsed && 'flex-col')}>
