@@ -33,6 +33,59 @@ export class AudioPlayer {
   }
 
   /**
+   * Load and play audio from a URL.
+   *
+   * Resolves to `true` only when playback actually started. Any load failure
+   * (404 for a missing pre-generated voice file, decode error, rejected
+   * autoplay) resolves to `false` instead of throwing, so callers can fall
+   * back to alternative sources (default voice URL, IndexedDB cache).
+   */
+  private loadAndPlayFromUrl(url: string): Promise<boolean> {
+    const token = this.requestToken;
+    return new Promise<boolean>((resolve) => {
+      const audio = new Audio();
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+      audio.addEventListener('error', () => {
+        log.warn('Audio URL failed to load, falling back:', url);
+        if (this.audio === audio) this.audio = null;
+        finish(false);
+      });
+      audio.src = url;
+      if (this.muted) audio.volume = 0;
+      else audio.volume = this.volume;
+      audio.defaultPlaybackRate = this.playbackRate;
+      audio.playbackRate = this.playbackRate;
+      audio.addEventListener('ended', () => {
+        this.onEndedCallback?.();
+      });
+      audio
+        .play()
+        .then(() => {
+          // A newer play()/stop() took over while this one was loading.
+          if (token !== this.requestToken) {
+            audio.pause();
+            finish(false);
+            return;
+          }
+          this.stopAudioElement();
+          this.audio = audio;
+          audio.playbackRate = this.playbackRate;
+          finish(true);
+        })
+        .catch((err) => {
+          log.warn('Audio play() failed, falling back:', url, err);
+          if (this.audio === audio) this.audio = null;
+          finish(false);
+        });
+    });
+  }
+
+  /**
    * Play audio (from URL or IndexedDB pre-generated cache).
    *
    * Voice-aware resolution:
@@ -53,28 +106,28 @@ export class AudioPlayer {
     const defaultVoiceFile = voiceIdToFileName(DEFAULT_PREGENERATED_VOICE);
   
     try {
-      // 1. Try audioUrl first (server-generated TTS)
+      // 1. Try audioUrl first (server-generated TTS), with a fallback chain
+      //    for missing pre-generated voice files: current voice URL → default
+      //    voice URL → IndexedDB cache (client-generated TTS).
       if (audioUrl) {
-        // Resolve {voice} template in URL (multi-voice pre-generation format)
         const resolvedUrl = audioUrl.includes('{voice}')
           ? audioUrl.replace('{voice}', voiceFile)
           : audioUrl;
-  
-        this.stopAudioElement();
+        const played = await this.loadAndPlayFromUrl(resolvedUrl);
+        if (played) return true;
         if (requestToken !== this.requestToken) return false;
-        this.audio = new Audio();
-        this.audio.src = resolvedUrl;
-        if (this.muted) this.audio.volume = 0;
-        else this.audio.volume = this.volume;
-        this.audio.defaultPlaybackRate = this.playbackRate;
-        this.audio.playbackRate = this.playbackRate;
-        this.audio.addEventListener('ended', () => {
-          this.onEndedCallback?.();
-        });
-        await this.audio.play();
-        if (requestToken !== this.requestToken) return false;
-        this.audio.playbackRate = this.playbackRate;
-        return true;
+
+        // The requested voice file is likely missing — retry with the default
+        // pre-generated voice (only when the URL carries a {voice} template).
+        if (
+          audioUrl.includes('{voice}') &&
+          voiceFile !== defaultVoiceFile
+        ) {
+          const fallbackUrl = audioUrl.replace('{voice}', defaultVoiceFile);
+          const playedFallback = await this.loadAndPlayFromUrl(fallbackUrl);
+          if (playedFallback) return true;
+          if (requestToken !== this.requestToken) return false;
+        }
       }
   
       // 2. Fall back to IndexedDB (client-generated TTS) with voice-aware lookup.
