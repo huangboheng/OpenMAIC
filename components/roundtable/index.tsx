@@ -29,6 +29,7 @@ import { AvatarDisplay } from '@/components/ui/avatar-display';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { DEFAULT_TEACHER_AVATAR, DEFAULT_USER_AVATAR } from '@/components/roundtable/constants';
+import { withBasePath } from '@/lib/utils/base-path';
 import type { DiscussionAction } from '@/lib/types/action';
 import type { EngineMode, PlaybackView } from '@/lib/playback';
 import type { Participant } from '@/lib/types/roundtable';
@@ -959,7 +960,7 @@ export function Roundtable({
                             <AvatarDisplay
                               src={
                                 (speakingStudent || presentationDiscussionParticipant)?.avatar ||
-                                '/avatars/user.png'
+                                withBasePath('/avatars/user.png')
                               }
                               alt={
                                 (speakingStudent || presentationDiscussionParticipant)?.name || ''

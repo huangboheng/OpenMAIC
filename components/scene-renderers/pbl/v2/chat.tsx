@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { withBasePath } from '@/lib/utils/base-path';
 import {
   ArrowUp,
   CheckCircle2,
@@ -1145,8 +1146,8 @@ function InstructorMessageBubble({
 /** PBL v2 instructor avatar — a PBL-owned asset, intentionally NOT
  *  roundtable's `DEFAULT_TEACHER_AVATAR`, so the instructor's face is
  *  decoupled from the OpenMAIC classroom teacher avatar; changing one
- *  never affects the other. */
-const PBL_INSTRUCTOR_AVATAR = '/avatars/instructor.png';
+ *  never affects the other. 使用 withBasePath 兼容 /openmaic 子路径部署。 */
+const PBL_INSTRUCTOR_AVATAR = withBasePath('/avatars/instructor.png');
 
 const INSTRUCTOR_AVATAR_RING =
   'h-8 w-8 overflow-hidden rounded-full border border-primary/35 bg-primary/15 shadow-[0_0_22px_rgba(169,148,255,0.22)]';

@@ -12,6 +12,7 @@ import type { GeneratedAgentConfig } from '@/lib/types/stage';
 import { USER_AVATAR } from '@/lib/types/roundtable';
 import type { Participant, ParticipantRole } from '@/lib/types/roundtable';
 import { useUserProfileStore } from '@/lib/store/user-profile';
+import { withBasePath } from '@/lib/utils/base-path';
 import type { AgentInfo } from '@/lib/generation/pipeline-types';
 
 interface AgentRegistryState {
@@ -61,7 +62,7 @@ Your teaching style:
 You can spotlight or laser-point at slide elements, and use the whiteboard for hand-drawn explanations. Use these actions naturally as part of your teaching flow. Never announce your actions; just teach.
 
 Tone: Professional yet approachable. Patient. Encouraging. You genuinely care about whether students understand.`,
-    avatar: '/avatars/teacher.png',
+    avatar: withBasePath('/avatars/teacher.png'),
     color: '#3b82f6',
     allowedActions: [...SLIDE_ACTIONS, ...WHITEBOARD_ACTIONS],
     priority: 10,
@@ -85,7 +86,7 @@ Your style:
 You play a supportive role — you don't take over the lesson, but you make sure everyone keeps up.
 
 Tone: Friendly, warm, down-to-earth. Like a helpful older classmate who just "gets it."`,
-    avatar: '/avatars/assist.png',
+    avatar: withBasePath('/avatars/assist.png'),
     color: '#10b981',
     allowedActions: [...WHITEBOARD_ACTIONS],
     priority: 7,
@@ -109,7 +110,7 @@ Your personality:
 You keep things light. When the class gets too heavy or boring, you're the one who livens it up. But you also know when to dial it back during serious moments.
 
 Tone: Playful, energetic, a little cheeky. You speak casually, like you're chatting with friends. Keep responses SHORT — one-liners and quick reactions, not paragraphs.`,
-    avatar: '/avatars/clown.png',
+    avatar: withBasePath('/avatars/clown.png'),
     color: '#f59e0b',
     allowedActions: [...WHITEBOARD_ACTIONS],
     priority: 4,
@@ -133,7 +134,7 @@ Your personality:
 You represent the voice of genuine curiosity. Your questions make the teacher's explanations better for everyone.
 
 Tone: Eager, enthusiastic, occasionally puzzled. You speak with the excitement of someone discovering things for the first time. Keep questions concise and direct.`,
-    avatar: '/avatars/curious.png',
+    avatar: withBasePath('/avatars/curious.png'),
     color: '#ec4899',
     allowedActions: [...WHITEBOARD_ACTIONS],
     priority: 5,
@@ -157,7 +158,7 @@ Your personality:
 You're the student everyone wants to sit next to during exams. Your notes are legendary.
 
 Tone: Organized, helpful, slightly studious. You speak clearly and precisely. When sharing notes, use structured formats — numbered lists, key terms bolded, clear headers.`,
-    avatar: '/avatars/note-taker.png',
+    avatar: withBasePath('/avatars/note-taker.png'),
     color: '#06b6d4',
     allowedActions: [...WHITEBOARD_ACTIONS],
     priority: 5,
@@ -181,7 +182,7 @@ Your personality:
 You don't speak as often as others, but when you do, it changes the direction of the conversation. You value depth over breadth.
 
 Tone: Thoughtful, measured, intellectually curious. You pause before speaking. Your sentences are deliberate and carry weight. Ask provocative questions that make everyone stop and think.`,
-    avatar: '/avatars/thinker.png',
+    avatar: withBasePath('/avatars/thinker.png'),
     color: '#8b5cf6',
     allowedActions: [...WHITEBOARD_ACTIONS],
     priority: 6,
