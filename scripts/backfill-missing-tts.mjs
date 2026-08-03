@@ -150,10 +150,19 @@ function nextApiKey() {
 
 const RATE_LIMIT_RETRIES = 3;
 
-// --- 余额不足熔断：连续 N 次 1008 即终止，避免无效空转 ---
-const BALANCE_ERROR_CODE = 1008;
-const BALANCE_FAIL_LIMIT = Number(process.env.BACKFILL_BALANCE_FAIL_LIMIT || 20);
-let consecutiveBalanceFailures = 0;
+// --- 额度类错误熔断：连续 N 次即终止，避免无效空转 ---
+// 1008 = 余额不足；2056 = Token Plan 用量上限（实测确认，曾空转 358 次）；
+// 消息关键词兜底覆盖其他额度类错误。
+const QUOTA_ERROR_CODES = new Set([1008, 2056]);
+const QUOTA_MSG_PATTERNS = [/用量上限/, /余额不足/, /insufficient balance/, /Token Plan/i];
+const QUOTA_FAIL_LIMIT = Number(process.env.BACKFILL_BALANCE_FAIL_LIMIT || 20);
+let consecutiveQuotaFailures = 0;
+
+function isQuotaError(err) {
+  return (
+    QUOTA_ERROR_CODES.has(err.code) || QUOTA_MSG_PATTERNS.some((re) => re.test(err.message))
+  );
+}
 
 // --- MiniMax TTS（与 lib/audio/tts-providers.ts generateMiniMaxTTS 一致） ---
 async function generateMiniMaxTTS(text, voice, speed) {
@@ -378,26 +387,26 @@ async function backfillClassroom(classroomId, data) {
           await writeFile(join(audioDir, filename), result.audio);
           existing.push(voiceFile);
           stats.generated += 1;
-          consecutiveBalanceFailures = 0;
+          consecutiveQuotaFailures = 0;
         } catch (err) {
           stats.failed += 1;
           console.warn(`  [fail] ${audioId} (voice=${voice}): ${err.message}`);
-          if (err.code === BALANCE_ERROR_CODE) {
-            consecutiveBalanceFailures += 1;
-            if (consecutiveBalanceFailures >= BALANCE_FAIL_LIMIT) {
+          if (isQuotaError(err)) {
+            consecutiveQuotaFailures += 1;
+            if (consecutiveQuotaFailures >= QUOTA_FAIL_LIMIT) {
               throw new Error(
-                `[circuit-breaker] 连续 ${consecutiveBalanceFailures} 次余额不足` +
-                  `（MiniMax error ${BALANCE_ERROR_CODE}），终止运行。` +
-                  `充值后重跑本脚本即可断点续补。`,
+                `[circuit-breaker] 连续 ${consecutiveQuotaFailures} 次额度错误` +
+                  `（余额不足/Token Plan 用量上限），终止运行。` +
+                  `恢复额度后重跑本脚本即可断点续补。`,
               );
             }
-            if (consecutiveBalanceFailures === 1) {
+            if (consecutiveQuotaFailures === 1) {
               console.warn(
-                `  [circuit-breaker] 检测到余额不足，连续 ${BALANCE_FAIL_LIMIT} 次后将自动终止`,
+                `  [circuit-breaker] 检测到额度错误，连续 ${QUOTA_FAIL_LIMIT} 次后将自动终止`,
               );
             }
           } else {
-            consecutiveBalanceFailures = 0;
+            consecutiveQuotaFailures = 0;
           }
         }
       }
