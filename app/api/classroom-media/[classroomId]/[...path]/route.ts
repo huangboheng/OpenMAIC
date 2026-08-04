@@ -20,6 +20,28 @@ const MIME_TYPES: Record<string, string> = {
   '.aac': 'audio/aac',
 };
 
+/**
+ * 路径包含性判定（纵深防御，防路径逃逸）。
+ *
+ * Windows 文件系统大小写不敏感，但 process.cwd() 拼接出的 base 与
+ * fs.realpath 解析结果的大小写可能不一致（实测盘符 e:\ vs E:\ 即令
+ * 大小写敏感的 startsWith 恒 false，导致全部媒体文件被误判 404）。
+ * 调用方需先对两侧分别 realpath 规范化；win32 上再转小写比较。
+ * platform 参数仅为单测可注入，默认取当前运行时。
+ */
+export function isPathWithinBase(
+  realPath: string,
+  realBase: string,
+  platform: string = process.platform,
+): boolean {
+  const isWin = platform === 'win32';
+  const norm = isWin ? (p: string) => p.toLowerCase() : (p: string) => p;
+  const sep = isWin ? '\\' : '/';
+  const a = norm(realPath);
+  const b = norm(realBase);
+  return a === b || a.startsWith(b + sep);
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ classroomId: string; path: string[] }> },
@@ -47,9 +69,21 @@ export async function GET(
   const resolvedBase = path.resolve(CLASSROOMS_DIR, classroomId);
 
   try {
-    // Resolve symlinks and verify the real path stays within the classroom dir
+    // Resolve symlinks and verify the real path stays within the classroom dir.
+    // Realpath BOTH sides: comparing a realpath'd child against a raw base
+    // misfires on Windows when cwd/realpath casing diverges (all media 404).
     const realPath = await fs.realpath(filePath);
-    if (!realPath.startsWith(resolvedBase + path.sep) && realPath !== resolvedBase) {
+    let realBase = resolvedBase;
+    try {
+      realBase = await fs.realpath(resolvedBase);
+    } catch {
+      // Base dir missing ⇒ the file realpath above would already have thrown
+      // ENOENT; keep the raw base for the comparison fallback.
+    }
+    if (!isPathWithinBase(realPath, realBase)) {
+      log.warn(
+        `Media path escape blocked [classroomId=${classroomId}, path=${joined}]: real=${realPath}, base=${realBase}`,
+      );
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
