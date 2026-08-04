@@ -152,16 +152,46 @@ const RATE_LIMIT_RETRIES = 3;
 
 // --- 额度类错误处理：连续 N 次即进入等待，额度恢复后自动续跑 ---
 // 1008 = 余额不足；2056 = Token Plan 用量上限（实测确认，曾空转 358 次）；
-// 消息关键词兜底覆盖其他额度类错误。Token Plan 为 5 小时滚动上限，
-// 等待 QUOTA_WAIT_MIN 分钟后自动重试，无需人工重启；额度错误不计费，
-// 重试成本可忽略。连续 MAX_QUOTA_WAITS 轮仍未恢复才终止（默认 48 轮 ≈ 24h）。
+// 消息关键词兜底覆盖其他额度类错误。Token Plan 为 5 小时滚动上限：
+// - 若已知重置时间（BACKFILL_QUOTA_RESET_AT，epoch 毫秒或 2h19m/139m 相对时长，
+//   相对时长从首次触发等待的时刻起算），直接睡到重置点+缓冲，不盲目轮询；
+// - 未知时回退为每 QUOTA_WAIT_MIN 分钟轮询重试。额度错误不计费，重试成本可忽略。
+// 连续 MAX_QUOTA_WAITS 轮仍未恢复才终止（默认 48 轮 ≈ 24h）。
 const QUOTA_ERROR_CODES = new Set([1008, 2056]);
 const QUOTA_MSG_PATTERNS = [/用量上限/, /余额不足/, /insufficient balance/, /Token Plan/i];
 const QUOTA_FAIL_LIMIT = Number(process.env.BACKFILL_BALANCE_FAIL_LIMIT || 20);
 const QUOTA_WAIT_MIN = Number(process.env.BACKFILL_QUOTA_WAIT_MIN || 30);
 const MAX_QUOTA_WAITS = Number(process.env.BACKFILL_MAX_QUOTA_WAITS || 48);
+const QUOTA_RESET_AT_SPEC = (process.env.BACKFILL_QUOTA_RESET_AT || '').trim();
 let consecutiveQuotaFailures = 0;
 let quotaWaitRounds = 0;
+
+/**
+ * 解析额度重置目标时刻：
+ * - 纯数字（≥12 位）→ epoch 毫秒绝对时刻；
+ * - 时长格式 2h19m / 139m / 90s → 从 fromAt（首次触发等待时刻）起算的相对时长。
+ * 返回 0 表示未配置/无法解析（回退轮询模式）。
+ */
+function resolveQuotaResetAt(fromAt) {
+  if (!QUOTA_RESET_AT_SPEC) return 0;
+  if (/^\d{12,}$/.test(QUOTA_RESET_AT_SPEC)) return Number(QUOTA_RESET_AT_SPEC);
+  const m = QUOTA_RESET_AT_SPEC.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  if (!m || (!m[1] && !m[2] && !m[3])) return 0;
+  return fromAt + ((Number(m[1]) || 0) * 3600 + (Number(m[2]) || 0) * 60 + (Number(m[3]) || 0)) * 1000;
+}
+
+/** 分段睡眠至目标时刻（每 10 分钟醒一次打心跳日志，便于观察进程存活）。 */
+async function sleepUntilQuotaReset(targetAt) {
+  while (Date.now() < targetAt) {
+    const remainMs = targetAt - Date.now();
+    const chunkMs = Math.min(remainMs, 10 * 60_000);
+    console.log(
+      `[quota-wait] 距额度重置还有 ${Math.ceil(remainMs / 60000)} 分钟，` +
+        `本次睡眠 ${Math.ceil(chunkMs / 60000)} 分钟…`,
+    );
+    await sleep(chunkMs);
+  }
+}
 
 function isQuotaError(err) {
   return (
@@ -407,11 +437,22 @@ async function backfillClassroom(classroomId, data) {
                     `恢复额度后重跑本脚本即可断点续补。`,
                 );
               }
-              console.warn(
-                `[quota-wait] 连续 ${consecutiveQuotaFailures} 次额度错误（第 ${quotaWaitRounds}/${MAX_QUOTA_WAITS} 轮），` +
-                  `等待 ${QUOTA_WAIT_MIN} 分钟（额度按 5 小时滚动重置）后自动续跑…`,
-              );
-              await sleep(QUOTA_WAIT_MIN * 60_000);
+              const waitStart = Date.now();
+              const resetAt = resolveQuotaResetAt(waitStart);
+              if (resetAt > waitStart) {
+                console.warn(
+                  `[quota-wait] 连续 ${consecutiveQuotaFailures} 次额度错误（第 ${quotaWaitRounds}/${MAX_QUOTA_WAITS} 轮），` +
+                    `直接睡到额度重置时刻 ${new Date(resetAt).toLocaleString()}…`,
+                );
+                // +60s 缓冲，避免窗口边界竞态
+                await sleepUntilQuotaReset(resetAt + 60_000);
+              } else {
+                console.warn(
+                  `[quota-wait] 连续 ${consecutiveQuotaFailures} 次额度错误（第 ${quotaWaitRounds}/${MAX_QUOTA_WAITS} 轮），` +
+                    `未配置重置时间，${QUOTA_WAIT_MIN} 分钟后轮询重试…`,
+                );
+                await sleep(QUOTA_WAIT_MIN * 60_000);
+              }
               consecutiveQuotaFailures = 0;
               console.log('[quota-wait] 等待结束，重试当前音色…');
             }
