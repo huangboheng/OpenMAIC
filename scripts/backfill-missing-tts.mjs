@@ -421,8 +421,9 @@ async function backfillClassroom(classroomId, data) {
               );
             }
           } else {
-            consecutiveQuotaFailures = 0;
-            quotaWaitRounds = 0;
+            // 其他错误（网络/RPM 限流 1002 等）不重置额度连续计数：
+            // 实测额度上限(2056)与 RPM 限流(1002)交替出现时，若重置计数
+            // 会导致等待永远不触发、进程在限额下高频空转。仅成功才重置（见上）。
           }
         }
       }
