@@ -10,6 +10,7 @@
  * 用法：
  *   node scripts/verify-tts-completeness.mjs              # 全量核验
  *   node scripts/verify-tts-completeness.mjs --summary    # 只输出汇总
+ *   node scripts/verify-tts-completeness.mjs --complete   # 列出四音色齐备的完整课堂
  *   node scripts/verify-tts-completeness.mjs --classroom=xx
  */
 
@@ -22,6 +23,7 @@ const VOICES = ['female-yujie', 'female-shaonv', 'male-qn-jingying', 'Chinese__M
 
 const args = process.argv.slice(2);
 const summaryOnly = args.includes('--summary');
+const completeOnly = args.includes('--complete');
 const onlyClassroom = args.find((a) => a.startsWith('--classroom='))?.split('=')[1];
 
 const rows = [];
@@ -59,6 +61,14 @@ const complete = rows.length - incomplete.length;
 console.log(
   `核验结果: ${rows.length} 个课堂, ${complete} 个完整, ${incomplete.length} 个有缺失, 总缺失 ${totalMissing}`,
 );
+if (completeOnly) {
+  const done = rows.filter((r) => r.missing === 0);
+  console.log(`\n完整课堂（四音色齐备，共 ${done.length} 个）:`);
+  for (const r of done) {
+    console.log(`  ${r.id}（${r.name}）: ${r.speeches} 条语音 /classroom/${r.id}`);
+  }
+  process.exit(0);
+}
 if (!summaryOnly) {
   for (const r of incomplete) {
     console.log(`  ${r.id}（${r.name}）: ${r.speeches} 条语音, 缺失 ${r.missing}`);
