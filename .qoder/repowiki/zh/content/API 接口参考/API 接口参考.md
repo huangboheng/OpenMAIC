@@ -18,12 +18,19 @@
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts](file://app/api/classroom-media/[classroomId]/[...path]/route.ts)
 </cite>
 
+## 更新摘要
+**变更内容**   
+- 更新了课堂媒体API端点的路径验证逻辑，修复Windows平台路径大小写敏感性问题
+- 增强了跨平台兼容性，确保在不同操作系统上的安全边界执行
+- 改进了路径包含性验证算法，支持Windows和POSIX系统的差异化处理
+
 ## 目录
 - 产品概述
 - 核心业务流程
 - 功能模块清单
 - 数据与状态
 - 关键约束与边界
+- 跨平台兼容性说明
 
 ## 产品概述
 OpenMAIC 是 AI 驱动的交互式课件（MAIC）生成与课堂管理平台，提供从自然语言到结构化课件的自动生成、课堂实时互动（问答/讨论/测验）、以及课件编辑与回放能力。后端基于 Next.js 16 + React 19 + Zustand 状态管理；AI 编排层使用 LangGraph + Vercel AI SDK；课件格式为自定义 DSL。API 以 RESTful 为主，部分长耗时或流式场景采用 SSE（Server-Sent Events）。
@@ -106,7 +113,7 @@ PBL-->>Client : SSE : token/tool-call/project_patch
 - [app/api/classroom/route.ts:14-86](file://app/api/classroom/route.ts#L14-L86)
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-96](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L96)
 - [app/api/chat/route.ts:44-208](file://app/api/chat/route.ts#L44-L208)
-- [app/api/pbl/chat/route.ts:25-84](file://app/api/pbl/chat/route.ts#L25-L84)
+- [app/api/pbl/chat/route.ts:25-84](file://app/api/pbl/chat/route.ts#L25-84)
 - [app/api/pbl/v2/instructor/route.ts:38-77](file://app/api/pbl/v2/instructor/route.ts#L38-L77)
 - [app/api/generate/scene-outlines-stream/route.ts:285-652](file://app/api/generate/scene-outlines-stream/route.ts#L285-L652)
 - [app/api/generate/scene-content/route.ts:34-206](file://app/api/generate/scene-content/route.ts#L34-L206)
@@ -185,3 +192,28 @@ PBL-->>Client : SSE : token/tool-call/project_patch
 - [app/api/health/route.ts:11-23](file://app/api/health/route.ts#L11-L23)
 - [app/api/chat/route.ts:44-208](file://app/api/chat/route.ts#L44-L208)
 - [app/api/generate/scene-outlines-stream/route.ts:285-652](file://app/api/generate/scene-outlines-stream/route.ts#L285-L652)
+
+## 跨平台兼容性说明
+
+### Windows 路径大小写修复
+**已更新** 课堂媒体API端点现已完全支持Windows平台的文件系统特性，解决了路径大小写敏感性问题。
+
+#### 技术实现细节
+- **路径规范化**：在Windows系统上，`isPathWithinBase`函数会自动将路径转换为小写进行比较，确保 `e:\` 和 `E:\` 被视为相同路径
+- **分隔符处理**：根据操作系统自动选择正确的路径分隔符（Windows使用`\`，POSIX使用`/`）
+- **双重realpath验证**：同时对子文件和基础目录执行realpath解析，避免因大小写不一致导致的误判
+
+#### 安全边界保障
+- **纵深防御**：即使路径比较通过，仍会进行严格的目录权限检查
+- **前缀混淆防护**：防止类似 `abc-evil` 与 `abc` 的前缀匹配漏洞
+- **符号链接安全**：通过realpath解析符号链接，防止通过软链接绕过安全检查
+
+#### 测试覆盖
+- Windows盘符大小写差异测试（`e:\` vs `E:\`）
+- POSIX系统大小写敏感测试
+- 路径逃逸攻击防护测试
+- 前缀混淆攻击防护测试
+
+**章节来源**
+- [app/api/classroom-media/[classroomId]/[...path]/route.ts:23-43](file://app/api/classroom-media/[classroomId]/[...path]/route.ts#L23-L43)
+- [tests/api/classroom-media-path.test.ts:1-69](file://tests/api/classroom-media-path.test.ts#L1-L69)
