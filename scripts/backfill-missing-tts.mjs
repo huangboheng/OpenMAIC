@@ -543,6 +543,22 @@ async function main() {
       ? { ...prev.totals }
       : { classrooms: 0, missing: 0, generated: 0, failed: 0 };
 
+  // 显式启动即睡：已知配额耗尽且配置了重置时刻时，直接睡到重置点再开跑，
+  // 避免在配额耗尽期间浪费大量请求去撞 RPM/额度错误。需同时设置
+  // BACKFILL_SLEEP_AT_START=1 与 BACKFILL_QUOTA_RESET_AT。
+  if (!dryRun && process.env.BACKFILL_SLEEP_AT_START === '1') {
+    const startNow = Date.now();
+    const resetAt = resolveQuotaResetAt(startNow);
+    if (resetAt > startNow) {
+      console.warn(
+        `[quota-wait] BACKFILL_SLEEP_AT_START=1：配额已耗尽，直接睡到重置时刻 ` +
+          `${new Date(resetAt).toLocaleString()} 后开始补生成…`,
+      );
+      await sleepUntilQuotaReset(resetAt + 60_000);
+      console.log('[quota-wait] 等待结束，开始补生成…');
+    }
+  }
+
   for (const { id, data, name, missing } of targets) {
     await waitForWindow(win);
     const stats = await backfillClassroom(id, data);
