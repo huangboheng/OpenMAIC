@@ -150,13 +150,18 @@ function nextApiKey() {
 
 const RATE_LIMIT_RETRIES = 3;
 
-// --- 额度类错误熔断：连续 N 次即终止，避免无效空转 ---
+// --- 额度类错误处理：连续 N 次即进入等待，额度恢复后自动续跑 ---
 // 1008 = 余额不足；2056 = Token Plan 用量上限（实测确认，曾空转 358 次）；
-// 消息关键词兜底覆盖其他额度类错误。
+// 消息关键词兜底覆盖其他额度类错误。Token Plan 为 5 小时滚动上限，
+// 等待 QUOTA_WAIT_MIN 分钟后自动重试，无需人工重启；额度错误不计费，
+// 重试成本可忽略。连续 MAX_QUOTA_WAITS 轮仍未恢复才终止（默认 48 轮 ≈ 24h）。
 const QUOTA_ERROR_CODES = new Set([1008, 2056]);
 const QUOTA_MSG_PATTERNS = [/用量上限/, /余额不足/, /insufficient balance/, /Token Plan/i];
 const QUOTA_FAIL_LIMIT = Number(process.env.BACKFILL_BALANCE_FAIL_LIMIT || 20);
+const QUOTA_WAIT_MIN = Number(process.env.BACKFILL_QUOTA_WAIT_MIN || 30);
+const MAX_QUOTA_WAITS = Number(process.env.BACKFILL_MAX_QUOTA_WAITS || 48);
 let consecutiveQuotaFailures = 0;
+let quotaWaitRounds = 0;
 
 function isQuotaError(err) {
   return (
@@ -388,25 +393,36 @@ async function backfillClassroom(classroomId, data) {
           existing.push(voiceFile);
           stats.generated += 1;
           consecutiveQuotaFailures = 0;
+          quotaWaitRounds = 0;
         } catch (err) {
           stats.failed += 1;
           console.warn(`  [fail] ${audioId} (voice=${voice}): ${err.message}`);
           if (isQuotaError(err)) {
             consecutiveQuotaFailures += 1;
             if (consecutiveQuotaFailures >= QUOTA_FAIL_LIMIT) {
-              throw new Error(
-                `[circuit-breaker] 连续 ${consecutiveQuotaFailures} 次额度错误` +
-                  `（余额不足/Token Plan 用量上限），终止运行。` +
-                  `恢复额度后重跑本脚本即可断点续补。`,
+              quotaWaitRounds += 1;
+              if (quotaWaitRounds > MAX_QUOTA_WAITS) {
+                throw new Error(
+                  `[circuit-breaker] 连续 ${quotaWaitRounds} 轮等待后额度仍未恢复，终止运行。` +
+                    `恢复额度后重跑本脚本即可断点续补。`,
+                );
+              }
+              console.warn(
+                `[quota-wait] 连续 ${consecutiveQuotaFailures} 次额度错误（第 ${quotaWaitRounds}/${MAX_QUOTA_WAITS} 轮），` +
+                  `等待 ${QUOTA_WAIT_MIN} 分钟（额度按 5 小时滚动重置）后自动续跑…`,
               );
+              await sleep(QUOTA_WAIT_MIN * 60_000);
+              consecutiveQuotaFailures = 0;
+              console.log('[quota-wait] 等待结束，重试当前音色…');
             }
             if (consecutiveQuotaFailures === 1) {
               console.warn(
-                `  [circuit-breaker] 检测到额度错误，连续 ${QUOTA_FAIL_LIMIT} 次后将自动终止`,
+                `  [quota-watch] 检测到额度错误，连续 ${QUOTA_FAIL_LIMIT} 次后进入等待`,
               );
             }
           } else {
             consecutiveQuotaFailures = 0;
+            quotaWaitRounds = 0;
           }
         }
       }
