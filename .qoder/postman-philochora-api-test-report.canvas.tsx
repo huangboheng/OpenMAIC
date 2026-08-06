@@ -1,4 +1,3 @@
-import * as CanvasModule from "qoder/canvas";
 import {
 	Callout,
 	Code,
