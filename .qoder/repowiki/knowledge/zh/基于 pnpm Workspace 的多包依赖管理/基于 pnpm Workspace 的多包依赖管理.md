@@ -7,9 +7,12 @@ scope:
 source_files:
     - package.json
     - pnpm-workspace.yaml
+    - pnpm-lock.yaml
     - Dockerfile
     - packages/@openmaic/dsl/package.json
+    - packages/@openmaic/importer/package.json
     - packages/@openmaic/renderer/package.json
+    - packages/@openmaic/storage/package.json
 ---
 
 ## 系统/工具
@@ -20,21 +23,22 @@ source_files:
 
 ## 关键文件与包
 - **根 `package.json`**: 定义应用依赖、脚本（`postinstall` 自动构建所有子包）、`pnpm` 配置（忽略 native 构建的 `sharp`、`unrs-resolver`）
-- **`pnpm-workspace.yaml`**: 声明工作区成员，排除 docs 子应用
+- **`pnpm-workspace.yaml`**: 声明工作区成员（`packages/*` 与 `packages/@openmaic/*`），排除 docs 子应用
 - **`Dockerfile`**: 多阶段构建，先 `pnpm install --frozen-lockfile` 再 `pnpm build`，运行时仅包含 `.next/standalone` 产物
 - **子包**:
-  - `@openmaic/dsl`: DSL 类型与 JSON Schema 契约包，无外部依赖
+  - `@openmaic/dsl`: DSL 类型与 JSON Schema 契约包，无外部依赖，被 importer/renderer/storage 共同依赖
   - `@openmaic/renderer`: React 渲染组件，通过 `peerDependencies` 声明 react、motion、tailwindcss 等宿主依赖
   - `@openmaic/importer`、`@openmaic/storage`: 通过 `workspace:*` 依赖 dsl
-  - `mathml2omml`、`pptxgenjs`: 独立 npm 包，通过 `workspace:*` 引用
+  - `mathml2omml`、`pptxgenjs`: 第三方库补丁包，在 postinstall 中构建
 
 ## 架构与约定
 - **Monorepo 设计**: 应用层依赖通过 `workspace:*` 指向本地子包，避免发布到 npm registry，实现零拷贝引用
-- **依赖分层**: 
+- **依赖分层**:
   - 核心契约包（dsl）无依赖，被 renderer/importer/storage 共同依赖
-  - 业务包（renderer/importer/storage）通过 peerDependencies 声明可选依赖（echarts、shiki）
+  - 业务包（renderer/importer/storage）通过 peerDependencies 声明可选依赖（echarts、shiki），框架级依赖使用 `peerDependenciesMeta.optional` 标记可选
   - 第三方库集中在根 `package.json` 的 dependencies/devDependencies 中统一管理
 - **构建链**: `postinstall` 脚本按顺序构建 mathml2omml → pptxgenjs → @openmaic/dsl → storage → importer → renderer，最后执行 `scripts/sync-maic-importer.mjs` 同步导入器
+- **发布配置**: 每个包设置 `publishConfig.registry: https://registry.npmjs.org` 与 `access: public`，支持独立发布到 npm；所有包提供 `prepublishOnly: "pnpm run build"` 确保发布前完成构建
 - **CI/CD**: GitHub Actions 中使用 `cache-dependency-path` 缓存 `pnpm-lock.yaml`，确保依赖安装加速
 
 ## 开发者规则
@@ -43,3 +47,5 @@ source_files:
 3. 修改 `pnpm-lock.yaml` 后需提交，Docker 构建会校验 `--frozen-lockfile`
 4. 添加 native 依赖时需检查 `pnpm.ignoredBuiltDependencies` 和 Dockerfile 中的系统依赖是否齐全
 5. 子包的 `peerDependencies` 应与根依赖版本兼容，避免冲突
+6. 新增内部包时，在 `pnpm-workspace.yaml` 中注册路径，并在根 `package.json` 中以 `workspace:*` 引用
+7. 禁止在子包中直接修改 node_modules，所有依赖变更通过 `pnpm add` 更新根或子包的 package.json

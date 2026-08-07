@@ -13,11 +13,15 @@ source_files:
     - next.config.ts
     - lib/fetch-base-path.ts
     - configs/font.ts
+    - app/api/access-code/status/route.ts
+    - app/api/access-code/verify/route.ts
+    - app/api/health/route.ts
+    - eval/orchestration/answering-runner.ts
 ---
 
 ## 配置系统与架构
 
-OpenMAIC 采用**分层配置体系**，将配置分为三个层次：构建期环境变量（NEXT_PUBLIC_*）、服务端环境变量（process.env）和运行时配置（runtime config）。所有配置通过集中式模块统一管理，避免散落的 process.env 直接调用。
+OpenMAIC 采用**分层配置体系**，将配置分为三个层次：构建期环境变量（NEXT_PUBLIC_*）、服务端环境变量（process.env）和运行时配置（runtime config）。配置通过集中式模块统一管理（feature-flags、runtime config 等），避免散落的 process.env 直接调用；无独立配置文件（如 .env、config.yaml），全部以环境变量形式注入。
 
 ### 1. 功能开关（Feature Flags）
 
@@ -26,7 +30,7 @@ OpenMAIC 采用**分层配置体系**，将配置分为三个层次：构建期�
 - **服务端专用开关**：不使用 `NEXT_PUBLIC_` 前缀，仅在服务器端生效
 - **布尔值解析**：统一的 `readBoolean()` 函数处理 `'true'` 或 `'1'` 为启用，其他值视为禁用
 
-主要开关包括：`isMaicEditorEnabled()`、`isPiChatEnabled()`、`resolveVocationalActive()`、`shouldShowVocationalTestUi()`、`isSettingsEnabled()`、`isVideoExportEnabled()`。
+主要开关包括：`isMaicEditorEnabled()`、`isPiChatEnabled()`、`resolveVocationalActive()`、`shouldShowVocationalTestUi()`、`isSettingsEnabled()`、`isVideoExportEnabled()`、`NEXT_PUBLIC_ENABLE_PPTX_IMPORT`。
 
 ### 2. Token Plan 配置系统
 
@@ -57,15 +61,21 @@ OpenMAIC 采用**分层配置体系**，将配置分为三个层次：构建期�
 - **fetch 拦截器**：`lib/fetch-base-path.ts` 自动为 `/api/` 请求添加 basePath 前缀
 - **安全头配置**：动态设置 CSP、X-Frame-Options、HSTS 等安全响应头
 - **独立部署**：支持 standalone 输出模式
+- **服务端直读变量**：API Route 直接读取 `ACCESS_CODE`（访问码校验）、`TRUST_PROXY_HEADERS`（代理信任）、`NODE_ENV`、`npm_package_version`（版本回退 `'0.1.0'`）等
+
+### 6. 评测脚本配置
+
+`eval/` 目录下通过环境变量控制评测行为：`EVAL_SCENARIO`、`EVAL_AGENT_MODEL`、`EVAL_JUDGE_MODEL`、`EVAL_SAMPLES`、`EVAL_PASS_THRESHOLD`、`DEFAULT_MODEL` 等。
 
 ## 关键约定与规则
 
 1. **环境变量命名规范**：客户端变量必须使用 `NEXT_PUBLIC_` 前缀，服务端变量不使用该前缀
-2. **布尔值解析**：统一使用 `readBoolean()` 函数处理，只接受 `'true'` 或 `'1'`
+2. **布尔值解析**：统一使用 `readBoolean()` 函数处理，只接受 `'true'` 或 `'1'`；直接读 `process.env` 的场景统一 `=== 'true'` 判断
 3. **配置集中化**：所有配置访问都应通过对应的模块函数，禁止直接读取 `process.env`
 4. **默认值策略**：所有配置都有合理的默认值，确保未配置时的降级行为
 5. **测试友好**：配置模块提供重置函数和注入接口，便于单元测试
-6. **安全性**：敏感配置（如 API Key）仅存在于服务端环境变量中
+6. **安全性**：敏感配置（如 API Key）仅存在于服务端环境变量中，不应出现在代码中，通过部署平台注入
+7. **文档化**：在 `.env.example` 中列出所有必需的环境变量及说明，便于团队协作
 
 ## 配置文件位置
 
@@ -75,3 +85,4 @@ OpenMAIC 采用**分层配置体系**，将配置分为三个层次：构建期�
 - 运行时配置：`lib/runtime/config.ts`
 - 部署配置：`next.config.ts`、`lib/fetch-base-path.ts`
 - 字体配置：`configs/font.ts`
+- 评测配置：`eval/orchestration/*`
