@@ -11,14 +11,15 @@
 import { createRequire } from 'module';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { getDatabaseUrl } from './lib/db-url.mjs';
 
 const require = createRequire(import.meta.url);
 const pg = require('pg');
 
 // --- 配置 ---
-const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  'postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora';
+const DATABASE_URL = getDatabaseUrl(
+  'postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora',
+);
 const DSL_VERSION = '0.1.0';
 const DSL_VERSION_KEY = 'dslVersion';
 const CLASSROOMS_DIR = join(import.meta.dirname, '..', 'data', 'classrooms');

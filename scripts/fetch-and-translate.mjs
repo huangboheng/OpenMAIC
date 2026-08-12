@@ -9,9 +9,10 @@
  */
 
 import { createRequire } from "module";
+import { getDatabaseUrl } from "./lib/db-url.mjs";
 const require = createRequire("E:/hermes/workspace/Philochora/package.json");
 const pg = require("pg");
-const DB_URL = "postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora";
+const DB_URL = getDatabaseUrl("postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora");
 
 // Gutenberg IDs for public domain books
 const GUTENBERG_IDS = {

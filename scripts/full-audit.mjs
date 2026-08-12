@@ -6,10 +6,11 @@
 import { createRequire } from "module";
 import { readdirSync, existsSync, readFileSync, statSync } from "fs";
 import path from "path";
+import { getDatabaseUrl } from "./lib/db-url.mjs";
 
 const require = createRequire("E:/hermes/workspace/Philochora/package.json");
 const pg = require("pg");
-const DB_URL = "postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora";
+const DB_URL = getDatabaseUrl("postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora");
 const DATA_ROOT = "E:/hermes/workspace/openmaic/data";
 const JOBS_DIR = path.join(DATA_ROOT, "classroom-jobs");
 const CLASSROOMS_DIR = path.join(DATA_ROOT, "classrooms");

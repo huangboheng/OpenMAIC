@@ -5,6 +5,7 @@
 import { createRequire } from "module";
 import { join } from "path";
 import { readFileSync } from "fs";
+import { getDatabaseUrl } from "./lib/db-url.mjs";
 
 const PHILOCHORA_ROOT = "E:/hermes/workspace/Philochora";
 const require = createRequire(join(PHILOCHORA_ROOT, "package.json"));
@@ -29,7 +30,7 @@ function loadEnv() {
 }
 loadEnv();
 
-const DB_URL = "postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora";
+const DB_URL = getDatabaseUrl("postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora");
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
 // Multiple API keys for rotation

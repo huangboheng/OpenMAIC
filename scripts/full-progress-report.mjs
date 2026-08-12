@@ -4,9 +4,10 @@
  */
 import { createRequire } from "module";
 import { readdirSync, existsSync, readFileSync } from "fs";
+import { getDatabaseUrl } from "./lib/db-url.mjs";
 const require = createRequire("E:/hermes/workspace/Philochora/package.json");
 const pg = require("pg");
-const c = new pg.Client({ connectionString: "postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora" });
+const c = new pg.Client({ connectionString: getDatabaseUrl("postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora") });
 await c.connect();
 
 const sep = "=".repeat(60);
