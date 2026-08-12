@@ -8,6 +8,9 @@
 import { Stage, Scene } from '../types/stage';
 import { ChatSession } from '../types/chat';
 import { db } from './database';
+import type { FolderRecord } from './database';
+import { nanoid } from 'nanoid';
+import { validateFolderName, FOLDER_COUNT_LIMIT } from './folder-name-validation';
 import {
   ChatStorageLockUnavailableError,
   saveChatSessions,
@@ -25,6 +28,7 @@ import {
   loadCurrentScene,
   mutateDocument,
   saveCurrentScene,
+  type AppDocument,
   type AppDocumentOutline,
 } from '@/lib/document-store';
 import { clearAllForScene } from '@/lib/quiz/persistence';
@@ -38,6 +42,15 @@ import {
 import { DocumentVersionError } from '@openmaic/storage';
 import { preparePBLScenesForDocumentPersistence } from '@/lib/pbl/v2/runtime/document-persistence';
 import {
+  MISSING_ASSET_LEASE,
+  isConcreteMediaAddress,
+  renderableMediaUrl,
+  resolveMediaRef,
+  type MediaTaskState,
+} from '@/lib/media/resolve-media-ref';
+import { withAssetUrl } from '@/lib/media/use-asset-url';
+import { useSettingsStore } from '@/lib/store/settings';
+import {
   beginStageDeletionCascade,
   isStageDeleted,
   isStageWriteStale,
@@ -45,6 +58,18 @@ import {
   settleStageDeletionCascade,
   unmarkStageDeleted,
 } from './deleted-stages';
+import {
+  buildStageAssetReclamationPlan,
+  executeStageAssetReclamation,
+  loadStageAssetInventory,
+} from '@/lib/media/reclaim-stage-assets';
+import {
+  collectDocumentMediaElements,
+  resolveMediaTaskForElement,
+  resolveVideoMediaForElement,
+  type MediaTaskLookupEntry,
+} from '@/lib/media/media-task-resolution';
+import { slideMediaReferenceSlots } from '@/lib/media/slide-media-slots';
 
 const log = createLogger('StageStorage');
 
@@ -80,6 +105,8 @@ export interface StageListItem {
   updatedAt: number;
   interactiveMode?: boolean;
   taskEngineMode?: boolean;
+  /** Folder this course belongs to; undefined = unfiled. Device-local only. */
+  folderId?: string;
 }
 
 function stampStage(stageId: string, stage: Stage, now: number): Stage {
@@ -550,6 +577,20 @@ async function performStageDeletion(stageId: string): Promise<void> {
         // Lock order: per-stage document lock, then the exclusive runtime epoch.
         withRuntimeStorageExclusiveLockUntilSettled(async (releaseCaller) => {
           try {
+            const deletionDocument =
+              document ??
+              ({
+                stage: { id: stageId, name: '', createdAt: 0, updatedAt: 0 },
+                scenes: [],
+              } satisfies Pick<AppDocument, 'stage' | 'scenes'>);
+            const assetInventory = await loadStageAssetInventory(deletionDocument);
+            const assetPlan = buildStageAssetReclamationPlan(
+              stageId,
+              assetInventory.refs,
+              assetInventory.mediaRows,
+              assetInventory.audioRows,
+            );
+
             // Collect scene ids before deletion so we can sweep per-scene localStorage
             // keys (quiz draft / submitted answers / graded results).
             const legacyScenes = await db.scenes.where('stageId').equals(stageId).toArray();
@@ -562,6 +603,10 @@ async function performStageDeletion(stageId: string): Promise<void> {
 
             await store.deleteDocument(stageId);
             documentDeleted = true;
+
+            // Reclamation is intentionally after the authoritative document
+            // delete. The prepared plan has already captured Dexie-only orphans.
+            await executeStageAssetReclamation(assetPlan, null);
 
             // Clear legacy chat rows and the device-scoped playback cursor. Runtime
             // rows of every kind are removed by the all-kind cascade below.
@@ -585,11 +630,17 @@ async function performStageDeletion(stageId: string): Promise<void> {
             }
 
             // Migration retains legacy rows, but an explicit whole-stage deletion does not.
-            await db.transaction('rw', [db.stages, db.scenes, db.stageOutlines], async () => {
-              await db.stages.delete(stageId);
-              await db.scenes.where('stageId').equals(stageId).delete();
-              await db.stageOutlines.delete(stageId);
-            });
+            // Folder membership is device-local organization metadata; drop it too.
+            await db.transaction(
+              'rw',
+              [db.stages, db.scenes, db.stageOutlines, db.stageFolders],
+              async () => {
+                await db.stages.delete(stageId);
+                await db.scenes.where('stageId').equals(stageId).delete();
+                await db.stageOutlines.delete(stageId);
+                await db.stageFolders.delete(stageId);
+              },
+            );
 
             // Mirror hygiene: the legacy roster mirror is read-only migration
             // input, but a deleted stage needs no migration source — drop its
@@ -684,6 +735,10 @@ export async function listStages(): Promise<StageListItem[]> {
           return snapshot ? { ...stage, sceneCount: snapshot.scenes.length } : null;
         }),
     );
+    // Folder membership is device-local metadata kept in this Dexie database,
+    // not in the DocumentStore; join it in so callers can group courses.
+    const memberships = await db.stageFolders.toArray();
+    const folderByStage = new Map(memberships.map((m) => [m.stageId, m.folderId]));
     return [
       ...summaries,
       ...legacyOnly
@@ -698,7 +753,11 @@ export async function listStages(): Promise<StageListItem[]> {
           interactiveMode: stage.interactiveMode,
           taskEngineMode: stage.taskEngineMode,
         })),
-    ].sort((a, b) => b.updatedAt - a.updatedAt);
+    ]
+      .map((item) =>
+        folderByStage.get(item.id) ? { ...item, folderId: folderByStage.get(item.id) } : item,
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   } catch (error) {
     log.error('Failed to list stages:', error);
     throw error;
@@ -706,6 +765,7 @@ export async function listStages(): Promise<StageListItem[]> {
 }
 
 type ThumbnailMediaElement = {
+  id: string;
   type: string;
   src?: string;
   mediaRef?: string;
@@ -714,21 +774,13 @@ type ThumbnailMediaElement = {
 
 type ThumbnailSlide = import('@openmaic/dsl').Slide;
 
-function isGeneratedMediaRef(value: unknown): value is string {
-  return typeof value === 'string' && /^gen_(img|vid)_[\w-]+$/i.test(value);
-}
-
-function isLegacySequentialVideoRef(value: unknown): value is string {
-  return typeof value === 'string' && /^gen_vid_\d+$/i.test(value);
+function isResolvableThumbnailMediaRef(value: unknown): value is string {
+  return typeof value === 'string' && !!value && !isConcreteMediaAddress(value);
 }
 
 function getThumbnailMediaRef(element: ThumbnailMediaElement): string | undefined {
-  if (element.type === 'image' && isGeneratedMediaRef(element.src)) {
+  if (element.type === 'image' && isResolvableThumbnailMediaRef(element.src)) {
     return element.src;
-  }
-  if (element.type === 'video') {
-    if (isGeneratedMediaRef(element.mediaRef)) return element.mediaRef;
-    if (isGeneratedMediaRef(element.src)) return element.src;
   }
   return undefined;
 }
@@ -741,6 +793,38 @@ function blobWithType(blob: Blob, mimeType: string): Blob {
   return blob.type ? blob : new Blob([blob], { type: mimeType });
 }
 
+export async function resolveThumbnailMediaValue(
+  ref: string,
+  task: MediaTaskState | undefined,
+  storedBlob: Blob | undefined,
+  mimeType: string,
+  mediaGenerationDisabled = false,
+): Promise<string | undefined> {
+  if (isConcreteMediaAddress(ref)) {
+    return renderableMediaUrl(resolveMediaRef(ref, undefined, MISSING_ASSET_LEASE));
+  }
+  let blob: Blob | undefined;
+  try {
+    blob = await withAssetUrl(ref, async (url) => {
+      if (!url) return undefined;
+      const response = await fetch(url);
+      return response.ok ? response.blob() : undefined;
+    });
+  } catch {
+    // Pool access is optional for the home-page compatibility thumbnail.
+  }
+  blob ??= storedBlob && storedBlob.size > 0 ? blobWithType(storedBlob, mimeType) : undefined;
+  if (blob) {
+    const url = URL.createObjectURL(blobWithType(blob, mimeType));
+    return renderableMediaUrl(
+      resolveMediaRef(ref, task, { status: 'resolved', url }, mediaGenerationDisabled),
+    );
+  }
+  return renderableMediaUrl(
+    resolveMediaRef(ref, task, MISSING_ASSET_LEASE, mediaGenerationDisabled),
+  );
+}
+
 function revokeObjectUrl(url: string | undefined) {
   if (url?.startsWith('blob:')) {
     URL.revokeObjectURL(url);
@@ -749,13 +833,8 @@ function revokeObjectUrl(url: string | undefined) {
 
 export function revokeThumbnailSlideMediaUrls(slides: Record<string, ThumbnailSlide>) {
   for (const slide of Object.values(slides)) {
-    for (const element of slide.elements as ThumbnailMediaElement[]) {
-      if (element.type === 'image' || element.type === 'video') {
-        revokeObjectUrl(element.src);
-      }
-      if (element.type === 'video') {
-        revokeObjectUrl(element.poster);
-      }
+    for (const slot of slideMediaReferenceSlots(slide)) {
+      if (slot.kind !== 'video-media-ref') revokeObjectUrl(slot.read());
     }
   }
 }
@@ -777,49 +856,146 @@ export async function getFirstSlideByStages(
         if (firstSlide && firstSlide.content.type === 'slide') {
           const slide = structuredClone(firstSlide.content.canvas);
 
-          const mediaElements = slide.elements.filter((el) =>
-            getThumbnailMediaRef(el as ThumbnailMediaElement),
-          );
-          if (mediaElements.length > 0) {
+          const mediaSlots = [...slideMediaReferenceSlots(slide)];
+          const mediaElements = new Set<ThumbnailMediaElement>();
+          for (const slot of mediaSlots) {
+            if (
+              slot.element &&
+              (slot.element.type === 'video' ||
+                !!getThumbnailMediaRef(slot.element as ThumbnailMediaElement))
+            ) {
+              mediaElements.add(slot.element as ThumbnailMediaElement);
+            }
+          }
+          const backgroundSlot = mediaSlots.find((slot) => slot.kind === 'background-image');
+          const backgroundRef = backgroundSlot?.read();
+          if (
+            mediaElements.size > 0 ||
+            (backgroundRef && isResolvableThumbnailMediaRef(backgroundRef))
+          ) {
+            const settings = useSettingsStore.getState();
             const mediaRecords = await db.mediaFiles.where('stageId').equals(stageId).toArray();
-            const videoRecords = mediaRecords.filter(
-              (record) => !record.error && record.type === 'video',
-            );
             const mediaMap = new Map(
               mediaRecords.map((record) => [getMediaRecordElementId(record.id), record] as const),
             );
+            type ThumbnailTaskEntry = MediaTaskLookupEntry & {
+              readonly record: (typeof mediaRecords)[number];
+            };
+            const taskEntries = Object.fromEntries(
+              mediaRecords.map((record) => [
+                getMediaRecordElementId(record.id),
+                {
+                  stageId: record.stageId,
+                  type: record.type,
+                  status: record.error ? 'failed' : 'done',
+                  placeholderRef: record.placeholderRef,
+                  poster: record.poster ? `${record.id}:poster` : undefined,
+                  record,
+                } satisfies ThumbnailTaskEntry,
+              ]),
+            );
+            const documentElements = collectDocumentMediaElements(
+              document?.stage,
+              document?.scenes ?? [],
+            );
 
-            for (const el of mediaElements as ThumbnailMediaElement[]) {
-              const mediaRef = getThumbnailMediaRef(el);
-              const exactRecord = mediaRef ? mediaMap.get(mediaRef) : undefined;
-              const usableExactRecord = exactRecord && !exactRecord.error ? exactRecord : undefined;
-              const legacyRecord =
-                !exactRecord &&
-                el.type === 'video' &&
-                isLegacySequentialVideoRef(mediaRef) &&
-                videoRecords.length === 1
-                  ? videoRecords[0]
+            if (backgroundSlot && backgroundRef && isResolvableThumbnailMediaRef(backgroundRef)) {
+              const selectedRecord = mediaMap.get(backgroundRef);
+              const task = selectedRecord?.error
+                ? ({
+                    status: 'failed',
+                    errorCode: selectedRecord.errorCode,
+                    retryCount: 0,
+                  } satisfies MediaTaskState)
+                : undefined;
+              const record = selectedRecord && !selectedRecord.error ? selectedRecord : undefined;
+              backgroundSlot.write(
+                (await resolveThumbnailMediaValue(
+                  backgroundRef,
+                  task,
+                  record?.type === 'image' ? record.blob : undefined,
+                  record?.mimeType || 'image/png',
+                  !settings.imageGenerationEnabled,
+                )) ?? '',
+              );
+            }
+
+            for (const el of mediaElements) {
+              const videoBinding =
+                el.type === 'video'
+                  ? resolveVideoMediaForElement(
+                      taskEntries,
+                      el as import('@openmaic/dsl').PPTVideoElement,
+                      stageId,
+                      documentElements,
+                    )
                   : undefined;
-              const record = usableExactRecord ?? legacyRecord;
+              const mediaRef = videoBinding?.sourceRef ?? getThumbnailMediaRef(el);
+              if (!mediaRef) continue;
+              const selected =
+                el.type === 'video'
+                  ? videoBinding?.task
+                  : resolveMediaTaskForElement(
+                      taskEntries,
+                      el as import('@openmaic/dsl').PPTElement,
+                      stageId,
+                    );
+              const selectedRecord = selected?.record;
+              const task = selectedRecord?.error
+                ? ({
+                    status: 'failed',
+                    errorCode: selectedRecord.errorCode,
+                    retryCount: 0,
+                  } satisfies MediaTaskState)
+                : undefined;
+              const record = selectedRecord && !selectedRecord.error ? selectedRecord : undefined;
 
-              if (!mediaRef || !record) {
-                if (el.type === 'image') {
-                  // Clear unresolved placeholder so BaseImageElement won't subscribe
-                  // to the global media store (which may have stale data from another course)
-                  el.src = '';
+              if (el.type === 'image') {
+                el.src =
+                  (await resolveThumbnailMediaValue(
+                    mediaRef,
+                    task,
+                    record?.type === 'image' ? record.blob : undefined,
+                    record?.mimeType || 'image/png',
+                    !settings.imageGenerationEnabled,
+                  )) ?? '';
+              } else if (el.type === 'video') {
+                el.src =
+                  (await resolveThumbnailMediaValue(
+                    mediaRef,
+                    task,
+                    record?.type === 'video' ? record.blob : undefined,
+                    record?.mimeType || 'video/mp4',
+                    !settings.videoGenerationEnabled,
+                  )) ?? '';
+                const posterRef = videoBinding?.posterRef;
+                const posterRecord =
+                  posterRef && isResolvableThumbnailMediaRef(posterRef)
+                    ? mediaMap.get(posterRef)
+                    : undefined;
+                const posterBlob =
+                  posterRecord && !posterRecord.error && posterRecord.type === 'image'
+                    ? blobWithType(posterRecord.blob, posterRecord.mimeType)
+                    : record?.poster
+                      ? blobWithType(record.poster, 'image/jpeg')
+                      : undefined;
+                if (posterRef) {
+                  const posterTask = posterRecord?.error
+                    ? ({
+                        status: 'failed',
+                        errorCode: posterRecord.errorCode,
+                        retryCount: 0,
+                      } satisfies MediaTaskState)
+                    : undefined;
+                  el.poster = await resolveThumbnailMediaValue(
+                    posterRef,
+                    posterTask,
+                    posterBlob,
+                    posterRecord?.mimeType || 'image/jpeg',
+                  );
+                } else if (posterBlob) {
+                  el.poster = URL.createObjectURL(posterBlob);
                 }
-                continue;
-              }
-
-              if (el.type === 'image' && record.type === 'image') {
-                el.src = URL.createObjectURL(blobWithType(record.blob, record.mimeType));
-              } else if (el.type === 'video' && record.type === 'video') {
-                el.src = URL.createObjectURL(blobWithType(record.blob, record.mimeType));
-                if (record.poster) {
-                  el.poster = URL.createObjectURL(blobWithType(record.poster, 'image/jpeg'));
-                }
-              } else if (el.type === 'image') {
-                el.src = '';
               }
             }
           }
@@ -862,4 +1038,151 @@ export async function stageExists(stageId: string): Promise<boolean> {
     log.error('Failed to check stage existence:', error);
     return false;
   }
+}
+
+// ==================== Course Folders ====================
+//
+// Folders are device-local course-grouping metadata. They live in this Dexie
+// database (`folders` + `stageFolders` tables) and never touch the course
+// document aggregate owned by the `@openmaic/storage` DocumentStore. A course
+// with no `stageFolders` row (or one with `folderId === undefined`) is unfiled.
+
+/**
+ * List all folders, ordered by their `order` field (ascending).
+ */
+export async function listFolders(): Promise<FolderRecord[]> {
+  const folders = await db.folders.toArray();
+  return folders.sort((a, b) => a.order - b.order);
+}
+
+/** Error thrown when a folder name fails validation at the storage boundary. */
+export class FolderNameError extends Error {
+  constructor(
+    message: string,
+    readonly kind: 'empty' | 'tooLong' | 'duplicate' | 'limit',
+  ) {
+    super(message);
+    this.name = 'FolderNameError';
+  }
+}
+
+/** Validate a folder name against the width rule and (optionally) duplicates. */
+function assertFolderName(name: string, existing: FolderRecord[], currentId?: string): void {
+  const result = validateFolderName(name);
+  if (!result.ok) {
+    throw new FolderNameError(
+      result.kind === 'empty' ? 'Folder name must not be empty' : 'Folder name is too long',
+      result.kind,
+    );
+  }
+  const trimmed = name.trim();
+  const clash = existing.some(
+    (f) => f.name.toLowerCase() === trimmed.toLowerCase() && f.id !== currentId,
+  );
+  if (clash) throw new FolderNameError('A folder with this name already exists', 'duplicate');
+}
+
+/**
+ * Create a folder. `order` is placed after the current maximum so new folders
+ * land at the end of the list. Validates the name (width + uniqueness) at the
+ * storage boundary, with the read-check-write inside a read-write transaction
+ * so two tabs cannot both pass the duplicate check before either write commits.
+ */
+export async function createFolder(name: string): Promise<FolderRecord> {
+  const now = Date.now();
+  return db.transaction('rw', db.folders, async () => {
+    const existing = await db.folders.toArray();
+    if (existing.length >= FOLDER_COUNT_LIMIT) {
+      throw new FolderNameError('Folder count limit reached', 'limit');
+    }
+    assertFolderName(name, existing);
+    const order = existing.reduce((max, folder) => Math.max(max, folder.order), -1) + 1;
+    const folder: FolderRecord = {
+      id: nanoid(),
+      name: name.trim(),
+      order,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.folders.put(folder);
+    log.info(`Created folder "${name}" (${folder.id})`);
+    return folder;
+  });
+}
+
+/**
+ * Rename a folder. Validates the name (width + uniqueness excluding itself) at
+ * the storage boundary, with the read-check-write inside a read-write
+ * transaction so the UI invariant cannot be bypassed or raced across tabs.
+ */
+export async function renameFolder(id: string, name: string): Promise<void> {
+  const now = Date.now();
+  await db.transaction('rw', db.folders, async () => {
+    const existing = await db.folders.toArray();
+    assertFolderName(name, existing, id);
+    const folder = existing.find((f) => f.id === id);
+    if (!folder) throw new Error(`Folder not found: ${id}`);
+    await db.folders.put({ ...folder, name: name.trim(), updatedAt: now });
+    log.info(`Renamed folder ${id} to "${name}"`);
+  });
+}
+
+export type DeleteFolderMode = 'ungroup' | 'remove';
+
+/**
+ * Delete a folder.
+ *
+ * - `'ungroup'` (default): drop the folder; its courses become unfiled (their
+ *   `stageFolders` rows are deleted, so `listStages` reports them without a
+ *   `folderId`).
+ * - `'remove'`: drop the folder AND delete every course that was filed in it,
+ *   running each through {@link deleteStageData} so the full deletion cascade
+ *   (document, scenes, chats, runtime, mirrors) applies.
+ */
+export async function deleteFolder(id: string, mode: DeleteFolderMode = 'ungroup'): Promise<void> {
+  // Atomically capture members, delete the folder row, and clear all membership
+  // rows in ONE transaction BEFORE the course-deletion cascade. This makes the
+  // folder invisible to `setStageFolder` (which checks folder existence in its
+  // own transaction) for the entire duration of the cascade, preventing an
+  // orphan membership from being written while courses are being deleted.
+  const members = await db.transaction('rw', [db.folders, db.stageFolders], async () => {
+    const rows = await db.stageFolders.where('folderId').equals(id).toArray();
+    await db.folders.delete(id);
+    for (const row of rows) {
+      await db.stageFolders.delete(row.stageId);
+    }
+    return rows;
+  });
+
+  if (mode === 'remove') {
+    // Now delete each member course through the full cascade. The folder is
+    // already gone, so a concurrent setStageFolder will reject the assignment.
+    for (const member of members) {
+      if (member.stageId) await deleteStageData(member.stageId);
+    }
+  }
+  log.info(`Deleted folder ${id} (mode=${mode})`);
+}
+
+/**
+ * Move a course into a folder, or out of all folders when `folderId` is
+ * `undefined`. Idempotent.
+ */
+export async function setStageFolder(stageId: string, folderId: string | undefined): Promise<void> {
+  const now = Date.now();
+  // Validate the destination folder exists before writing the membership row.
+  // Without this, an import that started inside a folder which is then deleted
+  // would write an orphan membership pointing at a gone folder. The check+write
+  // is in one transaction so deletion cannot race between them. Unfiling
+  // (folderId undefined) always succeeds — it just removes the membership.
+  if (folderId !== undefined) {
+    await db.transaction('rw', [db.folders, db.stageFolders], async () => {
+      const folder = await db.folders.get(folderId);
+      if (!folder) throw new Error(`Folder not found: ${folderId}`);
+      await db.stageFolders.put({ stageId, folderId, updatedAt: now });
+    });
+  } else {
+    await db.stageFolders.put({ stageId, folderId: undefined, updatedAt: now });
+  }
+  log.info(`Set stage ${stageId} folder -> ${folderId ?? '(unfiled)'}`);
 }

@@ -19,12 +19,11 @@ import { useI18n } from '@/lib/hooks/use-i18n';
 import { createLogger } from '@/lib/logger';
 import { acquireExport, releaseExport } from './export-in-flight';
 import {
-  buildExportZip,
   NoScenesError,
   sanitizeFilename,
   VIDEO_RESOLUTIONS,
   type VideoResolution,
-} from './build-export-zip';
+} from './export-options';
 
 const log = createLogger('ExportVideo');
 
@@ -34,7 +33,7 @@ export type { VideoResolution };
 
 export function useExportVideo() {
   const [exporting, setExporting] = useState(false);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   const exportVideo = useCallback(
     async (resolution: VideoResolution = '1080p', burnInSubtitles = false) => {
@@ -47,9 +46,11 @@ export function useExportVideo() {
 
       try {
         toast.loading(t('export.videoRendering'), { id: toastId });
+        const { buildExportZip } = await import('./build-export-zip');
         const { zipBlob, stageName, missingCount, errorCount } = await buildExportZip({
           resolution,
           burnInSubtitles,
+          locale,
         });
 
         toast.loading(t('export.videoPackaging'), { id: toastId });
@@ -73,7 +74,7 @@ export function useExportVideo() {
         setExporting(false);
       }
     },
-    [t],
+    [t, locale],
   );
 
   return { exporting, exportVideo };

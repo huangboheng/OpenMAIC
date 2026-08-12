@@ -20,7 +20,6 @@ import {
 } from '@/lib/audio/constants';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
-import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import {
   getServerImageProviders,
   getServerVideoProviders,
@@ -195,7 +194,7 @@ export function replaceMediaPlaceholders(scenes: Scene[], mediaMap: Record<strin
         el.type === 'video' &&
         typeof el.mediaRef === 'string' &&
         mediaMap[el.mediaRef] &&
-        (!el.src || isMediaPlaceholder(el.src))
+        (!el.src || /^gen_vid_[\w-]+$/i.test(el.src))
       ) {
         el.src = mediaMap[el.mediaRef];
         continue;
@@ -203,7 +202,7 @@ export function replaceMediaPlaceholders(scenes: Scene[], mediaMap: Record<strin
       if (
         (el.type === 'image' || el.type === 'video') &&
         typeof el.src === 'string' &&
-        isMediaPlaceholder(el.src) &&
+        isGeneratedMediaPlaceholder(el.src) &&
         mediaMap[el.src]
       ) {
         el.src = mediaMap[el.src];

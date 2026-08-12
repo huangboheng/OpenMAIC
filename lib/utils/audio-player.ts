@@ -13,6 +13,17 @@ import { DEFAULT_PREGENERATED_VOICE, voiceIdToFileName } from '@/lib/audio/const
 
 const log = createLogger('AudioPlayer');
 
+/** Bytes an audio id currently resolves to, pool first. Loaded lazily to keep
+ * this module importable without the media graph. */
+async function resolveBytes(audioId: string): Promise<Blob | null> {
+  try {
+    const { resolveAudioBlob } = await import('@/lib/media/resolve-audio-bytes');
+    return await resolveAudioBlob(audioId);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Audio player implementation
  */

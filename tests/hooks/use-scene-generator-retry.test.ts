@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
   getCurrentModelConfig: vi.fn(),
   settingsState: vi.fn(),
   audioPut: vi.fn(),
+  audioDelete: vi.fn(),
+  poolPut: vi.fn(),
+  poolReplace: vi.fn(),
+  poolRemove: vi.fn(),
   isTTSProviderEnabled: vi.fn(),
   pickNarratorAgent: vi.fn(),
   resolveAgentVoiceOptions: vi.fn(),
@@ -25,8 +29,15 @@ vi.mock('@/lib/utils/database', () => ({
   db: {
     audioFiles: {
       put: mocks.audioPut,
+      delete: mocks.audioDelete,
     },
   },
+}));
+
+vi.mock('@/lib/media/asset-pool', () => ({
+  putAsset: mocks.poolPut,
+  replaceAsset: mocks.poolReplace,
+  removeAsset: mocks.poolRemove,
 }));
 
 vi.mock('@/lib/audio/provider-enablement', () => ({
@@ -44,7 +55,6 @@ vi.mock('@/lib/orchestration/registry/store', () => ({
       listAgents: mocks.listAgents,
     }),
   },
-  applyGeneratedAgentsToRegistry: vi.fn().mockReturnValue([]),
 }));
 
 const mockFetch = vi.fn() as Mock;
@@ -78,6 +88,11 @@ describe('browser scene generation retry wrappers', () => {
   beforeEach(() => {
     mockFetch.mockReset();
     mocks.audioPut.mockReset();
+    mocks.audioDelete.mockReset().mockResolvedValue(undefined);
+    mocks.poolPut.mockReset();
+    mocks.poolReplace.mockReset().mockResolvedValue(undefined);
+    mocks.poolRemove.mockReset().mockResolvedValue(undefined);
+    mocks.poolPut.mockResolvedValue('ast_audio_allocated');
     mocks.getCurrentModelConfig.mockReturnValue({});
     mocks.settingsState.mockReturnValue({
       imageProviderId: '',
@@ -252,88 +267,97 @@ describe('browser scene generation retry wrappers', () => {
         }),
       );
 
-    await generateAndStoreTTS('tts_s2_action_1', 'Hello class', 'English', undefined, retryOptions);
+    const assetId = await generateAndStoreTTS(
+      'tts_s2_action_1',
+      'Hello class',
+      'English',
+      undefined,
+      retryOptions,
+    );
 
+    expect(assetId).toBe('ast_audio_allocated');
     expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mocks.poolPut).toHaveBeenCalledWith(
+      expect.any(Blob),
+      expect.objectContaining({
+        contentType: 'audio/wav',
+        mediaType: 'audio',
+        text: 'Hello class',
+        voice: 'narrator',
+      }),
+    );
     expect(mocks.audioPut).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'tts_s2_action_1',
+        id: 'ast_audio_allocated',
         format: 'wav',
       }),
     );
   });
 
-  it('uses teacher voiceConfig over global ttsVoice when provider is enabled', async () => {
+  it('does not write Dexie when pool allocation fails', async () => {
     const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
-
-    // Global settings: minimax-tts with female-yujie (the old default)
-    mocks.settingsState.mockReturnValue({
-      ttsProviderId: 'minimax-tts',
-      ttsProvidersConfig: {
-        'minimax-tts': { apiKey: 'key', modelId: 'speech-2.8-hd' },
-      },
-      ttsVoice: 'female-yujie',
-      ttsSpeed: 1,
-    });
-
-    // Teacher agent has voiceConfig with male-qn-jingying (精英青年)
-    mocks.pickNarratorAgent.mockReturnValue({
-      id: 'gen-teacher',
-      role: 'teacher',
-      voiceConfig: { providerId: 'minimax-tts', voiceId: 'male-qn-jingying' },
-    });
-    mocks.isTTSProviderEnabled.mockReturnValue(true);
-    mocks.resolveAgentVoiceOptions.mockResolvedValue(undefined);
-
     mockFetch.mockResolvedValue(
-      jsonResponse(200, { success: true, base64: btoa('audio'), format: 'mp3' }),
+      jsonResponse(200, {
+        success: true,
+        base64: btoa('audio-data'),
+        format: 'wav',
+      }),
     );
+    mocks.poolPut.mockRejectedValueOnce(new Error('pool unavailable'));
 
-    await generateAndStoreTTS('tts_voice_test', 'Hello', undefined, undefined, {
-      maxRetries: 0,
-      sleep: async () => undefined,
-      random: () => 0,
-    });
-
-    // The TTS request should use the teacher's voiceConfig voice, not the global default
-    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(requestBody.ttsVoice).toBe('male-qn-jingying');
-    expect(requestBody.ttsProviderId).toBe('minimax-tts');
+    await expect(generateAndStoreTTS('request-1', 'Hello class')).rejects.toThrow(
+      'pool unavailable',
+    );
+    expect(mocks.audioPut).not.toHaveBeenCalled();
   });
 
-  it('falls back to global ttsVoice when teacher has no voiceConfig', async () => {
+  it('does not report an allocated id when the compatibility write fails', async () => {
     const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
-
-    mocks.settingsState.mockReturnValue({
-      ttsProviderId: 'minimax-tts',
-      ttsProvidersConfig: {
-        'minimax-tts': { apiKey: 'key', modelId: 'speech-2.8-hd' },
-      },
-      ttsVoice: 'male-qn-jingying',
-      ttsSpeed: 1,
-    });
-
-    // Teacher without voiceConfig
-    mocks.pickNarratorAgent.mockReturnValue({
-      id: 'gen-teacher',
-      role: 'teacher',
-      persona: 'A patient mentor',
-    });
-    mocks.isTTSProviderEnabled.mockReturnValue(true);
-    mocks.resolveAgentVoiceOptions.mockResolvedValue(undefined);
-
     mockFetch.mockResolvedValue(
-      jsonResponse(200, { success: true, base64: btoa('audio'), format: 'mp3' }),
+      jsonResponse(200, {
+        success: true,
+        base64: btoa('audio-data'),
+        format: 'wav',
+      }),
+    );
+    mocks.audioPut.mockRejectedValueOnce(new Error('Dexie unavailable'));
+
+    await expect(generateAndStoreTTS('request-1', 'Hello class')).rejects.toThrow(
+      'Dexie unavailable',
+    );
+    expect(mocks.poolPut).toHaveBeenCalledOnce();
+    expect(mocks.poolRemove).toHaveBeenCalledExactlyOnceWith('ast_audio_allocated');
+  });
+
+  it('replaces allocated audio under the stable id and refreshes its compatibility row', async () => {
+    const { generateAndStoreTTS } = await import('@/lib/hooks/use-scene-generator');
+    mockFetch.mockResolvedValue(
+      jsonResponse(200, {
+        success: true,
+        base64: btoa('replacement-audio'),
+        format: 'wav',
+      }),
     );
 
-    await generateAndStoreTTS('tts_fallback_test', 'Hello', undefined, undefined, {
-      maxRetries: 0,
-      sleep: async () => undefined,
-      random: () => 0,
-    });
+    await expect(
+      generateAndStoreTTS(
+        'request-1',
+        'Updated class',
+        'English',
+        undefined,
+        undefined,
+        'ast_stable_audio',
+      ),
+    ).resolves.toBe('ast_stable_audio');
 
-    // Should use the global ttsVoice
-    const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(requestBody.ttsVoice).toBe('male-qn-jingying');
+    expect(mocks.poolPut).not.toHaveBeenCalled();
+    expect(mocks.poolReplace).toHaveBeenCalledExactlyOnceWith(
+      'ast_stable_audio',
+      expect.any(Blob),
+      expect.objectContaining({ mediaType: 'audio', text: 'Updated class' }),
+    );
+    expect(mocks.audioPut).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ id: 'ast_stable_audio', format: 'wav' }),
+    );
   });
 });

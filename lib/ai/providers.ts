@@ -4,6 +4,7 @@
  * Supports multiple AI providers through Vercel AI SDK:
  * - OpenAI (native)
  * - Anthropic Claude (native)
+ * - Amazon Bedrock (native)
  * - Google Gemini (native)
  * - MiniMax (Anthropic-compatible, recommended by official)
  * - OpenAI-compatible providers (DeepSeek, Qwen, Kimi, GLM, SiliconFlow, Doubao, Tencent, Xiaomi, Lemonade, etc.)
@@ -28,6 +29,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { createAzure } from '@ai-sdk/azure';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { wrapLanguageModel, extractReasoningMiddleware } from 'ai';
 import {
@@ -222,6 +224,42 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     models: [],
   },
 
+  atlascloud: {
+    id: 'atlascloud',
+    name: 'Atlas Cloud',
+    type: 'openai',
+    defaultBaseUrl: 'https://api.atlascloud.ai/v1',
+    supportsModelDiscovery: true,
+    requiresApiKey: true,
+    models: [
+      {
+        id: 'qwen/qwen3.5-flash',
+        name: 'Qwen3.5 Flash',
+        contextWindow: 1000000,
+        outputWindow: 67072,
+        capabilities: { streaming: true, tools: false, vision: false },
+      },
+      {
+        id: 'deepseek-ai/deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        contextWindow: 1048576,
+        outputWindow: 393216,
+        // Live-verified with enabled/disabled thinking payloads and a forced
+        // OpenAI-compatible function call against Atlas Cloud.
+        capabilities: {
+          streaming: true,
+          tools: true,
+          vision: false,
+          thinking: {
+            toggleable: true,
+            budgetAdjustable: true,
+            defaultEnabled: true,
+          },
+        },
+      },
+    ],
+  },
+
   anthropic: {
     id: 'anthropic',
     name: 'Claude',
@@ -373,6 +411,71 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
             defaultEnabled: false,
           },
         },
+      },
+    ],
+  },
+
+  bedrock: {
+    id: 'bedrock',
+    name: 'Amazon Bedrock',
+    type: 'bedrock',
+    requiresApiKey: false,
+    icon: '/logos/bedrock.svg',
+    models: [
+      {
+        id: 'us.anthropic.claude-sonnet-5',
+        name: 'Claude Sonnet 5 (Bedrock)',
+        contextWindow: 1000000,
+        outputWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.anthropic.claude-opus-4-8',
+        name: 'Claude Opus 4.8 (Bedrock)',
+        contextWindow: 1000000,
+        outputWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.anthropic.claude-opus-4-7',
+        name: 'Claude Opus 4.7 (Bedrock)',
+        contextWindow: 1000000,
+        outputWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.anthropic.claude-sonnet-4-6',
+        name: 'Claude Sonnet 4.6 (Bedrock)',
+        contextWindow: 1000000,
+        outputWindow: 64000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.amazon.nova-pro-v1:0',
+        name: 'Amazon Nova Pro',
+        contextWindow: 300000,
+        outputWindow: 10000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.amazon.nova-lite-v1:0',
+        name: 'Amazon Nova Lite',
+        contextWindow: 300000,
+        outputWindow: 10000,
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'us.amazon.nova-micro-v1:0',
+        name: 'Amazon Nova Micro',
+        contextWindow: 128000,
+        outputWindow: 10000,
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'us.meta.llama3-3-70b-instruct-v1:0',
+        name: 'Llama 3.3 70B Instruct (Bedrock)',
+        contextWindow: 128000,
+        capabilities: { streaming: true, tools: true, vision: false },
       },
     ],
   },
@@ -1548,7 +1651,7 @@ function getCompatThinkingBodyParams(
         if (mode === 'disabled') body.enable_thinking = false;
         if (mode === 'enabled') body.enable_thinking = true;
       }
-      if (budget !== undefined) body.thinking_budget = budget;
+      if (budget !== undefined && budget > 0) body.thinking_budget = budget;
       return Object.keys(body).length > 0 ? body : undefined;
     }
 
@@ -1638,6 +1741,46 @@ function normalizeMiniMaxAnthropicBaseUrl(
   return `${trimmed}/anthropic/v1`;
 }
 
+function resolveBedrockRegion(): string {
+  return (
+    process.env.BEDROCK_REGION?.trim() ||
+    process.env.AWS_REGION?.trim() ||
+    process.env.AWS_DEFAULT_REGION?.trim() ||
+    'us-east-1'
+  );
+}
+
+interface BedrockCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  expiration?: Date;
+}
+
+type BedrockCredentialProvider = () => Promise<BedrockCredentials>;
+
+let bedrockCredentialProviderPromise: Promise<BedrockCredentialProvider> | undefined;
+
+function getBedrockCredentialProvider(): Promise<BedrockCredentialProvider> {
+  bedrockCredentialProviderPromise ??= import('@aws-sdk/credential-providers').then(
+    ({ fromNodeProviderChain }) => fromNodeProviderChain(),
+  );
+  return bedrockCredentialProviderPromise;
+}
+
+function createBedrockCredentialProvider(): BedrockCredentialProvider {
+  return async () => {
+    const credentialProvider = await getBedrockCredentialProvider();
+    const credentials = await credentialProvider();
+    return {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      sessionToken: credentials.sessionToken,
+      expiration: credentials.expiration,
+    };
+  };
+}
+
 function shouldUseOpenAIResponsesApi(providerId: ProviderId, modelId: string): boolean {
   if (providerId !== 'openai') return false;
 
@@ -1646,6 +1789,206 @@ function shouldUseOpenAIResponsesApi(providerId: ProviderId, modelId: string): b
     /^gpt-5\.6(?:-|$)/.test(modelId) ||
     /^gpt-5\.5(?:-|$)/.test(modelId) ||
     /^gpt-5\.[3-9]-codex(?:-|$)/.test(modelId)
+  );
+}
+
+function usesCustomOpenAIBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return false;
+
+  try {
+    const url = new URL(trimmed);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return url.origin !== 'https://api.openai.com' || pathname !== '/v1';
+  } catch {
+    return true;
+  }
+}
+
+function shouldUseOpenAIStreamingChatCompat(providerId: ProviderId, baseUrl?: string): boolean {
+  return (
+    providerId === 'openai' &&
+    usesCustomOpenAIBaseUrl(baseUrl) &&
+    process.env.OPENAI_COMPAT_USE_STREAMING_CHAT === 'true'
+  );
+}
+
+function requestUrlString(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return input.url;
+}
+
+function appendChatDelta(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const record = part as Record<string, unknown>;
+      return typeof record.text === 'string' ? record.text : '';
+    })
+    .join('');
+}
+
+function openAIJsonResponseHeaders(response: Response): Headers {
+  const headers = new Headers(response.headers);
+  headers.set('content-type', 'application/json');
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  headers.delete('transfer-encoding');
+  return headers;
+}
+
+function openAIStreamErrorStatus(error: Record<string, unknown>): number {
+  const status =
+    typeof error.code === 'number'
+      ? error.code
+      : typeof error.code === 'string'
+        ? Number(error.code)
+        : NaN;
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500;
+}
+
+async function fetchCustomOpenAIChat(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const requestUrl = requestUrlString(input);
+  if (!requestUrl.includes('/chat/completions') || !init?.body || typeof init.body !== 'string') {
+    return globalThis.fetch(input, init);
+  }
+
+  let requestBody: Record<string, unknown>;
+  try {
+    requestBody = JSON.parse(init.body) as Record<string, unknown>;
+  } catch {
+    return globalThis.fetch(input, init);
+  }
+
+  if (requestBody.stream === true) return globalThis.fetch(input, init);
+
+  const streamOptions =
+    requestBody.stream_options &&
+    typeof requestBody.stream_options === 'object' &&
+    !Array.isArray(requestBody.stream_options)
+      ? (requestBody.stream_options as Record<string, unknown>)
+      : {};
+
+  const response = await globalThis.fetch(input, {
+    ...init,
+    body: JSON.stringify({
+      ...requestBody,
+      stream: true,
+      stream_options: { ...streamOptions, include_usage: true },
+    }),
+  });
+  if (!response.ok) return response;
+
+  const rawStream = await response.text();
+  const streamLines = rawStream.split(/\r?\n/);
+  if (!streamLines.some((line) => line.startsWith('data:'))) {
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.delete('content-encoding');
+    headers.delete('transfer-encoding');
+    return new Response(rawStream, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+  let id = '';
+  let created = 0;
+  let model = typeof requestBody.model === 'string' ? requestBody.model : '';
+  let content = '';
+  let finishReason: unknown = null;
+  let usage: unknown;
+  const toolCalls = new Map<
+    number,
+    { id: string; type: string; function: { name: string; arguments: string } }
+  >();
+
+  for (const line of streamLines) {
+    if (!line.startsWith('data:')) continue;
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+
+    try {
+      const chunk = JSON.parse(data) as Record<string, unknown>;
+      const error =
+        chunk.error && typeof chunk.error === 'object' && !Array.isArray(chunk.error)
+          ? (chunk.error as Record<string, unknown>)
+          : undefined;
+      if (error && typeof error.message === 'string') {
+        return new Response(JSON.stringify(chunk), {
+          status: openAIStreamErrorStatus(error),
+          headers: openAIJsonResponseHeaders(response),
+        });
+      }
+
+      if (typeof chunk.id === 'string') id = chunk.id;
+      if (typeof chunk.created === 'number') created = chunk.created;
+      if (typeof chunk.model === 'string') model = chunk.model;
+      if (chunk.usage) usage = chunk.usage;
+
+      const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
+      for (const rawChoice of choices) {
+        if (!rawChoice || typeof rawChoice !== 'object') continue;
+        const choice = rawChoice as Record<string, unknown>;
+        if (typeof choice.index === 'number' && choice.index !== 0) continue;
+        if (choice.finish_reason) finishReason = choice.finish_reason;
+        if (!choice.delta || typeof choice.delta !== 'object') continue;
+        const delta = choice.delta as Record<string, unknown>;
+        content += appendChatDelta(delta.content);
+
+        if (!Array.isArray(delta.tool_calls)) continue;
+        for (const rawToolCall of delta.tool_calls) {
+          if (!rawToolCall || typeof rawToolCall !== 'object') continue;
+          const toolCall = rawToolCall as Record<string, unknown>;
+          const index = typeof toolCall.index === 'number' ? toolCall.index : 0;
+          const current = toolCalls.get(index) || {
+            id: '',
+            type: 'function',
+            function: { name: '', arguments: '' },
+          };
+          if (typeof toolCall.id === 'string') current.id = toolCall.id;
+          if (typeof toolCall.type === 'string') current.type = toolCall.type;
+          if (toolCall.function && typeof toolCall.function === 'object') {
+            const fn = toolCall.function as Record<string, unknown>;
+            if (typeof fn.name === 'string' && fn.name) current.function.name = fn.name;
+            if (typeof fn.arguments === 'string') current.function.arguments += fn.arguments;
+          }
+          toolCalls.set(index, current);
+        }
+      }
+    } catch {
+      // Ignore non-JSON SSE lines and continue collecting valid chunks.
+    }
+  }
+
+  const message: Record<string, unknown> = { role: 'assistant', content };
+  if (toolCalls.size > 0) {
+    message.tool_calls = [...toolCalls.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, toolCall]) => toolCall);
+  }
+
+  return new Response(
+    JSON.stringify({
+      id: id || `chatcmpl_${Date.now()}`,
+      object: 'chat.completion',
+      created: created || Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, message, finish_reason: finishReason }],
+      ...(usage ? { usage } : {}),
+    }),
+    {
+      status: response.status,
+      statusText: response.statusText,
+      headers: openAIJsonResponseHeaders(response),
+    },
   );
 }
 
@@ -1663,6 +2006,12 @@ export function getModel(config: ModelConfig): ModelWithInfo {
   let providerType = config.providerType;
   const provider = getProviderConfig(config.providerId);
   const requiresApiKey = provider?.requiresApiKey ?? true;
+
+  if (provider && providerType && providerType !== provider.type) {
+    throw new Error(
+      `Provider type mismatch for ${config.providerId}: expected ${provider.type}, received ${providerType}.`,
+    );
+  }
 
   if (!providerType) {
     if (provider) {
@@ -1699,11 +2048,19 @@ export function getModel(config: ModelConfig): ModelWithInfo {
     }
 
     case 'openai': {
+      const useStreamingChatCompat = shouldUseOpenAIStreamingChatCompat(
+        config.providerId,
+        effectiveBaseUrl,
+      );
       const openaiOptions: Parameters<typeof createOpenAI>[0] = {
         apiKey: effectiveApiKey,
         baseURL: effectiveBaseUrl,
         name: config.providerId,
       };
+
+      if (useStreamingChatCompat) {
+        openaiOptions.fetch = fetchCustomOpenAIChat as typeof globalThis.fetch;
+      }
 
       // For OpenAI-compatible providers (not native OpenAI), add a fetch
       // wrapper that injects vendor-specific thinking params into the HTTP
@@ -1813,9 +2170,10 @@ export function getModel(config: ModelConfig): ModelWithInfo {
       }
 
       const openai = createOpenAI(openaiOptions);
-      model = shouldUseOpenAIResponsesApi(config.providerId, config.modelId)
-        ? openai.responses(config.modelId)
-        : openai.chat(config.modelId);
+      model =
+        !useStreamingChatCompat && shouldUseOpenAIResponsesApi(config.providerId, config.modelId)
+          ? openai.responses(config.modelId)
+          : openai.chat(config.modelId);
       // OpenAI-compatible providers (e.g. DeepSeek, Qwen) stream reasoning
       // either as a separate `reasoning_content` field (normalized to an inline
       // <think> block by compatFetch) or as native inline <think>.
@@ -1877,6 +2235,17 @@ export function getModel(config: ModelConfig): ModelWithInfo {
 
       const anthropic = createAnthropic(anthropicOptions);
       model = anthropic.chat(config.modelId);
+      break;
+    }
+
+    case 'bedrock': {
+      const bedrock = createAmazonBedrock({
+        apiKey: effectiveApiKey || undefined,
+        region: resolveBedrockRegion(),
+        baseURL: effectiveBaseUrl,
+        credentialProvider: createBedrockCredentialProvider(),
+      });
+      model = bedrock(config.modelId);
       break;
     }
 

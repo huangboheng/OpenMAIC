@@ -60,6 +60,15 @@ pnpm dev
 4. Run **all CI checks** before committing (see below).
 5. Open a **Pull Request** against `main`.
 
+### Environment Variable Changes
+
+When adding or renaming an operator-facing environment variable, update
+[`.env.example`](.env.example) in the same PR. Document whether it is optional,
+its safe default or example value, and whether it is read at build time or
+runtime. Variables used only by tests, CI, or internal development scripts do
+not need to be added to the template, but their owning file or documentation
+must make that limited scope clear.
+
 ## Before You Submit a PR
 
 Run the following checks locally — CI will run them too, but catching issues early saves everyone time:
@@ -135,6 +144,8 @@ Choosing the number is a [semver](https://semver.org/) judgement, and it is your
 - **patch** — a fix that changes no documented behaviour
 - **minor** — new behaviour that existing consumers can ignore
 - **major** — anything an existing consumer must react to
+
+For packages below `1.0.0`, a **minor** bump signals a breaking change and a **patch** bump signals a compatible change, following common 0.x semver practice; the **major** rule applies from `1.0.0`.
 
 Be deliberate with `@openmaic/dsl`. It is the contract the other packages and downstream deployments validate against, so a change that narrows what an existing document may contain is a breaking change even when the diff looks small.
 

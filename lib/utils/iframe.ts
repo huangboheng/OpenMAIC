@@ -1,3 +1,5 @@
+import { injectIntoDocumentHead } from './html-document';
+
 /**
  * In-memory localStorage/sessionStorage shim, injected as the FIRST thing in the
  * document so the page's own scripts see working storage.
@@ -197,22 +199,5 @@ export function patchHtmlForIframe(html: string): string {
   // De-block the CDN KaTeX loader before injecting the shims.
   const deBlocked = makeCdnDepsNonBlocking(html);
 
-  // Insert right after <head> or at the start of the document
-  const headIdx = deBlocked.indexOf('<head>');
-  if (headIdx !== -1) {
-    const insertPos = headIdx + 6; // after <head>
-    return deBlocked.substring(0, insertPos) + injection + deBlocked.substring(insertPos);
-  }
-
-  const headWithAttrs = deBlocked.indexOf('<head ');
-  if (headWithAttrs !== -1) {
-    const closeAngle = deBlocked.indexOf('>', headWithAttrs);
-    if (closeAngle !== -1) {
-      const insertPos = closeAngle + 1;
-      return deBlocked.substring(0, insertPos) + injection + deBlocked.substring(insertPos);
-    }
-  }
-
-  // Fallback: prepend
-  return injection + deBlocked;
+  return injectIntoDocumentHead(deBlocked, injection);
 }

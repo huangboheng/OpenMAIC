@@ -6,12 +6,16 @@
         # NEXT_PUBLIC_* values are compiled into the browser bundle. Leave them
         # empty unless the corresponding client feature is explicitly enabled;
         # persistence and other build-time flags can be supplied on the command line.
+        - ALLOWED_FRAME_ANCESTORS=${ALLOWED_FRAME_ANCESTORS:-}
         - NEXT_PUBLIC_PERSISTENCE=${NEXT_PUBLIC_PERSISTENCE:-}
         - NEXT_PUBLIC_PERSISTENCE_TOKEN=${NEXT_PUBLIC_PERSISTENCE_TOKEN:-}
         - NEXT_PUBLIC_MAIC_EDITOR_ENABLED=${NEXT_PUBLIC_MAIC_EDITOR_ENABLED:-}
+        - NEXT_PUBLIC_MAIC_EDITOR_RENDERER_ENABLED=${NEXT_PUBLIC_MAIC_EDITOR_RENDERER_ENABLED:-}
+        - NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED=${NEXT_PUBLIC_MAIC_PLAYBACK_RENDERER_ENABLED:-}
         - NEXT_PUBLIC_PI_CHAT_ENABLED=${NEXT_PUBLIC_PI_CHAT_ENABLED:-}
         - NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI=${NEXT_PUBLIC_SHOW_VOCATIONAL_TEST_UI:-}
         - NEXT_PUBLIC_ENABLE_VIDEO_EXPORT=${NEXT_PUBLIC_ENABLE_VIDEO_EXPORT:-}
+        - NEXT_PUBLIC_VIDEO_EXPORT_CTA_DESTINATION=${NEXT_PUBLIC_VIDEO_EXPORT_CTA_DESTINATION:-}
         - NEXT_PUBLIC_ENABLE_PPTX_IMPORT=${NEXT_PUBLIC_ENABLE_PPTX_IMPORT:-}
     ports:
       - "127.0.0.1:3000:3000"  # SEC-11: bind loopback only
@@ -48,7 +52,7 @@
       # before using the stack outside a local trusted environment.
       - POSTGRES_PASSWORD=${PERSISTENCE_POSTGRES_PASSWORD:-openmaic-dev}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U openmaic -d openmaic"]
+      test: ['CMD-SHELL', 'pg_isready -U openmaic -d openmaic']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -75,26 +79,26 @@
     profiles:
       - video-export
     expose:
-      - "9000"
+      - '9000'
     # Required for the entrypoint's iptables egress lockdown. Without it the
     # service still boots, but logs a warning and does NOT block Chromium egress.
     cap_add:
       - NET_ADMIN
     environment:
       - PORT=9000
-      # Use Chromium's HeadlessExperimental.beginFrame capture path instead of
-      # the CPU-bound Page.captureScreenshot fallback. The default "software" GPU
-      # mode (SwiftShader) silently force-enables screenshot capture, which pegs
-      # all cores on CPU rasterization and caps throughput at ~10 fps. Selecting
-      # "hardware" keeps beginFrame active — measured ~2x capture throughput
-      # (~10 -> ~19 fps, 900-frame clip 100s -> 62s), roughly half the CPU, and
-      # pixel-identical static frames (animation frames differ only in sub-pixel
-      # edge antialiasing). No real GPU is required: the win is the faster capture
-      # API, not hardware rasterization — beginFrame falls back gracefully if the
-      # host lacks a GPU.
-      - PRODUCER_BROWSER_GPU_MODE=hardware
-      # Tune for the host; each concurrent render drives a full Chromium + FFmpeg.
-      - RENDER_MAX_CONCURRENCY=2
+      # The standard CPU profile is explicit: BeginFrame, one producer worker,
+      # one render, and one extraction. Select low-memory explicitly instead of
+      # allowing producer to silently change capture mode from cgroup heuristics.
+      - RENDER_RESOURCE_PROFILE=${RENDER_RESOURCE_PROFILE:-standard}
+      - PRODUCER_HEADLESS_SHELL_PATH=/usr/bin/chromium-headless-shell
+      - RENDER_MAX_CONCURRENCY=1
+      - RENDER_MAX_CONCURRENT_EXTRACTIONS=1
+      # Long compositions still need CDP headroom even with one explicit worker.
+      - PRODUCER_PUPPETEER_PROTOCOL_TIMEOUT_MS=900000
+      # OpenMAIC's long slide exports currently exhaust producer's 15s static
+      # verification budget and disable dedup anyway. Skip that guaranteed-lost
+      # startup cost until the verifier can share/scale its plan across workers.
+      - HF_STATIC_DEDUP=false
       # In this default topology the app is exposed directly and does NOT set
       # TRUST_PROXY_HEADERS, so every caller collapses to one identity. A
       # per-identity limit would then throttle the whole deployment to a single
@@ -102,10 +106,13 @@
       # RENDER_MAX_QUEUE cap. Set this >0 only with a trusted proxy supplying
       # per-user identity (see render-service/README.md).
       - RENDER_MAX_JOBS_PER_USER=0
-    # Bound RAM: each render (Chromium + FFmpeg + archive expansion) is memory
-    # heavy, and extraction is capped separately (RENDER_MAX_CONCURRENT_EXTRACTIONS).
-    # Raise for higher RENDER_MAX_CONCURRENCY / larger classrooms.
-    mem_limit: 4g
+    # Bound RAM: each render (Chromium + FFmpeg + archive expansion) is memory-heavy.
+    # The standard profile requires 10 GiB. For the explicit low-memory profile,
+    # set RENDER_RESOURCE_PROFILE=low-memory and RENDER_SERVICE_MEMORY_LIMIT=4g.
+    mem_limit: ${RENDER_SERVICE_MEMORY_LIMIT:-10g}
+    # Chromium media/frame work can exceed Docker's 64 MiB default shared-memory
+    # mount. This is a ceiling inside the selected profile cgroup, not eager allocation.
+    shm_size: 2gb
     networks:
       - render
     restart: unless-stopped

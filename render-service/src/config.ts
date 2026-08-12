@@ -3,6 +3,7 @@
  * once at import. Defaults suit an OSS single-host deployment; the demo layer
  * only tunes values (and, later, points the store factories at Redis/S3).
  */
+import { resolveResourceProfile } from './resource-profile.js';
 
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -24,17 +25,23 @@ function intEnvAllowZero(name: string, fallback: number): number {
 }
 
 const MB = 1024 * 1024;
+const resourceProfile = resolveResourceProfile();
 
 export const config = {
   port: intEnv('PORT', 9000),
-  /** Renders that execute simultaneously; extras queue FIFO. */
-  maxConcurrency: intEnv('RENDER_MAX_CONCURRENCY', 2),
+  resourceProfile,
+  /** Renders that execute simultaneously; fixed by the selected resource profile. */
+  maxConcurrency: resourceProfile.maxConcurrency,
   /**
    * Archives extracted simultaneously. Extraction holds the expanded archive in
    * memory, so this bounds the RAM multiplier (≈ this × maxExpandedBytes) even
    * when many jobs are admitted at once. Defaults to the render concurrency.
    */
-  maxConcurrentExtractions: intEnv('RENDER_MAX_CONCURRENT_EXTRACTIONS', 2),
+  maxConcurrentExtractions: resourceProfile.maxConcurrentExtractions,
+  /** Explicit per-job worker count fixed by the selected resource profile. */
+  producerWorkers: resourceProfile.producerWorkers,
+  /** Fail a job if the selected profile requires BeginFrame and producer reports otherwise. */
+  requireBeginFrame: resourceProfile.requireBeginFrame,
   /** Active (queued+running) jobs allowed per client identity. 0 disables the guard. */
   maxJobsPerUser: intEnvAllowZero('RENDER_MAX_JOBS_PER_USER', 1),
   /** Max jobs allowed in the system (queued+running) before new submits are rejected. */

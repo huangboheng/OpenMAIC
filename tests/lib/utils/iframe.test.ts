@@ -65,10 +65,19 @@ describe('patchHtmlForIframe', () => {
     expect(ls.getItem('a')).toBeNull();
   });
 
-  it('falls back to prepending when there is no <head>', () => {
+  it('creates a head when the authored document has none', () => {
     const out = patchHtmlForIframe('<div>no head</div>');
-    // The error-capture shim is injected first, so it leads the prepended block.
-    expect(out.startsWith('\n<script data-iframe-error-shim>')).toBe(true);
+    expect(out.startsWith('<head>\n<script data-iframe-error-shim>')).toBe(true);
+    expect(out.indexOf('</head>')).toBeLessThan(out.indexOf('<div>'));
+  });
+
+  it('does not treat head-like text in comments or scripts as the document head', () => {
+    const authoredScript = 'const template = "<head>"; window.__template = template;';
+    const html = `<!doctype html><!-- <head> --><html><body><script>${authoredScript}</script></body></html>`;
+    const out = patchHtmlForIframe(html);
+
+    expect(out).toContain(`<script>${authoredScript}</script>`);
+    expect(out.indexOf('data-iframe-error-shim')).toBeLessThan(out.indexOf('<body>'));
   });
 
   it('injects the error-capture shim before the storage shim and page scripts', () => {
@@ -222,7 +231,7 @@ describe('patchHtmlForIframe', () => {
   it('coexists with generation-time non-blocking output (no double rewrite)', async () => {
     // Newer classrooms generated after the injectKatex hardening already carry a
     // non-blocking loader; the render-time transform must leave them untouched.
-    const { postProcessInteractiveHtml } = await import('@/lib/generation/interactive-post-processor');
+    const { postProcessInteractiveHtml } = await import('@openmaic/generation');
     const generated = postProcessInteractiveHtml(
       '<html><head></head><body><div id="w">widget</div></body></html>',
     );

@@ -16,27 +16,25 @@
  */
 import { compileVideoTimeline, emitHyperframes, toSrt, toVtt } from '@/lib/video-export';
 import { useStageStore } from '@/lib/store';
+import type { Locale } from '@/lib/i18n';
 import { accessDocument } from '@/lib/document-store';
 import { createVideoTimelineDeps } from './timeline-deps';
 import { collectVideoAssets } from './collect';
+import { getVideoExportCoverLabels, resolveVideoExportCta } from './cover-config';
+import { NoScenesError, VIDEO_RESOLUTIONS, type VideoResolution } from './export-options';
+import { createQuizLayoutProbe } from './quiz-layout';
 import { packageVideoZip } from './package-zip';
 
-/** Selectable render resolutions (16:9). Width drives slide-snapshot render width too. */
-export const VIDEO_RESOLUTIONS = {
-  '720p': { width: 1280, height: 720 },
-  '1080p': { width: 1920, height: 1080 },
-  '4k': { width: 3840, height: 2160 },
-} as const;
-
-export type VideoResolution = keyof typeof VIDEO_RESOLUTIONS;
-
-/** Selectable frame rates for MP4 rendering. */
-export const VIDEO_FPS = [24, 30, 60] as const;
-export type VideoFps = (typeof VIDEO_FPS)[number];
-
-/** Producer quality presets (speed vs fidelity). */
-export const VIDEO_QUALITIES = ['draft', 'standard', 'high'] as const;
-export type VideoQuality = (typeof VIDEO_QUALITIES)[number];
+export {
+  NoScenesError,
+  sanitizeFilename,
+  VIDEO_FPS,
+  VIDEO_QUALITIES,
+  VIDEO_RESOLUTIONS,
+  type VideoFps,
+  type VideoQuality,
+  type VideoResolution,
+} from './export-options';
 
 export interface BuildExportZipResult {
   zipBlob: Blob;
@@ -47,7 +45,23 @@ export interface BuildExportZipResult {
   errorCount: number;
 }
 
-export class NoScenesError extends Error {}
+let warnedInvalidVideoExportCta = false;
+
+/** Resolve the build-time public setting at the app boundary, warning once. */
+function configuredVideoExportCta() {
+  const raw = process.env.NEXT_PUBLIC_VIDEO_EXPORT_CTA_DESTINATION;
+  const cta = resolveVideoExportCta(raw);
+  const value = raw?.trim();
+  const isExpectedNull = !value || value.toLowerCase() === 'off';
+
+  if (!cta && !isExpectedNull && !warnedInvalidVideoExportCta) {
+    warnedInvalidVideoExportCta = true;
+    console.warn(
+      'Ignoring invalid NEXT_PUBLIC_VIDEO_EXPORT_CTA_DESTINATION; video-export CTA is disabled.',
+    );
+  }
+  return cta;
+}
 
 /**
  * Shared compile prologue for both export paths: read the current stage + scenes
@@ -57,7 +71,13 @@ export class NoScenesError extends Error {}
  * build and the subtitles-only path go through here so their timing/assets/
  * geometry wiring can never drift.
  */
-async function compileStageIr(options: { skipGeometry?: boolean } = {}): Promise<{
+async function compileStageIr(options: {
+  resolution: VideoResolution;
+  locale: Locale;
+  labels: ReturnType<typeof getVideoExportCoverLabels>;
+  skipGeometry?: boolean;
+  skipInteractiveHtml?: boolean;
+}): Promise<{
   ir: ReturnType<typeof compileVideoTimeline>;
   stageName: string;
   scenes: ReturnType<typeof useStageStore.getState>['scenes'];
@@ -70,15 +90,32 @@ async function compileStageIr(options: { skipGeometry?: boolean } = {}): Promise
 
   const latest = await accessDocument(stage.id).catch(() => undefined);
   const stageName = latest?.document?.stage.name || stage.name || 'classroom';
+  const { width, height } = VIDEO_RESOLUTIONS[options.resolution];
 
-  const deps = await createVideoTimelineDeps({
-    stage: { id: stage.id },
-    scenes,
-    skipGeometry: options.skipGeometry,
-  });
+  const [deps, quizLayout] = await Promise.all([
+    createVideoTimelineDeps({
+      stage: { id: stage.id },
+      scenes,
+      skipGeometry: options.skipGeometry,
+      skipInteractiveHtml: options.skipInteractiveHtml,
+    }),
+    createQuizLayoutProbe({
+      scenes,
+      width,
+      height,
+      locale: options.locale,
+      labels: options.labels,
+    }),
+  ]);
   const ir = compileVideoTimeline(
     { stage: { id: stage.id, name: stageName }, scenes },
-    { timing: deps.timing, assets: deps.assets, geometry: deps.geometry },
+    {
+      timing: deps.timing,
+      assets: deps.assets,
+      geometry: deps.geometry,
+      interactive: deps.interactive,
+      quizLayout,
+    },
   );
 
   return { ir, stageName, scenes, deps };
@@ -89,6 +126,8 @@ export interface BuildExportZipOptions {
   resolution: VideoResolution;
   /** Burn the subtitle overlay into the video. Default false (sidecar SRT/VTT only). */
   burnInSubtitles?: boolean;
+  /** Locale the card chrome and the emitted document are written in. */
+  locale: Locale;
 }
 
 /**
@@ -98,14 +137,32 @@ export interface BuildExportZipOptions {
 export async function buildExportZip(
   options: BuildExportZipOptions,
 ): Promise<BuildExportZipResult> {
-  const { resolution, burnInSubtitles = false } = options;
+  const { resolution, burnInSubtitles = false, locale } = options;
   const { width, height } = VIDEO_RESOLUTIONS[resolution];
 
+  // Resolve the chrome before the first await: compiling the IR takes seconds
+  // (Dexie probes, off-screen measurement), and the learner may switch the UI
+  // language while it runs. Reading the labels here pins one export to one
+  // locale instead of whichever language happened to win the race.
+  const labels = getVideoExportCoverLabels(locale);
+  const cta = configuredVideoExportCta();
+
   // 1. DI deps (Dexie durations + asset presence + measured geometry) → 2. pure compile.
-  const { ir, stageName, scenes, deps } = await compileStageIr();
+  const { ir, stageName, scenes, deps } = await compileStageIr({
+    resolution,
+    locale,
+    labels,
+  });
 
   // 3. emit the Hyperframes project text.
-  const project = emitHyperframes(ir, { width, height, burnInSubtitles });
+  const project = emitHyperframes(ir, {
+    width,
+    height,
+    burnInSubtitles,
+    labels,
+    locale,
+    cta,
+  });
 
   // 4. collect asset bytes (slide snapshots + narration/media).
   const { blobs, missing } = await collectVideoAssets(ir, scenes, deps.records, {
@@ -116,11 +173,12 @@ export async function buildExportZip(
   const zipBlob = await packageVideoZip(project, blobs);
 
   const errorCount = ir.diagnostics.filter((d) => d.severity !== 'info').length;
-  return { zipBlob, stageName, missingCount: missing.length, errorCount };
-}
-
-export function sanitizeFilename(name: string): string {
-  return name.replace(/[\\/:*?"<>|]/g, '_') || 'classroom';
+  return {
+    zipBlob,
+    stageName,
+    missingCount: missing.length,
+    errorCount,
+  };
 }
 
 export interface CompiledSubtitles {
@@ -143,8 +201,23 @@ export interface CompiledSubtitles {
  * subtitles need only the timeline, and audio/video *duration* probes still run
  * so these cues match the ones the burned-in video would carry.
  */
-export async function compileSubtitles(): Promise<CompiledSubtitles> {
-  const { ir, stageName } = await compileStageIr({ skipGeometry: true });
+export interface CompileSubtitlesOptions {
+  resolution: VideoResolution;
+  locale: Locale;
+}
+
+export async function compileSubtitles(
+  options: CompileSubtitlesOptions,
+): Promise<CompiledSubtitles> {
+  // Pin the same localized chrome before the first await that a full export at
+  // this resolution uses; Quiz measurement and timing therefore cannot drift.
+  const labels = getVideoExportCoverLabels(options.locale);
+  const { ir, stageName } = await compileStageIr({
+    ...options,
+    labels,
+    skipGeometry: true,
+    skipInteractiveHtml: true,
+  });
 
   return {
     srt: toSrt(ir.subtitles),
