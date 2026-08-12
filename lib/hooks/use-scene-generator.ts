@@ -266,12 +266,12 @@ export async function generateAndStoreTTS(
   language?: string,
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
-  retryOptions?: ClientRetryOptions<TTSApiResponse>,
   replaceAssetId?: string,
   stageId?: string,
   options?: { forceVoice?: string },
 ): Promise<string | null> {
   const settings = useSettingsStore.getState();
+  const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
 
   // When forceVoice is provided, skip agent/settings resolution and use MiniMax
   // directly — the multi-voice pre-generation path needs deterministic ids.

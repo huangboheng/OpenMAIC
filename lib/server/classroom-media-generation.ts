@@ -37,6 +37,7 @@ import type { ImageProviderId } from '@/lib/media/types';
 import type { VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
+import { isGeneratedMediaPlaceholder } from '@/lib/media/media-ref';
 
 const log = createLogger('ClassroomMedia');
 

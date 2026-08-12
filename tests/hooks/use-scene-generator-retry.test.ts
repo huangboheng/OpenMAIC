@@ -55,6 +55,7 @@ vi.mock('@/lib/orchestration/registry/store', () => ({
       listAgents: mocks.listAgents,
     }),
   },
+  applyGeneratedAgentsToRegistry: vi.fn(),
 }));
 
 const mockFetch = vi.fn() as Mock;
