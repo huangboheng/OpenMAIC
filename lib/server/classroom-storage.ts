@@ -3,7 +3,12 @@ import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
 
-export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
+// CLASSROOMS_DIR 默认位于 cwd/data/classrooms（standalone 部署时 cwd 为 .next/standalone，
+// 数据实际在 /var/www/openmaic/data/classrooms——通过 OPENMAIC_CLASSROOMS_DIR 显式指定解耦），
+// 未配置时回退 process.cwd()（本地开发保持原行为）。
+export const CLASSROOMS_DIR = process.env.OPENMAIC_CLASSROOMS_DIR
+  ? path.resolve(process.env.OPENMAIC_CLASSROOMS_DIR)
+  : path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
 
 async function ensureDir(dir: string) {
