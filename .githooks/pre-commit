@@ -1,9 +1,12 @@
 #!/usr/bin/env sh
 # .githooks/pre-commit
 #
-# Block commits that would re-introduce the Next.js 16 dev crash on
-# OpenMAIC: both `middleware.*` and `proxy.*` at the same directory
-# level are rejected with a clear message.
+# 提交硬门禁（两级检查）：
+#   1. scripts/check-duplicate-roots.mjs — 阻止 middleware.* 与 proxy.*
+#      共存（Next.js 16 dev 崩溃）
+#   2. scripts/check-risk-patterns.mjs — 风险感知检查：tmp-* 前缀脚本与
+#      敏感模式（自动接受主机密钥 / root 远程操作 / 硬编码生产主机），
+#      命中时阻断并要求人工评审；确认可控后可用 RISK_APPROVED=1 显式审批放行
 #
 # Enable once per clone:
 #   git config core.hooksPath .githooks
@@ -11,5 +14,5 @@
 set -e
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-exec node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
-
+node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
+node "$REPO_ROOT/scripts/check-risk-patterns.mjs"

@@ -31,7 +31,8 @@
     "eval:outline-language": "tsx eval/outline-language/runner.ts",
     "eval:orchestration": "tsx eval/orchestration/runner.ts",
     "eval:orchestration:answering": "tsx eval/orchestration/answering-runner.ts",
-    "eval:orchestration:answer-content": "tsx eval/orchestration/answer-content-runner.ts"
+    "eval:orchestration:answer-content": "tsx eval/orchestration/answer-content-runner.ts",
+    "check:risk-patterns": "node scripts/check-risk-patterns.mjs"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^4.0.103",
