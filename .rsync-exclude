@@ -1,0 +1,14 @@
+# .rsync-exclude — OpenMAIC 课堂数据同步排除规则
+#
+# 测试课堂不预生成音色，排除其 JSON 及对应音频目录以减少传输 142 个无效文件。
+# 正式课堂（191 个）全部同步。
+
+# --- 测试课堂 (基于 TEST_CLASSROOM_PATTERNS) ---
+- DsZSyUNTdN.json
+- kzqaQB5_u_.json
+- DsZSyUNTdN/
+- kzqaQB5_u_/
+
+# --- 运行时数据（不随课堂数据同步） ---
+- .DS_Store
+- Thumbs.db
