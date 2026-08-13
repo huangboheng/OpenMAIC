@@ -99,7 +99,9 @@ openmaic-dev*.log
 e2e-dev*.log
 
 # Qoder IDE generated files
-.qoder/
+.qoder/*
+!.qoder/rules/
+!.qoder/rules/**
 
 # batch generate progress files
 scripts/batch-generate-progress.json*
