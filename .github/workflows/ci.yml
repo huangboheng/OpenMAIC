@@ -72,6 +72,16 @@ jobs:
       - name: Internal dependency ranges
         run: node scripts/check-internal-dependency-ranges.mjs
 
+      # 部署/同步脚本的最小验证绑定（deploy-change-validation-gap 修复）：
+      # CI checkout 不含 gitignored 的本地数据（data/classrooms），创建空目录后
+      # 运行 --summary，验证脚本的可执行路径与退出码契约（空数据须审计通过）；
+      # 真实数据完整性审计由本地 .githooks/pre-commit 在提交前承担。
+      - name: Deploy scripts minimal verify
+        run: |
+          set -euo pipefail
+          mkdir -p data/classrooms
+          node scripts/deploy-verify.mjs --summary
+
       - run: pnpm install --frozen-lockfile
 
       # `postinstall` builds all five @openmaic packages, and some of them

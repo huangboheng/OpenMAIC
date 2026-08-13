@@ -1,12 +1,15 @@
 #!/usr/bin/env sh
 # .githooks/pre-commit
 #
-# 提交硬门禁（两级检查）：
+# 提交硬门禁（三级检查）：
 #   1. scripts/check-duplicate-roots.mjs — 阻止 middleware.* 与 proxy.*
 #      共存（Next.js 16 dev 崩溃）
 #   2. scripts/check-risk-patterns.mjs — 风险感知检查：tmp-* 前缀脚本与
 #      敏感模式（自动接受主机密钥 / root 远程操作 / 硬编码生产主机），
 #      命中时阻断并要求人工评审；确认可控后可用 RISK_APPROVED=1 显式审批放行
+#   3. 部署/同步脚本最小验证 — staged 变更命中部署/同步文件集合时，执行
+#      scripts/deploy-verify.mjs --summary 磁盘完整性审计，失败阻断提交，
+#      结果随钩子输出保留；无数据环境（data/classrooms 不存在）时跳过
 #
 # Enable once per clone:
 #   git config core.hooksPath .githooks
@@ -16,3 +19,18 @@ set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
 node "$REPO_ROOT/scripts/check-risk-patterns.mjs"
+
+# 3. 部署/同步脚本最小验证绑定（deploy-change-validation-gap 修复）
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+case "$STAGED_FILES" in
+  *"scripts/deploy-verify.mjs"* | *"scripts/deploy-health-check.mjs"* | \
+  *"scripts/deploy-sync.sh"* | *"scripts/sync-"* | *"scripts/tmp-sync-"* | \
+  *"scripts/export-paras.ps1"* | *".rsync-exclude"*)
+    echo "[pre-commit] 命中部署/同步脚本变更，执行 deploy-verify --summary"
+    if [ -d "$REPO_ROOT/data/classrooms" ]; then
+      node "$REPO_ROOT/scripts/deploy-verify.mjs" --summary
+    else
+      echo "[pre-commit] data/classrooms 不存在（无数据环境），跳过磁盘审计"
+    fi
+    ;;
+esac
