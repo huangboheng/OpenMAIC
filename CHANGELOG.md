@@ -4,18 +4,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.3.2] - 2026-08-17
-
-### 自有功能 (Own Feature)
-
-- 新增 `.qoder/skills/xhs-publish/SKILL.md`：封装通过 browser-use MCP 自动化操作小红书创作服务平台（creator.xiaohongshu.com）发布图文/长文笔记的完整工作流；附 `.gitignore` 白名单（`.qoder/skills/`）
-
-### Bug 修复
-
-- xxx
-
----
-
 ## [0.3.1] - 2026-07-21
 
 ### Features

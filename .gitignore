@@ -102,8 +102,6 @@ e2e-dev*.log
 .qoder/*
 !.qoder/rules/
 !.qoder/rules/**
-!.qoder/skills/
-!.qoder/skills/**
 
 # batch generate progress files
 scripts/batch-generate-progress.json*
