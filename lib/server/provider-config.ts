@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { createLogger } from '@/lib/logger';
+import { recordKeyAccess, fingerprint as computeFingerprint, inferEnvironment } from './key-audit';
 
 const log = createLogger('ServerProviderConfig');
 
@@ -511,8 +512,32 @@ function resolveSectionApiKey(
   clientKey?: string,
 ): string {
   const entry = getConfig()[section][providerId];
-  if (entry) return resolveKey(entry.apiKey) || ''; // managed: server key is authoritative
-  return clientKey || ''; // unmanaged: client-supplied key only
+  let resolved = '';
+  if (entry) {
+    resolved = resolveKey(entry.apiKey) || ''; // managed: server key is authoritative
+    if (resolved) {
+      // 阶段 5：访问审计（T1 修正后 fingerprint 16 字符）
+      recordKeyAccess({
+        provider: providerId,
+        fingerprint: computeFingerprint(resolved),
+        callerModule: 'provider-config',
+        environment: inferEnvironment(),
+        managed: true,
+      });
+    }
+  } else {
+    resolved = clientKey || ''; // unmanaged: client-supplied key only
+    if (resolved) {
+      recordKeyAccess({
+        provider: providerId,
+        fingerprint: computeFingerprint(resolved),
+        callerModule: 'provider-config',
+        environment: inferEnvironment(),
+        managed: false,
+      });
+    }
+  }
+  return resolved;
 }
 
 function resolveSectionBaseUrl(
