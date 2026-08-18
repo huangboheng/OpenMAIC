@@ -33,12 +33,18 @@ loadEnv();
 const DB_URL = getDatabaseUrl("postgresql://postgres:882ab5346d3d5a8a15aba2d723aade19@localhost:5999/philochora");
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
-// Multiple API keys for rotation
-const API_KEYS = [
-  "sk-d091544c04814dd0b7278001c0c4b481",
-  "sk-eb94751ddfed408d8bcc266e15c6aa78",
-  "sk-9061ddf282684c02bf4a2158250e5030",
-].filter(Boolean);
+// 从环境变量读取 DEEPSEEK_API_KEY（逗号分隔多把用于 rotation）
+// 密钥只能存在 .env* 中，绝不能在代码里 hardcode（BR-150 阶段 5 根因修复）
+const API_KEYS = (process.env.DEEPSEEK_API_KEY ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (API_KEYS.length === 0) {
+  console.error("[run-translation] FATAL: DEEPSEEK_API_KEY 未配置或为空。");
+  console.error("请在 .env.local / .env.vps.local / .env.secrets 中设置 DEEPSEEK_API_KEY=<key1>[,<key2>,...]");
+  process.exit(1);
+}
 
 const BATCH_SIZE = parseInt(process.argv.find(a => a.startsWith("--batch="))?.slice(8) || "12");
 const MAX_TASKS = parseInt(process.argv.find(a => a.startsWith("--max="))?.slice(6) || "5000");
