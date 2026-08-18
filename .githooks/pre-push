@@ -37,4 +37,8 @@ EOF
   exit 1
 fi
 
+# 版本号强制检查（推送前必须已更新版本号）
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+node "$REPO_ROOT/scripts/check-version.mjs" pre-push
+
 exit 0

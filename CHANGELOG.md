@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] - 2026-08-18
+
+### Build / Hooks
+
+- **版本号强制检查接入 git hooks**：`scripts/check-version.mjs` 集成到 `.githooks/pre-commit`（提交必须包含 `VERSION` 或 `package.json` 变更）和 `.githooks/pre-push`（推送前本地 `VERSION` 必须严格高于 `origin/main`，含 `SKIP_VERSION=1` 逃生口）。合并 release 脚本 `version-sync-upstream.mjs` 与 `check-version.mjs` 的逻辑，确保上游合并后本地 bump 能被正确检测；新增 `package-version-bumps.mjs` 用于 CI 检查所有 workspace 包的 `version` 字段是否同步
+
+---
+
 ## [0.3.2] - 2026-08-18
 
 ### Removed

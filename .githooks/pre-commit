@@ -20,6 +20,9 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
 node "$REPO_ROOT/scripts/check-risk-patterns.mjs"
 
+# 4. 版本号强制检查（VERSION 与 package.json 同步，提交必须更新版本）
+node "$REPO_ROOT/scripts/check-version.mjs" pre-commit
+
 # 3. 部署/同步脚本最小验证绑定（deploy-change-validation-gap 修复）
 STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
 case "$STAGED_FILES" in
