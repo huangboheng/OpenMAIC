@@ -7,7 +7,9 @@
 #   2. scripts/check-risk-patterns.mjs — 风险感知检查：tmp-* 前缀脚本与
 #      敏感模式（自动接受主机密钥 / root 远程操作 / 硬编码生产主机），
 #      命中时阻断并要求人工评审；确认可控后可用 RISK_APPROVED=1 显式审批放行
-#   3. 部署/同步脚本最小验证 — staged 变更命中部署/同步文件集合时，执行
+#   3. scripts/check-secrets.mjs — 密钥扫描钩子（防止 sk-... / AKID / Bearer / NEXT_PUBLIC_*
+#      误入代码）；SECRETS_SCAN_APPROVED=1 显式放行、SECRETS_SCAN_DISABLED=1 跳过本次
+#   4. 部署/同步脚本最小验证 — staged 变更命中部署/同步文件集合时，执行
 #      scripts/deploy-verify.mjs --summary 磁盘完整性审计，失败阻断提交，
 #      结果随钩子输出保留；无数据环境（data/classrooms 不存在）时跳过
 #
@@ -19,6 +21,7 @@ set -e
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 node "$REPO_ROOT/scripts/check-duplicate-roots.mjs"
 node "$REPO_ROOT/scripts/check-risk-patterns.mjs"
+node "$REPO_ROOT/scripts/check-secrets.mjs"
 
 # 4. 版本号强制检查（VERSION 与 package.json 同步，提交必须更新版本）
 node "$REPO_ROOT/scripts/check-version.mjs" pre-commit
