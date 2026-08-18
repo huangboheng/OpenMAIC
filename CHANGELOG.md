@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.4] - 2026-08-18
+
+### 自有功能 (Own Feature)
+
+- **会话终止语义硬规则（BR-091-fix）**：新增 `.qoder/rules/session-end.md`（alwaysApply: true）以及 `AGENTS.md` 中的「会话终止语义」章节。任务完成后禁止主动输出「下一步要做什么」或同义引导句；终止报告只输出「交付 + 验证 + 风险」三段式；goal 存在时必须调用 `updateGoal({ status: "complete" })` 收尾。修复用户报告的「任务完成后不停弹出 Plan 执行完成」体感 bug（根因：模型在 plan mode 下以「请告诉下一步」作为礼貌收尾，但 Qoder IDE plan mode 没有「agent 输出即结束」协议）。双仓同步（Philochora 侧 570b09d）。历史 ai_tracker snapshot 缓存另行一次性清理。
+
+### Bug 修复
+
+- xxx
+
+---
+
 ## [0.3.3] - 2026-08-18
 
 ### Build / Hooks
