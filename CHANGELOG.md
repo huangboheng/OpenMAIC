@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-08-18
+
+### Removed
+
+- **10 分钟免费试看机制**（Philochora 联调）：课堂内 10 分钟试看计时与阻断层已禁用（付费课程访问控制由 Philochora 侧统一校验）。删除 `lib/hooks/use-preview-timer.ts`、`lib/store/preview.ts`、`components/preview-expired-overlay.tsx`，课堂页移除 `usePreviewTimer`/`PreviewExpiredOverlay` 挂载，i18n 删除 `voiceDisabledTrial` 键，`playwright.config.ts` 移除 `NEXT_PUBLIC_SKIP_PREVIEW_TRIAL`。E2E：删除 `e2e/tests/preview-timer-reset.spec.ts`，`mentor-voice-switching.spec.ts` 试看描述更新为切换可用性回归
+
+---
+
 ## [0.3.1] - 2026-07-21
 
 ### Features

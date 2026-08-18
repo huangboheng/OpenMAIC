@@ -211,7 +211,6 @@
     "regeneratingVoices": "正在重新生成导师语音 {{done}}/{{total}}…",
     "voicesUpdated": "导师语音已全部更新",
     "voicesFailed": "{{count}} 段语音生成失败",
-    "voiceDisabledTrial": "试看模式暂不支持切换导师声音",
     "voiceRetry": "重试",
     "voiceSwitchConfirmTitle": "切换导师声音",
     "voiceSwitchConfirmDesc": "切换导师声音将重新生成本课堂全部讲课音频，预计需要数十秒到数分钟，期间无法正常播放。确定切换吗？",

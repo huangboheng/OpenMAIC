@@ -15,8 +15,6 @@ import { createLogger } from '@/lib/logger';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
-import { usePreviewTimer } from '@/lib/hooks/use-preview-timer';
-import { PreviewExpiredOverlay } from '@/components/preview-expired-overlay';
 import {
   applyClassroomStageAndScenes,
   defaultClassroomLoadDeps,
@@ -35,15 +33,6 @@ export default function ClassroomDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const generationStartedRef = useRef(false);
-
-  // 免费试看计时（10 分钟，课堂内部阻断）
-  const preview = usePreviewTimer(classroomId);
-  // 从 URL 读取 courseSlug 用于返回链接（仅客户端可用）
-  const [backUrl, setBackUrl] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    const slug = new URLSearchParams(window.location.search).get('courseSlug');
-    if (slug) setBackUrl(`${window.location.origin}/course/${slug}`);
-  }, []);
 
   const { generateRemaining, retrySingleOutline, stop } = useSceneGenerator({
     onComplete: () => {
@@ -220,12 +209,6 @@ export default function ClassroomDetailPage() {
             <Stage onRetryOutline={retrySingleOutline} />
           )}
         </div>
-        {preview.expired && (
-          <PreviewExpiredOverlay
-            remainingSeconds={preview.remainingSeconds}
-            backUrl={backUrl}
-          />
-        )}
       </MediaStageProvider>
     </ThemeProvider>
   );

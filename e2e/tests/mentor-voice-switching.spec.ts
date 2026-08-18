@@ -81,7 +81,7 @@ async function bypassAuth(page: import('@playwright/test').Page) {
  * 1. 瞬时切换：选择音色后 pill 立即更新，无确认弹层、无等待。
  * 2. 播放中切换：当前句立即以新音色重播（音频请求 URL 含新音色文件名）。
  * 3. 服务端托管 provider：pill 显示真实音色、弹层列出全部可选项。
- * 4. 试看模式不阻断声音切换。
+ * 4. 声音切换按钮始终可用（试看机制已移除的回归断言）。
  */
 
 const TEST_STAGE_ID = 'e2e-voice-stage';
@@ -387,11 +387,11 @@ test.describe('Mentor Voice Switching — server-managed provider', () => {
   });
 });
 
-test.describe('Mentor Voice Switching — trial mode no longer blocks', () => {
-  // 修复前：试看期间（isTrial=true）声音切换按钮被 disabled，用户永远无法切换。
-  // 修复后：试看不再阻断声音切换，按钮始终可操作。
+test.describe('Mentor Voice Switching — 切换可用性回归', () => {
+  // 背景：曾因试看模式（isTrial=true）禁用声音切换按钮导致用户永远无法切换；
+  // 试看机制已移除（BR：禁用 10 分钟试看），本用例回归断言按钮始终可用。
 
-  test('试看期间声音切换按钮可用且瞬时生效', async ({ page }) => {
+  test('声音切换按钮可用且瞬时生效', async ({ page }) => {
     await mockServerManagedTts(page);
     await seedDatabase(page);
 
@@ -399,7 +399,7 @@ test.describe('Mentor Voice Switching — trial mode no longer blocks', () => {
     await classroom.goto(TEST_STAGE_ID);
     await classroom.waitForLoaded();
 
-    // 试看计时器已启动（isTrial=true），但声音按钮不应被禁用
+    // 声音按钮不应被禁用
     const voiceButton = page.getByRole('button', { name: 'Mentor Voice' });
     await expect(voiceButton).toBeVisible({ timeout: 10_000 });
     await expect(voiceButton).toBeEnabled();
