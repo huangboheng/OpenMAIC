@@ -61,7 +61,7 @@ export function recordKeyAccess(event: KeyAuditEvent): void {
     const logPath = resolve(logDir, 'key-audit.log');
     try {
       appendFileSync(logPath, line + '\n', 'utf8');
-    } catch (innerErr) {
+    } catch (_innerErr) {
       mkdirSync(logDir, { recursive: true });
       appendFileSync(logPath, line + '\n', 'utf8');
     }
