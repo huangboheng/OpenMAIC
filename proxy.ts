@@ -172,7 +172,19 @@ export async function proxy(request: NextRequest) {
       const codeChallenge = generateCodeChallenge(codeVerifier);
       const state = generateState();
 
-      const redirectUri = `${request.nextUrl.origin}/openmaic/api/auth/callback`;
+      // redirect_uri 必须使用外部可达地址：优先 X-Forwarded-Proto/Host（nginx 已转发），
+      // fallback 到 OAUTH_ISSUER。request.nextUrl.origin 在 standalone 直连 3010 时解析为
+      // localhost:3010，导致 OAuth 回调失败（课堂白屏根因之一，2026-08-19 修复）。
+      const forwardedProto =
+        request.headers.get('x-forwarded-proto') || 'https';
+      const forwardedHost =
+        request.headers.get('x-forwarded-host') ||
+        request.headers.get('host') ||
+        '';
+      const baseOrigin = forwardedHost
+        ? `${forwardedProto}://${forwardedHost}`
+        : OAUTH_ISSUER;
+      const redirectUri = `${baseOrigin}/openmaic/api/auth/callback`;
       const params = new URLSearchParams({
         response_type: 'code',
         client_id: OAUTH_CLIENT_ID,

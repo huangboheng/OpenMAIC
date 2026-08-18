@@ -28,7 +28,7 @@ const REDACTION_PATTERNS: Array<{ pattern: RegExp; provider: string }> = [
   // Slack
   { pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}/g, provider: 'slack' },
   // Bearer token
-  { pattern: /\bBearer\s+[A-Za-z0-9_-.]{20,}/g, provider: 'bearer' },
+  { pattern: /\bBearer\s+[A-Za-z0-9_.-]{20,}/g, provider: 'bearer' },
   // api_key= / secret_key= / access_token= / client_secret=
   {
     pattern: /(api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|secret[_-]?key|bearer[_-]?token)\s*[=:]\s*['"]?[A-Za-z0-9_-]{20,}['"]?/gi,
