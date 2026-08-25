@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.7] - 2026-08-26
+
+### 自有功能 (Own Feature)
+
+- 无
+
+### Bug 修复
+
+- nginx 白名单补齐 `favicon.ico` / `apple-icon.png` / `logos/` 静态资源，消除兜底 403 导致的页面图标缺失与加载卡顿（与 proxy.ts SEC-02 PAGE_ENTRY_PATTERN 对齐，已部署生产验证）
+
+---
+
 ## [0.3.6] - 2026-08-26
 
 ### Bug 修复
