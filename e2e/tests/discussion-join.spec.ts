@@ -123,16 +123,28 @@ async function seedDatabase(page: import('@playwright/test').Page, settings: str
   }, settings);
 
   // Navigate to home first so Dexie creates the DB at the current version.
+  // (SEC-02 returns a bare 404 for '/', so seeding below must also handle a
+  // database that was never bootstrapped by the app — see the missing-store
+  // fallback in seedStageData.)
   await page.goto('/', { waitUntil: 'networkidle' });
 
   const seedStageData = () =>
     page.evaluate(({ stageId, theme }) => {
       return new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open('MAIC-Database');
+        // SEC-02 returns a bare 404 for '/', so the app's Dexie bootstrap never
+        // runs and MAIC-Database may not exist yet. indexedDB.open() without a
+        // version then yields an EMPTY database (no object stores) and
+        // db.transaction() would throw synchronously, hanging this promise.
+        // Detect the missing stores and reopen with a bumped version to create
+        // them (Dexie upgrades further to its own version on app boot).
+        const STORES: Array<[string, string]> = [
+          ['stages', 'id'],
+          ['scenes', 'id'],
+          ['stageOutlines', 'stageId'],
+        ];
 
-        request.onsuccess = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          const tx = db.transaction(['stages', 'scenes', 'stageOutlines'], 'readwrite');
+        const seed = (db: IDBDatabase) => {
+          const tx = db.transaction(STORES.map(([name]) => name), 'readwrite');
           const now = Date.now();
 
           tx.objectStore('stages').put({
@@ -202,6 +214,30 @@ async function seedDatabase(page: import('@playwright/test').Page, settings: str
             resolve();
           };
           tx.onerror = () => reject(tx.error);
+        };
+
+        const request = indexedDB.open('MAIC-Database');
+
+        request.onsuccess = (event) => {
+          const db = (event.target as IDBOpenDBRequest).result;
+          const missing = STORES.filter(([name]) => !db.objectStoreNames.contains(name));
+          if (missing.length === 0) {
+            seed(db);
+            return;
+          }
+          const version = db.version;
+          db.close();
+          const upgrade = indexedDB.open('MAIC-Database', version + 1);
+          upgrade.onupgradeneeded = (e) => {
+            const udb = (e.target as IDBOpenDBRequest).result;
+            for (const [name, keyPath] of STORES) {
+              if (!udb.objectStoreNames.contains(name)) {
+                udb.createObjectStore(name, { keyPath });
+              }
+            }
+          };
+          upgrade.onsuccess = (e) => seed((e.target as IDBOpenDBRequest).result);
+          upgrade.onerror = () => reject(upgrade.error);
         };
 
         request.onerror = () => reject(request.error);

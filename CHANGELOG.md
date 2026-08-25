@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.8] - 2026-08-26
+
+### 自有功能 (Own Feature)
+
+- E2E 守卫：server-providers 非 ok 时课堂页必须出现可见 toast（ADR-0001 防回归）
+- playwright 配置：测试进程加载 .env.local 的会话密钥（修复 openmaic_session 签名不匹配导致的 307→ERR_CONNECTION_REFUSED）；webServer 显式 NODE_ENV=development
+
+### Bug 修复
+
+- 无
+
+---
+
 ## [0.3.7] - 2026-08-26
 
 ### 自有功能 (Own Feature)
