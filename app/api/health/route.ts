@@ -4,6 +4,7 @@ import {
   getServerImageProviders,
   getServerVideoProviders,
   getServerTTSProviders,
+  isServerLLMConfigured,
 } from '@/lib/server/provider-config';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -24,6 +25,9 @@ export async function GET() {
   return apiSuccess({
     status: 'ok',
     version,
+    // Deployment gate (ADR-0001): false means managed-mode clients can never
+    // start a chat/discussion — the deploy health check treats it as failure.
+    llmConfigured: isServerLLMConfigured(),
     capabilities: {
       webSearch: Object.keys(getServerWebSearchProviders()).length > 0,
       imageGeneration: Object.keys(getServerImageProviders()).length > 0,

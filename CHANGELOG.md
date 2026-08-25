@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.6] - 2026-08-26
+
+### Bug 修复
+
+- **托管模式课堂讨论「请选择一个模型」根治（ADR-0001）**：根因是 VPS
+  nginx 黑名单拦截 `GET /openmaic/api/server-providers`（托管部署唯一的模型配置下发通道），客户端静默吞掉失败。
+  修复：`server-providers` 移出黑名单并入白名单；`fetchServerProviders`
+  改为响亮失败（warn 日志 + 重试一次 + `serverProvidersLoadFailed` 标志）；
+  托管模式校验失败文案改为可行动的「联系管理员」（三语）。
+  验证：生产穿透由 nginx-403 变为应用层 401。
+
+### 自有功能 (Own Feature)
+
+- **API 面契约（ADR-0001）**：`deploy/nginx/philochora.conf` 成为边缘配置唯一事实源；新增 `scripts/deploy-nginx.sh`（dry-run diff → 备份 → `nginx -t` → reload → 穿透验证，失败自动回滚）与 `scripts/check-api-surface.mjs`（pre-push 阻断：每条 `app/api/**` 路由必须显式落位，逃生口 `SKIP_API_SURFACE_CHECK=1`）。
+- **部署门禁**：`/api/health` 新增 `llmConfigured` 字段；`scripts/deploy-health-check.mjs` 新增两项检查（health.llmConfigured 与 server-providers 边缘穿透）。
+- **E2E 守卫**：`discussion-join.spec.ts` 新增「server-providers 非 ok 必须出现可见失败反馈」用例。
+- **文档治理**：新增 `CONTEXT.md` 术语表与 `docs/adr/0001-nginx-api-allowlist-contract.md`。
+
+---
+
 ## [0.3.5] - 2026-08-18
 
 ### 自有功能 (Own Feature)

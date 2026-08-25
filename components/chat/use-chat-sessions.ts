@@ -35,7 +35,7 @@ import {
 } from '@/lib/chat/quiz-results-for-store-state';
 import { toast } from 'sonner';
 import { createLogger } from '@/lib/logger';
-import { isPiChatEnabled } from '@/lib/config/feature-flags';
+import { isPiChatEnabled, isSettingsEnabled } from '@/lib/config/feature-flags';
 import type { CleanupSource } from '@/lib/playback/auto-resume';
 import { nanoid } from 'nanoid';
 
@@ -446,6 +446,22 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
     options.shouldHoldAfterReveal,
   ]);
   const { t } = useI18n();
+
+  // Managed deployments hide the settings panel (isSettingsEnabled() false),
+  // so a missing model is never user-fixable — "please pick a model" is a
+  // dead end there. Surface an actionable "contact admin" message instead,
+  // differentiating a failed config fetch from an empty server config
+  // (ADR-0001).
+  const toastModelUnavailable = useCallback(() => {
+    if (!isSettingsEnabled()) {
+      const { serverProvidersLoadFailed } = useSettingsStore.getState();
+      toast.error(
+        t(serverProvidersLoadFailed ? 'settings.configLoadFailed' : 'settings.managedNoModel'),
+      );
+    } else {
+      toast.error(t('settings.modelNotConfigured'));
+    }
+  }, [t]);
 
   // Track current stageId for data isolation
   const stageId = useStageStore((s) => s.stage?.id);
@@ -1664,7 +1680,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
       // Validate model configuration before sending
       const modelConfig = getCurrentModelConfig();
       if (!modelConfig.modelId) {
-        toast.error(t('settings.modelNotConfigured'));
+        toastModelUnavailable();
         return;
       }
       if (modelConfig.requiresApiKey && !modelConfig.apiKey && !modelConfig.isServerConfigured) {
@@ -1820,6 +1836,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
       retireActiveLiveRequest,
       runAgentLoopFn,
       t,
+      toastModelUnavailable,
     ],
   );
 
@@ -1839,7 +1856,7 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
       // Validate model configuration before starting discussion
       const modelConfig = getCurrentModelConfig();
       if (!modelConfig.modelId) {
-        toast.error(t('settings.modelNotConfigured'));
+        toastModelUnavailable();
         return false;
       }
       if (modelConfig.requiresApiKey && !modelConfig.apiKey && !modelConfig.isServerConfigured) {
@@ -1950,7 +1967,13 @@ export function useChatSessions(options: UseChatSessionsOptions = {}) {
       return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- t is stable from i18n context
-    [clearLiveSessionAfterError, endSession, registerFirstPiRequest, runAgentLoopFn],
+    [
+      clearLiveSessionAfterError,
+      endSession,
+      registerFirstPiRequest,
+      runAgentLoopFn,
+      toastModelUnavailable,
+    ],
   );
 
   /**

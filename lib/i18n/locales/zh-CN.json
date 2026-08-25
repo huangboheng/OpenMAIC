@@ -1717,6 +1717,8 @@
     "optionalOverride": "可选，留空则使用服务端配置",
     "setupNeeded": "请先完成配置",
     "modelNotConfigured": "请选择一个模型以开始使用",
+    "configLoadFailed": "服务配置加载失败，请联系管理员",
+    "managedNoModel": "服务暂未配置可用模型，请联系管理员",
     "dangerZone": "危险区域",
     "clearCache": "清空本地缓存",
     "clearCacheDescription": "删除所有本地存储的数据，包括课堂记录、对话历史、音频缓存和应用配置。此操作不可撤销。",

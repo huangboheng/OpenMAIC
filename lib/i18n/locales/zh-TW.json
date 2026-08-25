@@ -1701,6 +1701,8 @@
     "optionalOverride": "選填，留空則使用服務端設定",
     "setupNeeded": "請先完成設定",
     "modelNotConfigured": "請選擇一個模型以開始使用",
+    "configLoadFailed": "服務設定載入失敗，請聯絡管理員",
+    "managedNoModel": "服務暫未配置可用模型，請聯絡管理員",
     "dangerZone": "危險區域",
     "clearCache": "清空本機緩存",
     "clearCacheDescription": "刪除所有本機儲存的資料，包含課堂記錄、對話紀錄、音訊緩存和應用程式設定。此作業無法復原。",

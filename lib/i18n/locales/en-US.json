@@ -1717,6 +1717,8 @@
     "optionalOverride": "Optional — leave empty to use server config",
     "setupNeeded": "Setup required",
     "modelNotConfigured": "Please select a model to get started",
+    "configLoadFailed": "Failed to load service configuration. Please contact the administrator.",
+    "managedNoModel": "No model is configured on this service yet. Please contact the administrator.",
     "dangerZone": "Danger Zone",
     "clearCache": "Clear Local Cache",
     "clearCacheDescription": "Delete all locally stored data, including classroom records, chat history, audio cache, and app settings. This action cannot be undone.",

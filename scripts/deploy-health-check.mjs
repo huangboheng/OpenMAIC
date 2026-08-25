@@ -3,6 +3,7 @@
  * deploy-health-check.mjs
  *
  * VPS 部署后健康检查 — PM2 状态 + /api/health + classroom-media probe。
+ * 含 ADR-0001 部署门禁：health.llmConfigured 与 server-providers 边缘穿透。
  * probe 课堂/音频从本地 data/classrooms/ 动态选取，不硬编码。
  * 注意: 该脚本在 VPS 上运行时（默认 base-url 127.0.0.1:3010）扫描的是 VPS 本地数据；
  *       若在本地对公网探测，可用 --classroom-id 显式指定远端存在的课堂。
@@ -103,7 +104,7 @@ function pickProbe() {
 async function main() {
   console.log(`Health Check: ${BASE_URL}\n`);
 
-  // 1. /api/health
+  // 1. /api/health（含 ADR-0001 门禁：llmConfigured 必须为 true）
   console.log('[1] /api/health ...');
   try {
     const r1 = await fetchTimeout(`${BASE_URL}/api/health`);
@@ -111,7 +112,20 @@ async function main() {
       fail(`/api/health 返回 ${r1.status}`);
     } else {
       const body = await r1.text();
-      ok(`HTTP 200 (${body.slice(0, 100)})`);
+      let healthJson = null;
+      try {
+        healthJson = JSON.parse(body);
+      } catch {
+        /* body 非 JSON，下面按 llmConfigured 缺失处理 */
+      }
+      if (healthJson && healthJson.llmConfigured === true) {
+        ok(`HTTP 200, llmConfigured=true (${body.slice(0, 100)})`);
+      } else if (healthJson && healthJson.llmConfigured === false) {
+        fail(`/api/health llmConfigured=false —— 服务端无可用 LLM key+model，托管模式讨论必然失败（ADR-0001）`);
+      } else {
+        // 旧版本应用无该字段：视为门禁不满足，提示先升级应用再判定。
+        fail(`/api/health 缺少 llmConfigured 字段（应用版本过旧，未包含 ADR-0001 门禁）`);
+      }
     }
   } catch (e) {
     fail(`/api/health 异常: ${e.message}`);
@@ -174,6 +188,25 @@ async function main() {
     } catch (e) {
       fail(`classroom API probe 异常: ${e.message}`);
     }
+  }
+
+  // 4. server-providers 边缘穿透（ADR-0001 门禁）
+  // 历史上该路径被 nginx 黑名单拦截（默认 403 页），托管模式客户端静默失败，
+  // 导致课堂讨论恒报"请选择一个模型"。判定基准：必须到达应用层（200 或 401）。
+  console.log('\n[4] server-providers 边缘穿透 ...');
+  try {
+    const r4 = await fetchTimeout(`${BASE_URL}/api/server-providers`, undefined, 10_000);
+    const body4 = await r4.text();
+    const isNginxPage = /<center>nginx<\/center>/i.test(body4);
+    if (r4.status === 200 || r4.status === 401) {
+      ok(`HTTP ${r4.status}（已到达应用层；401=等待鉴权，属预期）`);
+    } else if (r4.status === 403 && isNginxPage) {
+      fail(`server-providers 被 nginx 边缘拦截（403 默认页）—— 托管模式讨论必然报"请选择一个模型"（ADR-0001）`);
+    } else {
+      fail(`server-providers 返回 ${r4.status}${isNginxPage ? '（nginx 页）' : ''}`);
+    }
+  } catch (e) {
+    fail(`server-providers probe 异常: ${e.message}`);
   }
 
   // 结论

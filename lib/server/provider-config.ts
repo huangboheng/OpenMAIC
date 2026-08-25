@@ -574,6 +574,21 @@ export function resolveApiKey(providerId: string, clientKey?: string): string {
   return resolveSectionApiKey('providers', providerId, clientKey);
 }
 
+/**
+ * Whether the server has at least one usable LLM (API key present) and a
+ * resolvable model (DEFAULT_MODEL or a per-provider model list). Used by
+ * /api/health as a deployment gate (ADR-0001): when false, managed-mode
+ * clients can never start a chat/discussion regardless of edge routing.
+ */
+export function isServerLLMConfigured(): boolean {
+  const cfg = getConfig();
+  const hasProvider = Object.values(cfg.providers).some((entry) => !!entry.apiKey);
+  const hasModel =
+    !!process.env.DEFAULT_MODEL?.trim() ||
+    Object.values(cfg.providers).some((entry) => !!entry.models?.length);
+  return hasProvider && hasModel;
+}
+
 /** Resolve base URL. Managed provider ⇒ server URL; otherwise client URL. */
 export function resolveBaseUrl(providerId: string, clientBaseUrl?: string): string | undefined {
   return resolveSectionBaseUrl('providers', providerId, clientBaseUrl);

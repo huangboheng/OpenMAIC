@@ -283,6 +283,41 @@ test.describe('Discussion Join', () => {
     await expect(page.getByRole('button', { name: 'Stop Discussion', exact: true })).toBeHidden();
   });
 
+  test('loud failure: non-ok server-providers surfaces a visible toast on join (ADR-0001)', async ({
+    page,
+  }) => {
+    await bypassAuthGates(page);
+    // Simulate an edge-layer block (nginx-403 shape): fetchServerProviders
+    // must not silently swallow the failure — managed-mode users have no
+    // settings panel, so a join attempt must produce actionable feedback.
+    await page.route('**/api/server-providers', (route) =>
+      route.fulfill({ status: 403, contentType: 'text/html', body: '<center>nginx</center>' }),
+    );
+    await seedDatabase(page, SETTINGS_NO_MODEL);
+
+    const classroom = new ClassroomPage(page);
+    await classroom.goto(TEST_STAGE_ID);
+    await classroom.waitForLoaded();
+
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+
+    const joinButton = page.getByRole('button', { name: 'Join', exact: true });
+    await expect(joinButton).toBeVisible({ timeout: 12_000 });
+    await joinButton.click();
+
+    // Visible failure feedback is mandatory (the pre-fix behaviour was a
+    // silent return to idle with no toast at all in managed mode).
+    const toast = page.locator('[data-sonner-toast]');
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await expect(toast).toContainText('Failed to load service configuration');
+
+    // The engine must still recover to idle after the failed start.
+    await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByRole('button', { name: 'Stop Discussion', exact: true })).toBeHidden();
+  });
+
   test('preserves pending discussion trigger across pause and resume', async ({ page }) => {
     await bypassAuthGates(page);
     await seedDatabase(page, SETTINGS_UNSELECTED_AGENT);

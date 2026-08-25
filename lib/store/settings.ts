@@ -210,6 +210,13 @@ export interface SettingsState {
   // Auto-config lifecycle flag (persisted)
   autoConfigApplied: boolean;
 
+  // Set when GET /api/server-providers ultimately failed (after one retry).
+  // Transient by intent: every fetchServerProviders run rewrites it, so a
+  // persisted stale value self-corrects on next page load. Lets the UI
+  // surface an actionable "config load failed" message in managed mode
+  // instead of silently staying model-less (ADR-0001).
+  serverProvidersLoadFailed: boolean;
+
   // Playback controls
   ttsMuted: boolean;
   ttsVolume: number; // 0-1, actual volume level
@@ -925,7 +932,8 @@ export const useSettingsStore = create<SettingsState>()(
         parallelSceneConcurrency: 0,
 
         autoConfigApplied: false,
-
+                serverProvidersLoadFailed: false,
+        
         // Web Search settings (use defaults)
         ...defaultWebSearchConfig,
 
@@ -1357,8 +1365,23 @@ export const useSettingsStore = create<SettingsState>()(
         // Fetch server-configured providers and merge into local state
         fetchServerProviders: async () => {
           try {
-            const res = await fetch('/api/server-providers');
-            if (!res.ok) return;
+            // Loud failure (ADR-0001): log status/URL, retry once, and on
+            // final failure set a flag so the UI can show an actionable
+            // message instead of silently staying model-less.
+            let res = await fetch('/api/server-providers');
+            if (!res.ok) {
+              log.warn(
+                `fetchServerProviders: HTTP ${res.status} for /api/server-providers — retrying once`,
+              );
+              res = await fetch('/api/server-providers');
+            }
+            if (!res.ok) {
+              log.warn(
+                `fetchServerProviders: giving up — HTTP ${res.status} for /api/server-providers`,
+              );
+              set({ serverProvidersLoadFailed: true });
+              return;
+            }
             // Managed providers expose only their allowed model list (LLM/image)
             // and presence (the "managed" flag) — never a base URL.
             const data = (await res.json()) as {
@@ -1843,11 +1866,13 @@ export const useSettingsStore = create<SettingsState>()(
                   videoGenerationEnabled: autoVideoEnabled,
                 }),
                 ...(autoTtsEnabled !== undefined && { ttsEnabled: autoTtsEnabled }),
+                // Successful sync clears any previous load-failure flag.
+                serverProvidersLoadFailed: false,
               };
             });
           } catch (e) {
-            // Silently fail — server providers are optional
             log.warn('Failed to fetch server providers:', e);
+            set({ serverProvidersLoadFailed: true });
           }
         },
       };

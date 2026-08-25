@@ -41,4 +41,12 @@ fi
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 node "$REPO_ROOT/scripts/check-version.mjs" pre-push
 
+# API 面契约校验（ADR-0001）：app/api/** 每条路由必须在边缘配置中显式落位。
+# 逃生口: SKIP_API_SURFACE_CHECK=1 git push
+if [ "${SKIP_API_SURFACE_CHECK:-0}" = "1" ]; then
+  echo "[pre-push] SKIP_API_SURFACE_CHECK=1 — 跳过 API 面契约校验"
+else
+  node "$REPO_ROOT/scripts/check-api-surface.mjs"
+fi
+
 exit 0
