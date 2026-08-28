@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.9] - 2026-08-28
+
+### 自有功能 (Own Feature)
+
+- GitNexus 代码智能索引刷新至 a8fe139：增量重建 2162 文件 / 22964 节点 / 56478 边 / 300 执行流，索引登记路径由迁移前的 `E:\hermes\workspace\openmaic` 纠正为 `E:\workspace\openmaic`
+- AGENTS.md、CLAUDE.md 同步 GitNexus 符号与关系计数
+
+### Bug 修复
+
+- 无
+
+---
+
 ## [0.3.8] - 2026-08-26
 
 ### 自有功能 (Own Feature)
