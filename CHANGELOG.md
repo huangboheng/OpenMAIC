@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.10] - 2026-08-28
+
+### 自有功能 (Own Feature)
+
+- GitNexus 索引全量重建：增量 analyze 因 `file_fts` FTS 索引不一致失败，`analyze --repair-fts` 修复后重建为 2162 文件 / 22946 节点 / 56481 边 / 300 执行流
+- AGENTS.md、CLAUDE.md 计数更正为全量重建的权威值（22964/56478 → 22946/56481）
+
+### Bug 修复
+
+- 无
+
+---
+
 ## [0.3.9] - 2026-08-28
 
 ### 自有功能 (Own Feature)
