@@ -74,5 +74,22 @@ export function ModelSettingsInit() {
     };
   }, []);
 
+  // The fork's client-side settings store still drives the legacy generation
+  // flow, so it must learn which providers the server manages. Without this,
+  // a fresh browser sees no usable LLM even though /api/server-providers has
+  // one (the homepage dead-ends on "configure model").
+  useEffect(() => {
+    const persist = useSettingsStore.persist;
+    const sync = () => {
+      void useSettingsStore.getState().fetchServerProviders();
+    };
+    if (persist.hasHydrated()) {
+      sync();
+      return;
+    }
+    const unsubscribe = persist.onFinishHydration(sync);
+    return unsubscribe;
+  }, []);
+
   return null;
 }

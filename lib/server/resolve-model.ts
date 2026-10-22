@@ -303,3 +303,26 @@ export async function resolveModelFromRequest(
   // there decides (a routed stage may override or drop it). See resolveModel.
   return resolveModelFromHeaders(req, stage, getThinkingConfigFromBody(body));
 }
+
+/**
+ * Compatibility for the fork's client-generation routes: when the client's
+ * selected model is not authorized for server-managed credentials, resolve the
+ * deployment's model for the stage instead of failing the request.
+ */
+export async function resolveModelFromRequestOrDeployment(
+  req: NextRequest,
+  body: unknown,
+  stage?: LlmStage,
+): Promise<ResolvedModel> {
+  try {
+    return await resolveModelFromRequest(req, body, stage);
+  } catch (error) {
+    if (!(error instanceof ModelAuthorizationError)) throw error;
+    const { requestWorkspaceId } = await import('@/lib/server/model-config/runtime');
+    return resolveModel({
+      workspaceId: stage ? await requestWorkspaceId(req) : null,
+      stage,
+      thinkingConfig: getThinkingConfigFromBody(body),
+    });
+  }
+}

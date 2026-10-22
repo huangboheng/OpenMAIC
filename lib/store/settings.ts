@@ -1644,10 +1644,12 @@ export const useSettingsStore = create<SettingsState>()(
               ): T[] => [
                 // Server-disabled providers (TTS only) are never fallback targets.
                 ...Object.entries(config)
-                  .filter(([, c]) => c.isServerConfigured && !c.serverDisabled)
+                  .filter(([, c]) => !!c && c.isServerConfigured && !c.serverDisabled)
                   .map(([id]) => id as T),
                 ...Object.entries(config)
-                  .filter(([, c]) => !c.isServerConfigured && !c.serverDisabled && !!c.apiKey)
+                  .filter(
+                    ([, c]) => !!c && !c.isServerConfigured && !c.serverDisabled && !!c.apiKey,
+                  )
                   .map(([id]) => id as T),
               ];
 

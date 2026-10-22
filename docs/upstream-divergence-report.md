@@ -330,6 +330,10 @@
 | stage store 兼容 actions | 补 `generationEpoch`、`setGeneratingOutlines`、`setGenerationStatus`、`addFailedOutline`、`markGenerationCompleteIfDone` 等旧链路 API |
 | asset-pool 兼容 | 新存储无 in-place replace，`replaceAsset` 以 remove + put 模拟；`removeAsset` 直连池 |
 | `model-routes` 兼容 | 新增 `generate-classroom` stage 映射到 `classroom` slot；`getStageModel` 返回 `undefined`（上游已移除 `MODEL_ROUTES`） |
+| 恢复 `app/api/generate/{scene-outlines-stream,scene-content,scene-actions,agent-profiles}` 与 `app/api/web-search` | 本仓客户端生成链路实际调用的路由，上游在 server-first 重构中删除；缺失时预览页 404 |
+| `resolveModelFromRequestOrDeployment` | 客户端模型未被部署授权时，回退到 `resolveModel({ stage })` 的部署模型，避免旧链路被 403 |
+| `llmApiError` 与流式 `onError` 诊断 | 兼容旧路由的错误响应；输出上限从 `outputWindow` 钳到 16384，避免把上下文窗口当 max_tokens |
+| `ModelSettingsInit` 启动同步 `fetchServerProviders()` | 让本仓客户端 settings store 拿到服务端托管 provider；缺失时首页一直显示「配置模型」 |
 
 ### 10.4 验证
 
@@ -340,13 +344,16 @@
 | `pnpm build` | 通过（Next.js 16.3.3，生成 `BUILD_ID`） |
 | `vitest run tests/audio tests/classroom tests/store tests/hooks --no-file-parallelism` | 84 个文件 / 873 项通过 |
 | `gitnexus detect_changes scope=all` | `risk_level: critical`，6825 symbols / 2553 files / 678 processes（整仓同步的预期结果） |
+| 运行时 smoke（3002 端口，独立 `openmaic_smoke` 库） | `/api/health` 200（`version=1.2.1`、`llmConfigured=true`）；首页与设置对话框正常，服务端托管 provider 可见 |
+| 生成链路 smoke（服务端授权 Qwen3.7 Plus） | `scene-outlines-stream` 200、`agent-profiles` 200、`scene-content` 200（单场景约 6 分钟），页面进入场景动作阶段 |
+| 环境说明 | 本机 `.env.local` 的 DeepSeek key 调 `api.deepseek.com` 返回 401；切换服务端已授权的 Qwen 后跑通，属环境凭据问题，不是合并回归 |
 
 ### 10.5 遗留风险
 
 1. **双生成管线并存**：本仓默认入口走客户端旧链路，上游新链路（generation-runs、workbench、ClassroomSurface、server-first 持久化）已入库但未接入默认 UI；后续若切换入口需单独迁移 TTS/质量校验等挂载点。
 2. **设置权威双轨**：客户端 settings store 与服务端 `/api/model-config` 同时存在；上游新的模型服务 UI 与本仓 provider 配置 UI 的边界需在后续迭代收敛。
 3. **`replaceAsset` 语义变化**：服务端资产池不支持原地替换，现以 remove + put 模拟；旧客户端 TTS 再生成若依赖稳定 id，需在运行时验证。
-4. **未做浏览器/E2E 冒烟**：本轮验证到 build + 单元测试；课堂播放、语音切换、连续学习回调的端到端行为尚未在浏览器中实测。
+4. **浏览器冒烟只覆盖到内容生成**：已在 3002 端口用独立 smoke 库完成首页 → 设置 → 大纲 → 角色 → 场景内容（200）→ 场景动作的链路；DeepSeek key 在本机 `.env.local` 返回 401，切换到服务端已授权的 Qwen 后跑通，Qwen 单场景约 6 分钟。课堂播放、TTS 音色切换、连续学习回调仍未端到端验证，完整 E2E 未跑。
 5. **移除了 3 个上游测试**：`course-materials.test.ts`、`owner-generation-gate.test.ts`、`settings-model-settings-migration.test.ts` 分别断言本仓未采用的工具栏、课堂页与 v5 设置迁移；保留会造成与既定架构冲突，后续如需采用对应上游能力应连同测试恢复。
 
 ## 11 修订历史
@@ -355,3 +362,4 @@
 |------|------|------|
 | v1.0.0 | 2026-10-11 | 首版。基于 `upstream/main` = `7d324aa8` 与 `custom-main` = `482c17a0` 的差异对比，记录分叉规模、上游四项破坏性重构与旧→新路径映射、本仓私有能力与 308 个可整体存活文件、`merge-tree` 干跑得知的 57 处冲突构成、8 处死 import、三组正面撕裂，以及三条同步路线的成本评估（本轮不执行）。所有数字附复现命令与取证日期，4 条断言显式标为未验证 |
 | v1.1.0 | 2026-10-22 | 追加第 11 节合并执行记录：上游基线推进到 `e19ed13f`（v1.2.1），314 提交/60 冲突，记录独立集成分支、六条解决原则、兼容层拆分、tsc/build/873 项单测结果与五条遗留风险 |
+| v1.1.1 | 2026-10-22 | 浏览器冒烟发现并修复三类真实回归：本地生成 API 路由缺失（404）、`llmApiError` 兼容缺失（500）、服务端 provider 未同步到客户端 store（首页卡「配置模型」）；补模型授权回退与 `maxOutputTokens` 钳制，冒烟跑到场景内容 200 |
