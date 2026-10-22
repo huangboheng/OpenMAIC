@@ -1,4 +1,9 @@
-import type { SerializedMessage } from './serialize-thread';
+/** Slim message shape persisted in the legacy browser database. */
+export interface SerializedMessage {
+  role: string;
+  content: Array<{ type: string; text?: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
 
 /** One AI-editing conversation, persisted in IndexedDB (Dexie `agentEditSessions`). */
 export interface AgentEditSessionRecord {

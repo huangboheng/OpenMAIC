@@ -164,3 +164,14 @@ export function isVideoExportEnabled(): boolean {
 export function isPptxImportEnabled(): boolean {
   return readBoolean(process.env.NEXT_PUBLIC_ENABLE_PPTX_IMPORT);
 }
+
+/**
+ * Server-only gate for post-generation quality validation. Default OFF.
+ * When enabled, each generated scene passes through structural validation
+ * (L1) and an LLM-as-judge quality check (L2) before persistence; a
+ * cross-scene coherence check (L3) runs after all scenes are generated.
+ * Failed scenes are retried once, then skipped if still failing.
+ */
+export function isQualityValidationEnabled(): boolean {
+  return readBoolean(process.env.OPENMAIC_ENABLE_QUALITY_VALIDATION);
+}
