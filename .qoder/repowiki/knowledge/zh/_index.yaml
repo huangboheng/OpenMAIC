@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: custom-main
 nodes_managed: true
-exported_at: "2026-08-05T14:04:15Z"
+exported_at: "2026-09-09T17:17:55Z"
 modules:
     "":
-        dir_name: OpenMAIC 前端应用入口与 API 路由
-        title: OpenMAIC 前端应用入口与 API 路由
+        dir_name: OpenMAIC Next.js 应用入口与 API 路由层
+        title: OpenMAIC Next.js 应用入口与 API 路由层
         scope: []
         source_files: []
         children: []

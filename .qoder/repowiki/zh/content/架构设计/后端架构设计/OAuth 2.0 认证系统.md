@@ -6,12 +6,14 @@
 - [lib/server/oauth-client.ts](file://lib/server/oauth-client.ts)
 - [lib/server/oauth-config.ts](file://lib/server/oauth-config.ts)
 - [lib/server/session-cookie.ts](file://lib/server/session-cookie.ts)
+- [proxy.ts](file://proxy.ts)
+- [lib/server/classroom-storage.ts](file://lib/server/classroom-storage.ts)
+- [lib/classroom/load-classroom.ts](file://lib/classroom/load-classroom.ts)
 - [app/api/access-code/status/route.ts](file://app/api/access-code/status/route.ts)
 - [app/api/access-code/verify/route.ts](file://app/api/access-code/verify/route.ts)
 - [lib/server/access-token.ts](file://lib/server/access-token.ts)
 - [components/access-code-guard.tsx](file://components/access-code-guard.tsx)
 - [components/access-code-modal.tsx](file://components/access-code-modal.tsx)
-- [proxy.ts](file://proxy.ts)
 - [app/api/classroom/route.ts](file://app/api/classroom/route.ts)
 - [app/api/classroom-media/[classroomId]/[...path]/route.ts](file://app/api/classroom-media/[classroomId]/[...path]/route.ts)
 - [lib/server/classroom-storage.ts](file://lib/server/classroom-storage.ts)
@@ -23,11 +25,11 @@
 
 ## 更新摘要
 **变更内容**   
-- **新增** `/api/public` 端点添加到认证白名单，支持公共资源静态文件访问
-- **增强** 代理中间件支持公共资源路由，绕过 OAuth 认证流程
-- **引入** 应用层 public/ 目录代理服务，解决 Next.js 16 + Turbopack 部署问题
-- **改进** 认证白名单架构，新增公共资源访问类型
-- **优化** 静态资源安全访问，包含路径白名单和目录遍历防护
+- **修复** OAuth 重定向 URI 安全问题 - 改进反向代理部署的源检测机制
+- **增强** 对 X-Forwarded-Proto 和 X-Forwarded-Host 头部支持，解决直接端口访问问题
+- **解决** 课堂白屏问题 - 当直接在端口 3010 运行时 OAuth 回调失败的根本原因
+- **优化** 代理中间件的请求来源识别，支持 TRUST_PROXY_HEADERS 配置开关
+- **改进** 教室存储的 URL 构建逻辑，确保 basePath 部署模式下的正确性
 
 ## 产品概述
 本系统为 OpenMAIC 的 OAuth 2.0 认证子系统，基于 Authorization Code + PKCE 流程与 OIDC Discovery，完成用户登录、会话建立与访问控制。核心能力包括：
@@ -39,6 +41,7 @@
 - **新增**服务器到服务器认证支持，通过 Bearer Token 实现内部 API 通信
 - **新增**公共资源静态文件访问，支持 basePath 部署模式下的静态资源服务
 - **新增**增强的错误处理机制，通过 ClassroomAuthError 精确区分认证失败与其他错误
+- **新增**反向代理部署支持，通过 X-Forwarded-* 头部正确处理重定向 URI
 - 前端根据后端状态动态展示访问码弹窗并维持登录态
 
 适用场景：
@@ -49,6 +52,7 @@
 - **新增**需要公开只读教室数据访问的教育资源共享场景
 - **新增**需要服务器到服务器认证的微服务架构
 - **新增**需要静态资源服务的多语言部署场景
+- **新增**需要反向代理部署的生产环境
 
 ## 核心业务流程
 本节描述五种主要认证路径：OAuth 2.0 授权码流程、访问码流程、无缝认证流程、GET-only 白名单访问流程和公共资源访问流程。
@@ -57,9 +61,9 @@
 sequenceDiagram
 participant U as "用户浏览器"
 participant APP as "OpenMAIC Next.js"
-participant OIDC as "Philochora OIDC"
 participant Proxy as "代理中间件"
-Note over U,Proxy : 传统认证流程
+participant OIDC as "Philochora OIDC"
+Note over U,Proxy : 传统认证流程含反向代理支持
 U->>APP : 发起登录携带 state/code_verifier
 APP-->>U : 重定向到 OIDC 授权页含 code_challenge
 U->>OIDC : 用户输入凭据并授权
@@ -92,7 +96,7 @@ SVC-->>SVC : 返回持久化数据
 
 **图表来源** 
 - [app/api/auth/callback/route.ts:73-116](file://app/api/auth/callback/route.ts#L73-L116)
-- [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L-L130)
+- [lib/server/oauth-client.ts:1-130](file://lib/server/oauth-client.ts#L1-L130)
 - [lib/server/oauth-config.ts:1-81](file://lib/server/oauth-config.ts#L1-L81)
 - [lib/server/session-cookie.ts:24-32](file://lib/server/session-cookie.ts#L24-L32)
 - [proxy.ts:92-116](file://proxy.ts#L92-L116)
@@ -161,6 +165,9 @@ SetCookie --> Allow
 - **新增**增强的错误处理机制
   - 职责：通过 ClassroomAuthError 哨兵错误精确区分认证失败与其他错误类型
   - 验收要点：401 错误被正确识别并抛出 ClassroomAuthError；其他错误类型正常处理
+- **新增**反向代理部署支持
+  - 职责：通过 X-Forwarded-* 头部正确处理重定向 URI，解决反向代理部署问题
+  - 验收要点：TRUST_PROXY_HEADERS 配置开关；X-Forwarded-Proto/Host 头部支持；localhost:3010 直连场景修复
 - 访问码鉴权（可选）
   - 职责：前端检测状态并弹出模态框；后端常量时间比较访问码；成功后下发短期访问令牌 Cookie
   - 验收要点：timingSafeEqual 防时序攻击；Cookie 安全属性正确；前端默认安全策略（失败即视为需认证）
@@ -197,6 +204,7 @@ SetCookie --> Allow
   - 会话密钥：OPENMAIC_SESSION_SECRET 或 ACCESS_CODE 或开发默认值
   - **新增**持久化存储令牌：PERSISTENCE_DEV_TOKEN（开发专用，编译到前端包中）
   - **新增**公共资源白名单：avatars、logos、vendor 目录前缀
+  - **新增**代理信任配置：TRUST_PROXY_HEADERS（控制是否信任 X-Forwarded-* 头部）
 
 ```mermaid
 classDiagram
@@ -254,6 +262,11 @@ class PublicResource {
 +function isPathSafe(parts)
 +function serveFile(filePath)
 }
+class ProxyConfig {
++string TRUST_PROXY_HEADERS
++function getClientIp(request)
++function buildRedirectUri(request)
+}
 ```
 
 **图表来源** 
@@ -264,6 +277,7 @@ class PublicResource {
 - [lib/classroom/load-classroom.ts:28-34](file://lib/classroom/load-classroom.ts#L28-L34)
 - [lib/persistence/server-auth.ts:29-38](file://lib/persistence/server-auth.ts#L29-L38)
 - [app/api/public/[...path]/route.ts:39-43](file://app/api/public/[...path]/route.ts#L39-L43)
+- [proxy.ts:68-76](file://proxy.ts#L68-L76)
 
 **章节来源**
 - [lib/server/session-cookie.ts:15-22](file://lib/server/session-cookie.ts#L15-L22)
@@ -281,6 +295,7 @@ class PublicResource {
   - **新增**GET-only 白名单仅允许 GET 方法，所有其他 HTTP 方法仍需完整认证
   - **新增**服务器到服务器认证使用 Bearer Token 机制，PERSISTENCE_DEV_TOKEN 仅用于开发环境
   - **新增**公共资源访问实施严格的路径白名单和目录遍历防护
+  - **新增**反向代理部署需显式启用 TRUST_PROXY_HEADERS 配置，防止头部伪造攻击
 - 依赖与集成边界
   - 依赖 Philochora OIDC 服务的 discovery 端点；若不可用则回退环境变量
   - 回调地址需与 OIDC 注册一致；支持同域与子路径部署
@@ -288,6 +303,7 @@ class PublicResource {
   - **新增**教室数据访问依赖 nanoid 生成的不可猜测 ID，防止枚举攻击
   - **新增**持久化存储认证依赖 PERSISTENCE_DEV_TOKEN 环境变量
   - **新增**公共资源服务依赖 Next.js 16 + Turbopack 的 public/ 目录结构
+  - **新增**反向代理部署依赖正确的 X-Forwarded-* 头部配置
 - 业务约束
   - 访问码模式为可选开关，未启用时不强制认证
   - 会话有效期由 expires_at 控制，过期后需重新登录或刷新令牌
@@ -297,6 +313,7 @@ class PublicResource {
   - **新增**增强的错误处理：认证失败抛出 ClassroomAuthError，便于前端精确处理
   - **新增**服务器到服务器认证仅适用于受信任的内部网络环境
   - **新增**公共资源服务仅支持预定义的白名单目录和文件类型
+  - **新增**反向代理部署需确保代理服务器正确设置 X-Forwarded-* 头部
 
 **章节来源**
 - [lib/server/oauth-client.ts:10-23](file://lib/server/oauth-client.ts#L10-L23)
@@ -593,3 +610,81 @@ SeamlessCheck -- 无效 --> Redirect["重定向到 OAuth"]
 - [proxy.ts:101-132](file://proxy.ts#L101-L132)
 - [lib/persistence/server-auth.ts:1-13](file://lib/persistence/server-auth.ts#L1-L13)
 - [app/api/public/[...path]/route.ts:44-50](file://app/api/public/[...path]/route.ts#L44-L50)
+
+## 反向代理部署支持详解
+
+### 架构设计
+反向代理部署支持通过 X-Forwarded-* 头部正确处理重定向 URI，解决在反向代理环境下 OAuth 回调失败的问题。系统通过 TRUST_PROXY_HEADERS 配置开关确保安全，仅在显式启用时才信任这些头部。
+
+```mermaid
+sequenceDiagram
+participant Browser as "浏览器"
+participant Proxy as "反向代理"
+participant App as "OpenMAIC 应用"
+Note over Browser,App : 反向代理 OAuth 流程
+Browser->>Proxy : 访问受保护页面
+Proxy->>App : 转发请求 (添加 X-Forwarded-Proto/Host)
+App->>App : 检查认证状态
+App->>Proxy : 重定向到 OAuth (使用 X-Forwarded-* 构建 redirect_uri)
+Proxy->>App : 转发 OAuth 回调 (保留 X-Forwarded-* 头部)
+App->>App : 验证回调参数并建立会话
+App-->>Proxy : 重定向回原页面
+Proxy-->>Browser : 返回最终页面
+```
+
+**图表来源** 
+- [proxy.ts:175-187](file://proxy.ts#L175-L187)
+- [lib/server/classroom-storage.ts:62-68](file://lib/server/classroom-storage.ts#L62-L68)
+
+### 技术实现
+- **头部信任控制**：TRUST_PROXY_HEADERS 环境变量控制是否信任 X-Forwarded-* 头部
+- **协议检测**：优先使用 X-Forwarded-Proto，默认 fallback 到 https
+- **主机检测**：优先使用 X-Forwarded-Host，其次使用 Host 头部
+- **客户端 IP 识别**：支持 X-Forwarded-For 和 X-Real-IP 头部获取真实客户端 IP
+- **URL 构建**：基于检测到的协议和主机构建正确的重定向 URI
+
+### 安全考虑
+- **显式启用**：必须显式设置 TRUST_PROXY_HEADERS=true 才启用头部信任
+- **代理责任**：代理服务器负责正确设置和清理 X-Forwarded-* 头部
+- **防伪造**：未启用信任时，所有请求都被视为直接连接
+- **生产安全**：生产环境应确保只有可信代理才能设置这些头部
+
+### 部署配置
+- **Nginx 配置**：需要设置 proxy_set_header X-Forwarded-Proto $scheme; 和 proxy_set_header X-Forwarded-Host $host;
+- **Docker 部署**：在容器环境中可能需要额外的网络配置
+- **负载均衡**：多层代理时需要确保每层都正确传递头部信息
+
+**章节来源**
+- [proxy.ts:68-76](file://proxy.ts#L68-L76)
+- [proxy.ts:175-187](file://proxy.ts#L175-L187)
+- [lib/server/classroom-storage.ts:62-68](file://lib/server/classroom-storage.ts#L62-L68)
+
+## 故障排除与常见问题
+
+### 课堂白屏问题
+**问题描述**：直接在端口 3010 运行 OpenMAIC 时出现课堂白屏
+**根本原因**：OAuth 重定向 URI 解析为 localhost:3010，导致回调失败
+**解决方案**：
+1. 确保反向代理正确设置 X-Forwarded-Proto 和 X-Forwarded-Host 头部
+2. 或在开发环境中设置 TRUST_PROXY_HEADERS=true
+3. 验证 OAuth 回调地址与实际访问地址一致
+
+### 反向代理认证失败
+**问题描述**：通过反向代理访问时认证流程异常
+**排查步骤**：
+1. 检查代理是否正确传递 X-Forwarded-* 头部
+2. 验证 TRUST_PROXY_HEADERS 配置是否正确设置
+3. 确认 OAuth 客户端注册的回调地址与代理域名一致
+4. 检查浏览器控制台是否有 CORS 错误
+
+### 速率限制问题
+**问题描述**：某些 API 请求被错误地限制
+**解决方案**：
+1. 检查请求是否来自可信代理（TRUST_PROXY_HEADERS 配置）
+2. 验证客户端 IP 识别逻辑是否正确
+3. 调整速率限制阈值以适应实际使用模式
+
+**章节来源**
+- [proxy.ts:175-187](file://proxy.ts#L175-L187)
+- [lib/server/classroom-storage.ts:62-68](file://lib/server/classroom-storage.ts#L62-L68)
+- [proxy.ts:68-76](file://proxy.ts#L68-L76)

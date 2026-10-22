@@ -8,6 +8,7 @@
 - [访问码状态接口](file://app/api/access-code/status/route.ts)
 - [访问码校验接口](file://app/api/access-code/verify/route.ts)
 - [Philochora 章节完成回调接口](file://app/api/philochora/chapter-complete/route.ts)
+- [服务商配置模块](file://lib/server/provider-config.ts)
 - [连续学习组件](file://components/scene-renderers/next-lesson.tsx)
 - [日志工具](file://lib/logger.ts)
 - [访问令牌测试](file://tests/server/access-token.test.ts)
@@ -15,9 +16,16 @@
 - [连续学习回调 E2E 测试](file://e2e/tests/continuous-learning-callback.spec.ts)
 </cite>
 
+## 更新摘要
+**变更内容**   
+- 增强健康检查端点，新增 llmConfigured 字段用于部署门控
+- 改进服务商配置 API 表面，支持 nginx 白名单配置
+- 完善托管部署中的错误处理机制
+- 新增 Philochora 进度同步功能
+
 ## 产品概述
 本章节面向 OpenMAIC 的"工具类 API"，聚焦系统运维与辅助能力，包括：
-- 健康检查：对外暴露服务版本与核心能力开关（搜索、图像、视频、TTS）。
+- 健康检查：对外暴露服务版本、核心能力开关（搜索、图像、视频、TTS）以及 LLM 配置状态。
 - 服务商配置：集中返回服务端可用的各类提供商及并发限制等运行参数。
 - 使用量统计：聚合部署级用量记录，按模型、日期、模态维度汇总，支持按月筛选。
 - 访问码管理：基于环境变量 ACCESS_CODE 的可选访问控制，提供状态查询与校验登录。
@@ -29,7 +37,8 @@
 - 健康检查流程
   - 客户端 GET /api/health
   - 服务端读取各类型提供商配置，判断能力是否可用
-  - 返回包含版本与能力布尔标志的统一成功响应
+  - 检查 LLM 配置状态作为部署门控
+  - 返回包含版本、能力标志和 llmConfigured 的统一成功响应
 
 - 服务商配置获取流程
   - 客户端 GET /api/server-providers
@@ -60,7 +69,7 @@ participant AccessStatus as "访问码状态接口"
 participant AccessVerify as "访问码校验接口"
 participant Philochora as "Philochora 回调接口"
 Client->>Health : GET /api/health
-Health-->>Client : {status, version, capabilities}
+Health-->>Client : {status, version, llmConfigured, capabilities}
 Client->>Providers : GET /api/server-providers
 Providers-->>Client : {providers, tts, asr, pdf, image, video, webSearch, generation}
 Client->>Usage : GET /api/usage?months=...
@@ -74,61 +83,62 @@ Philochora-->>Client : {ok : true}
 ```
 
 **图表来源** 
-- [健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
-- [服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-- [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
+- [服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+- [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 **章节来源**
-- [健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
-- [服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-- [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
+- [服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+- [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 ## 功能模块清单
 - 健康检查
-  - 职责：返回服务版本与能力开关（webSearch、imageGeneration、videoGeneration、tts）
-  - 验收要点：capabilities 布尔值准确反映对应提供商可用性；version 非空
-  - 参考实现路径：[健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
+  - 职责：返回服务版本、LLM 配置状态和能力开关（webSearch、imageGeneration、videoGeneration、tts）
+  - 验收要点：llmConfigured 布尔值反映 LLM 部署门控状态；capabilities 准确反映对应提供商可用性；version 非空
+  - 参考实现路径：[健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
 
 - 服务商配置
   - 职责：聚合 providers、tts、asr、pdf、image、video、webSearch 以及 generation.parallelSceneConcurrency
   - 验收要点：所有字段存在且结构一致；异常时返回标准错误
-  - 参考实现路径：[服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
+  - 参考实现路径：[服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
 
 - 使用量统计
   - 职责：读取 usage 记录，按 model/day/kind 聚合，输出 totals 与分组桶
   - 验收要点：LLM token 合计不重复计入缓存字段；排序符合约定；支持 months 过滤
-  - 参考实现路径：[使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
+  - 参考实现路径：[使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
 
 - 访问码管理
   - 职责：根据 ACCESS_CODE 决定是否启用访问控制；校验通过后设置安全 Cookie
   - 验收要点：常量时间比较；Cookie 安全属性正确；状态接口返回 enabled/authenticated
   - 参考实现路径：
-    - [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-    - [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
+    - [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+    - [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
 
 - **新增** Philochora 章节完成回调
   - 职责：接收前端章节完成事件，进行 HMAC 签名后转发到 Philochora tRPC 端点
   - 验收要点：必需字段验证（philochoraUserId、courseSlug、chapterNumber）；HMAC 签名生成；错误处理完善
-  - 参考实现路径：[Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+  - 参考实现路径：[Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 **章节来源**
-- [健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
-- [服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-- [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
+- [服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+- [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 ## 数据与状态
 - 健康检查响应
   - status: 固定字符串
   - version: 从包版本或默认值获取
+  - llmConfigured: 布尔值，表示 LLM 是否已配置（部署门控）
   - capabilities: 布尔对象，表示 webSearch/imageGeneration/videoGeneration/tts 是否可用
 
 - 服务商配置响应
@@ -172,16 +182,17 @@ Error502 --> End
 ```
 
 **图表来源** 
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 **章节来源**
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 
 ## 关键约束与边界
 - 健康检查
   - 能力检测依赖各类型提供商配置的可用性；若某类提供商为空或禁用，则对应 capability 为 false
   - 版本来源于 npm_package_version 或默认值
+  - **新增** llmConfigured 字段作为部署门控，当 LLM 未配置时，托管模式客户端无法启动聊天/讨论
 
 - 服务商配置
   - 所有提供商信息通过统一的 server provider-config 模块聚合
@@ -220,20 +231,22 @@ Error502 --> End
   - Philochora 回调使用 HMAC 签名验证请求完整性
 
 **章节来源**
-- [健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
-- [服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-- [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
+- [服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+- [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
+- [服务商配置模块:583-590](file://lib/server/provider-config.ts#L583-L590)
 - [日志工具:1-53](file://lib/logger.ts#L1-L53)
-- [访问令牌测试:1-17](file://tests/server/access-token.test.ts#L1-L17)
-- [使用量接口测试:1-41](file://tests/usage/route.test.ts#L1-L41)
+- [访问令牌测试:1-18](file://tests/server/access-token.test.ts#L1-L18)
+- [使用量接口测试:1-42](file://tests/usage/route.test.ts#L1-L42)
 
 ## 集成指南与最佳实践
 - 健康检查
   - 启动后轮询 /api/health，用于服务就绪探测与能力展示
   - 将 capabilities 映射到前端功能开关
+  - **新增** 检查 llmConfigured 字段以判断是否允许托管模式客户端启动聊天功能
 
 - 服务商配置
   - 应用启动时调用 /api/server-providers 获取可用提供商与并发限制
@@ -269,16 +282,21 @@ Error502 --> End
   - 通过 NODE_ENV=production 启用 Cookie secure
   - 通过 LOG_LEVEL 调整日志粒度；LOG_FORMAT=json 便于机器解析
   - 通过 PHILOCHORA_BASE_URL 和 OPENMAIC_SHARED_SECRET 配置进度同步
+  - **新增** 通过 DEFAULT_MODEL 和各提供商 API_KEY 配置 LLM 以启用 llmConfigured 门控
 
 **章节来源**
-- [健康检查路由:1-23](file://app/api/health/route.ts#L1-L23)
-- [服务商配置路由:1-39](file://app/api/server-providers/route.ts#L1-L39)
-- [使用量统计路由:1-117](file://app/api/usage/route.ts#L1-L117)
-- [访问码状态接口:1-18](file://app/api/access-code/status/route.ts#L1-L18)
-- [访问码校验接口:1-42](file://app/api/access-code/verify/route.ts#L1-L42)
-- [Philochora 章节完成回调接口:16-93](file://app/api/philochora/chapter-complete/route.ts#L16-L93)
+- [健康检查路由:24-38](file://app/api/health/route.ts#L24-L38)
+- [服务商配置路由:16-39](file://app/api/server-providers/route.ts#L16-L39)
+- [使用量统计路由:71-117](file://app/api/usage/route.ts#L71-L117)
+- [访问码状态接口:6-32](file://app/api/access-code/status/route.ts#L6-L32)
+- [访问码校验接口:6-42](file://app/api/access-code/verify/route.ts#L6-L42)
+- [Philochora 章节完成回调接口:16-94](file://app/api/philochora/chapter-complete/route.ts#L16-L94)
 - [连续学习组件:41-56](file://components/scene-renderers/next-lesson.tsx#L41-L56)
 - [日志工具:1-53](file://lib/logger.ts#L1-L53)
 
 ## 结论
-OpenMAIC 的工具类 API 提供了稳定的健康检查、服务商配置、使用量统计、访问码管理与 Philochora 进度同步能力，满足系统监控、动态配置、资源统计、访问控制与跨平台集成的核心需求。通过统一的响应结构与完善的错误处理、日志记录与安全策略，便于前后端高效集成与运维管理。新增的 Philochora 章节完成回调接口实现了与外部课程平台的无缝集成，支持学习进度的自动上报与同步。建议在生产环境中启用访问码控制、HTTPS 与结构化日志，并结合监控指标持续优化系统稳定性与可观测性。
+OpenMAIC 的工具类 API 提供了稳定的健康检查、服务商配置、使用量统计、访问码管理与 Philochora 进度同步能力，满足系统监控、动态配置、资源统计、访问控制与跨平台集成的核心需求。通过统一的响应结构与完善的错误处理、日志记录与安全策略，便于前后端高效集成与运维管理。
+
+**重要更新**：新增的 llmConfigured 字段为托管部署提供了关键的部署门控机制，确保只有在 LLM 正确配置的情况下才允许客户端启动聊天功能。增强的错误处理机制提升了系统在异常情况下的稳定性。新增的 Philochora 章节完成回调接口实现了与外部课程平台的无缝集成，支持学习进度的自动上报与同步。
+
+建议在生产环境中启用访问码控制、HTTPS 与结构化日志，并结合监控指标持续优化系统稳定性与可观测性。对于托管部署，务必正确配置 LLM 提供商以确保 llmConfigured 门控正常工作。

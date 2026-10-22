@@ -5,7 +5,6 @@
 - [README-zh.md](file://README-zh.md)
 - [SKILL.md](file://skills/openmaic/SKILL.md)
 - [clone.md](file://skills/openmaic/references/clone.md)
-- [hosted-mode.md](file://skills/openmaic/references/hosted-mode.md)
 - [provider-keys.md](file://skills/openmaic/references/provider-keys.md)
 - [startup-modes.md](file://skills/openmaic/references/startup-modes.md)
 - [generate-flow.md](file://skills/openmaic/references/generate-flow.md)
@@ -19,8 +18,15 @@
 - [drain.test.ts](file://tests/pbl/v2/drain.test.ts)
 </cite>
 
+## 更新摘要
+**变更内容**   
+- 移除了所有关于XHS(小红书)发布技能的相关内容
+- 删除了浏览器自动化和MCP集成功能的描述
+- 更新了外部服务集成部分，确保不包含已移除的功能
+- 保持了文档的整体结构和核心功能说明
+
 ## 产品概述
-OpenMAIC 是一个开源的 AI 互动课堂平台，支持通过自然语言指令生成结构化课件、多智能体实时讨论与项目制学习（PBL）。OpenClaw Skill 将 OpenMAIC 的能力以“可确认、分阶段”的 SOP 形式暴露给聊天助手，让用户在飞书、Slack、Discord、Telegram 等 20+ 平台中零配置使用。Skill 的核心价值在于：
+OpenMAIC 是一个开源的 AI 互动课堂平台，支持通过自然语言指令生成结构化课件、多智能体实时讨论与项目制学习（PBL）。OpenClaw Skill 将 OpenMAIC 的能力以"可确认、分阶段"的 SOP 形式暴露给聊天助手，让用户在飞书、Slack、Discord、Telegram 等 20+ 平台中零配置使用。Skill 的核心价值在于：
 - 将复杂部署与生成流程拆解为可确认的步骤，避免黑盒执行
 - 统一托管模式与本地模式的引导路径
 - 提供从需求到课堂链接的端到端自动化工作流
@@ -33,7 +39,7 @@ OpenMAIC 是一个开源的 AI 互动课堂平台，支持通过自然语言指�
 - [README-zh.md:479-551](file://README-zh.md#L479-L551)
 
 ## 核心业务流程
-OpenClaw Skill 的工作流围绕“选择模式 → 克隆/复用仓库 → 启动模式 → 配置 Provider Key → 启动服务 → 生成课堂”展开，每一步都需用户确认。关键交互节点如下：
+OpenClaw Skill 的工作流围绕"选择模式 → 克隆/复用仓库 → 启动模式 → 配置 Provider Key → 启动服务 → 生成课堂"展开，每一步都需用户确认。关键交互节点如下：
 - 模式选择：托管模式（访问码）或本地模式（仓库路径与 URL）
 - 克隆与复用：检测现有仓库并提示是否保留
 - 启动模式：dev/build/Docker 三选一
@@ -91,7 +97,7 @@ OpenClaw Skill 的状态管理围绕以下核心数据模型：
 - 生成任务状态：jobId、进度、错误信息、最终链接
 - 对话历史：用户输入、Skill 输出、确认记录
 
-状态流转遵循“单步推进 + 显式确认”原则，避免状态跳跃。错误处理采用“回滚到上一步 + 提示修复”策略。
+状态流转遵循"单步推进 + 显式确认"原则，避免状态跳跃。错误处理采用"回滚到上一步 + 提示修复"策略。
 
 **章节来源**
 - [SKILL.md:27-50](file://skills/openmaic/SKILL.md#L27-L50)

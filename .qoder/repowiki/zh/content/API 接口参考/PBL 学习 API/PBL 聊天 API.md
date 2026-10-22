@@ -2,382 +2,308 @@
 
 <cite>
 **本文引用的文件**   
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+- [lib/pbl/v2/types.ts](file://lib/pbl/v2/types.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
+- [lib/pbl/legacy/read.ts](file://lib/pbl/legacy/read.ts)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
 - [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
-- [components/scene-renderers/pbl/chat-panel.tsx](file://components/scene-renderers/pbl/chat-panel.tsx)
-- [lib/utils/model-config.ts](file://lib/utils/model-config.ts)
+- [lib/server/api-response.ts](file://lib/server/api-response.ts)
 </cite>
 
+## 更新摘要
+**变更内容**   
+- 移除了PBL v1聊天API及相关组件（chat-panel.tsx、guide.tsx、issueboard-panel.tsx等）
+- 全面迁移到PBL v2系统，采用基于SSE的流式架构
+- 简化了智能体交互模式，从@mention路由改为统一的Instructor流式对话
+- 保留了v1数据的向后兼容性读取能力
+
 ## 产品概述
-PBL 聊天 API 为基于项目式学习（PBL）的课堂场景提供“@mention 路由”的实时对话能力。学生通过输入 @question 或 @judge 与不同智能体交互：问题智能体负责引导理解与生成问题，评判智能体负责评估与判定任务完成状态。该 API 将用户消息、当前问题上下文、最近对话与用户角色组装为系统提示词后调用统一的 LLM 层，返回结构化响应并支持前端自动推进问题流程。
+PBL v2聊天API为项目式学习场景提供基于Server-Sent Events (SSE) 的实时流式对话能力。与v1版本不同，v2系统不再使用@mention路由机制，而是通过统一的Instructor接口处理所有学生消息。系统支持完整的任务流程管理、评估反馈和进度跟踪，提供更强大的教学辅助功能。
 
 ## 核心业务流程
-- 用户在聊天面板输入消息，若以 @question 或 @judge 开头，则解析为目标智能体；否则默认路由到问题智能体。
-- 前端将清理后的消息、目标智能体、当前问题、最近若干条对话与用户角色发送到 /api/pbl/chat。
-- 服务端根据 agentType（question/judge）拼接差异化上下文，构建系统提示词，调用统一 LLM 层生成回复。
-- 前端收到成功响应后追加消息；若评判智能体回复包含完成信号且不含修订要求，则自动标记当前问题完成并激活下一问题，必要时自动生成新问题列表。
+- 学生在聊天面板输入消息，通过POST请求发送到`/api/pbl/v2/instructor`
+- 服务端接收完整的PBLProjectV2状态和用户消息，解析模型配置
+- Instructor智能体根据当前任务状态决定工具调用和执行流程
+- 通过SSE流式返回token增量、工具调用记录和项目状态更新
+- 前端实时更新界面，应用项目补丁并维护对话历史
 
 ```mermaid
 sequenceDiagram
 participant U as "用户"
 participant UI as "聊天面板"
-participant Hook as "usePBLChat"
-participant API as "/api/pbl/chat"
-participant LLM as "callLLM"
-U->>UI : 输入 "@question/... 或 @judge/..."
+participant Hook as "useInstructorStream"
+participant API as "/api/pbl/v2/instructor"
+participant SSE as "SSE流"
+participant LLM as "Instructor Agent"
+U->>UI : 输入消息
 UI->>Hook : onSendMessage(text)
-Hook->>Hook : 解析@mention, 确定目标智能体与agentType
-Hook->>API : POST {message, agent, currentIssue, recentMessages, userRole, agentType}
-API->>API : 校验必填字段, 解析模型配置
-API->>API : 构建系统提示词(含问题上下文/最近对话/角色)
-API->>LLM : 调用统一LLM层
-LLM-->>API : 返回文本结果
-API-->>Hook : {success : true, message, agentName}
-Hook->>Hook : 追加消息, 判断是否触发问题完成
-Hook-->>UI : 更新消息列表与进度
+Hook->>API : POST {project, userMessage}
+API->>API : 解析模型配置
+API->>LLM : runInstructorTurn(project, message)
+LLM-->>SSE : token deltas + tool calls
+SSE-->>Hook : event stream
+Hook->>Hook : 应用project_patch
+Hook-->>UI : 实时更新界面
 ```
 
 图表来源 
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
 
 章节来源
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
 
 ## 功能模块清单
-- 前端聊天面板
-  - 职责：渲染消息、处理输入与草稿缓存、语音转写、发送消息。
-  - 验收要点：支持 Enter 发送、禁用重复提交、自动滚动到底部、显示加载态。
-- 前端聊天 Hook（usePBLChat）
-  - 职责：@mention 解析、消息清洗、构造请求体、错误处理、问题完成流程（标记完成、激活下一问题、生成新问题）。
-  - 验收要点：@question/@judge 路由正确；最近消息限制长度；judge 完成信号识别准确。
-- 后端聊天路由（/api/pbl/chat）
-  - 职责：参数校验、模型解析、上下文构建、系统提示词组装、调用 LLM、统一响应封装。
-  - 验收要点：缺失字段返回明确错误码；按 agentType 差异化上下文；错误日志记录完整。
-- 统一 LLM 层（callLLM）
-  - 职责：封装 AI SDK 调用、思考模式注入、重试与使用量统计。
-  - 验收要点：支持 thinkingConfig；失败重试可配置；使用量上报不阻塞主流程。
-- 模型解析（resolveModelFromRequest）
-  - 职责：从请求头与 body 解析模型、密钥、基础 URL、代理与思考配置。
-  - 验收要点：stage 路由优先；生产环境 SSRF 校验；受管提供商忽略客户端覆盖。
-- 类型定义（PBL 类型）
-  - 职责：定义智能体、问题、会话消息等数据结构。
-  - 验收要点：字段齐全、语义清晰、前后端一致。
+- 前端聊天面板（PBLV2Chat）
+  - 职责：渲染对话历史、处理输入、管理流式响应、显示加载状态
+  - 验收要点：支持多行输入、自动滚动、错误处理、流式文本显示
+- Instructor流式Hook（useInstructorStream）
+  - 职责：管理SSE连接、解析事件流、应用项目补丁、处理评估链
+  - 验收要点：正确处理token增量、工具调用、项目状态更新、错误恢复
+- 后端Instructor路由（/api/pbl/v2/instructor）
+  - 职责：请求验证、模型解析、Instructor执行、SSE响应封装
+  - 验收要点：参数校验、流式响应、错误处理、超时控制
+- SSE事件系统
+  - 职责：定义事件类型、创建SSE响应、处理心跳保活
+  - 验收要点：事件格式标准化、连接稳定性、中间件兼容性
+- 数据模型（PBLProjectV2）
+  - 职责：定义项目结构、任务状态、对话历史、评估结果
+  - 验收要点：类型安全、状态一致性、向后兼容
 
 章节来源
-- [components/scene-renderers/pbl/chat-panel.tsx](file://components/scene-renderers/pbl/chat-panel.tsx)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-- [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
+- [lib/pbl/v2/types.ts](file://lib/pbl/v2/types.ts)
 
 ## 数据与状态
 - 请求体结构
-  - message: string，用户消息（已去除 @mention 前缀）
-  - agent: PBLAgent，目标智能体对象（name/system_prompt 等）
-  - currentIssue: PBLIssue | null，当前活跃问题（标题、描述、负责人、生成问题等）
-  - recentMessages: { agent_name: string; message: string }[]，最近若干条对话（用于上下文）
-  - userRole: string，学生角色（用于系统提示词）
-  - agentType?: 'question' | 'judge'，智能体类型（由前端根据目标智能体与当前问题推断）
-- 响应格式
-  - success: true/false
-  - 成功时附加 message: string（AI 回复）、agentName: string（回复智能体名称）
-  - 失败时 errorCode: string、error: string、details?: string
+  - project: PBLProjectV2，完整的项目状态（包含任务、对话、评估等）
+  - userMessage: string，用户输入的消息文本
+  - phase?: InstructorPhase，可选的执行阶段（默认'instructing'）
+- SSE事件类型
+  - token: 文本增量，用于流式显示
+  - tool_call: 工具调用记录，包含工具名称和参数
+  - project_patch: 项目状态更新，用于应用更改
+  - done: 流结束信号
 - 关键状态流转
-  - 前端维护 messages 列表与 isLoading 状态；judge 回复包含完成信号时，触发问题完成流程：
-    - 标记当前问题 is_done=true，is_active=false
-    - 激活下一个未完成问题（按 index 排序）
-    - 若新问题未生成问题列表，则再次调用本 API 生成
-    - 插入系统消息提示进度变化
+  - 前端维护项目状态副本，通过project_patch事件逐步更新
+  - 支持多个评估阶段（task → milestone → final）的自动触发
+  - 错误时保留已应用的补丁，确保状态一致性
 
 ```mermaid
 flowchart TD
-Start(["进入 sendMessage"]) --> Parse["@mention 解析<br/>确定 targetAgent 与 agentType"]
-Parse --> BuildReq["构造请求体<br/>message/cleaned, agent, currentIssue,<br/>recentMessages(userRole), agentType"]
-BuildReq --> CallAPI["POST /api/pbl/chat"]
-CallAPI --> Resp{"success?"}
-Resp --> |否| HandleErr["记录错误并结束"]
-Resp --> |是| AppendMsg["追加 agent 回复消息"]
-AppendMsg --> JudgeCheck{"judge 且包含 COMPLETE<br/>且不包含 NEEDS_REVISION ?"}
-JudgeCheck --> |是| CompleteFlow["标记完成/激活下一问题/<br/>生成新问题/插入系统消息"]
-JudgeCheck --> |否| End(["结束"])
-CompleteFlow --> End
+Start(["发送消息"]) --> Validate["验证请求参数"]
+Validate --> ResolveModel["解析模型配置"]
+ResolveModel --> Execute["执行Instructor流程"]
+Execute --> Stream{"SSE事件"}
+Stream --> |token| UpdateText["更新流式文本"]
+Stream --> |tool_call| RecordTool["记录工具调用"]
+Stream --> |project_patch| ApplyPatch["应用项目补丁"]
+Stream --> |done| Complete["完成处理"]
+UpdateText --> Stream
+RecordTool --> Stream
+ApplyPatch --> Stream
+Complete --> End(["结束"])
 ```
 
 图表来源 
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
 
 章节来源
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
 
 ## 关键约束与边界
-- 必填字段校验：缺少 message 或 agent 将返回 MISSING_REQUIRED_FIELD（400）。
-- 模型解析优先级：stage 路由 > x-model > DEFAULT_MODEL；受管提供商忽略客户端覆盖；生产环境对非受管 baseUrl 进行 SSRF 校验。
-- 上下文长度控制：最近对话仅保留最近若干条（前端取最近 10 条），避免过长影响性能与成本。
-- 错误处理策略：服务端捕获异常并返回 INTERNAL_ERROR（500），附带错误信息；前端记录日志并降级展示。
-- 完成信号识别：仅当 judge 回复包含“COMPLETE”且不含“NEEDS_REVISION”时才触发完成流程。
-- 安全与鉴权：API Key 与服务端配置由 resolveModelFromRequest 决定，禁止客户端绕过；受管提供商不允许客户端覆盖。
+- 请求验证：必须提供有效的project对象和非空userMessage
+- 模型解析：通过resolveModelFromRequest统一处理，支持stage路由覆盖
+- 流式响应：SSE连接需要保持活跃，支持心跳保活防止中间层断开
+- 错误处理：捕获异常并返回标准错误格式，前端需处理网络错误
+- 状态同步：project_patch事件按顺序应用，确保最终一致性
+- 向后兼容：保留v1数据读取能力，自动升级到v2格式
 
 章节来源
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
 - [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
+- [lib/pbl/legacy/read.ts](file://lib/pbl/legacy/read.ts)
 
 ## 架构总览
 ```mermaid
 graph TB
 subgraph "前端"
-ChatPanel["聊天面板<br/>chat-panel.tsx"]
-UsePBLChat["聊天Hook<br/>use-pbl-chat.ts"]
-ModelCfg["模型配置<br/>model-config.ts"]
+ChatPanel["聊天面板<br/>chat.tsx"]
+UseStream["Instructor流Hook<br/>use-instructor-stream.ts"]
 end
 subgraph "后端"
-Route["PBL Chat 路由<br/>/api/pbl/chat"]
+Route["Instructor路由<br/>/api/pbl/v2/instructor"]
+SSE["SSE工具<br/>sse.ts"]
 ResolveModel["模型解析<br/>resolve-model.ts"]
-ApiResponse["统一响应<br/>api-response.ts"]
 end
-subgraph "AI层"
-CallLLM["统一LLM调用<br/>callLLM"]
+subgraph "Agent层"
+Instructor["Instructor Agent<br/>runInstructorTurn"]
+Tools["工具系统<br/>observation/closing-check等"]
 end
-ChatPanel --> UsePBLChat
-UsePBLChat --> ModelCfg
-UsePBLChat --> Route
+ChatPanel --> UseStream
+UseStream --> Route
 Route --> ResolveModel
-Route --> CallLLM
-Route --> ApiResponse
+Route --> SSE
+SSE --> Instructor
+Instructor --> Tools
 ```
 
 图表来源 
-- [components/scene-renderers/pbl/chat-panel.tsx](file://components/scene-renderers/pbl/chat-panel.tsx)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/utils/model-config.ts](file://lib/utils/model-config.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
 - [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
 
 ## 详细组件分析
 
-### 前端聊天 Hook（usePBLChat）
-- @mention 解析规则
-  - 以 @question 开头 → 路由到当前问题的 question_agent_name 对应智能体
-  - 以 @judge 开头 → 路由到当前问题的 judge_agent_name 对应智能体
-  - 其他 @xxx → 尝试匹配 agents 中 name 包含 xxx 的智能体
-  - 无 @mention 或无法识别 → 默认路由到 question_agent_name
-- 请求构造
-  - message：去除 @mention 前缀并 trim
-  - agent：目标智能体对象
-  - currentIssue：当前活跃问题
-  - recentMessages：最近 10 条消息（仅保留 agent_name 与 message）
-  - userRole：学生角色
-  - agentType：judge 时为 'judge'，否则为 'question'
-- 完成流程
-  - 若 judge 回复包含 COMPLETE 且不含 NEEDS_REVISION：
-    - 标记当前问题完成，激活下一个未完成问题
-    - 若新问题未生成问题列表，调用本 API 生成
-    - 插入系统消息提示进度
-
-```mermaid
-classDiagram
-class UsePBLChat {
-+sendMessage(text)
-+messages
-+isLoading
-+currentIssue
--resolveTargetAgent(text, currentIssue, agents)
--handleIssueComplete(config, completedIssue, headers, t)
-}
-class PBLProjectConfig {
-+projectInfo
-+agents
-+issueboard
-+chat
-+selectedRole
-}
-class PBLAgent {
-+name
-+actor_role
-+role_division
-+system_prompt
-+default_mode
-+delay_time
-+env
-+is_user_role
-+is_active
-+is_system_agent
-}
-class PBLIssue {
-+id
-+title
-+description
-+person_in_charge
-+participants
-+notes
-+parent_issue
-+index
-+is_done
-+is_active
-+generated_questions
-+question_agent_name
-+judge_agent_name
-}
-UsePBLChat --> PBLProjectConfig : "读取/更新"
-UsePBLChat --> PBLAgent : "解析目标"
-UsePBLChat --> PBLIssue : "上下文与完成流程"
-```
-
-图表来源 
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
-
-章节来源
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
-
-### 后端聊天路由（/api/pbl/chat）
-- 参数校验：缺失 message 或 agent 返回 400 错误
-- 模型解析：从请求头与 body 解析 model、apiKey、baseUrl、providerType 与 thinkingConfig
-- 上下文构建
-  - 问题上下文：包含标题、描述、负责人；若存在 generated_questions，按 agentType 区分“待评估问题”或“生成问题”
-  - 最近对话：拼接最近若干条消息
-  - 用户角色：附加到系统提示词末尾
-- 系统提示词组装：agent.system_prompt + 问题上下文 + 最近对话 + 用户角色
-- LLM 调用：通过 callLLM 统一封装，支持 thinkingConfig 与重试
-- 响应封装：成功返回 { success: true, message, agentName }；失败返回统一错误结构
-
-```mermaid
-sequenceDiagram
-participant Client as "前端"
-participant Route as "PBL Chat 路由"
-participant Resolver as "模型解析"
-participant LLM as "callLLM"
-participant Resp as "统一响应"
-Client->>Route : POST /api/pbl/chat
-Route->>Route : 校验必填字段
-Route->>Resolver : resolveModelFromRequest(req, body, stage='pbl-chat')
-Resolver-->>Route : ResolvedModel(model, thinkingConfig,...)
-Route->>Route : 构建 systemPrompt(含上下文/角色)
-Route->>LLM : callLLM({model, system, prompt}, source='pbl-chat', thinkingConfig)
-LLM-->>Route : {text, usage}
-Route->>Resp : apiSuccess({message, agentName})
-Resp-->>Client : JSON 响应
-```
-
-图表来源 
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-
-章节来源
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-
-### 统一 LLM 层（callLLM）
-- 功能要点
-  - 封装 AI SDK 的 generateText/streamText
-  - 注入 providerOptions（thinking 模式）
-  - 支持重试与自定义 validate
-  - 使用量统计（不影响主流程）
-- 调用方式
-  - callLLM(params, source, retryOptions?, thinking?)
-  - params 包含 model、system、prompt 等
-  - source 用于日志分组（如 'pbl-chat'）
-
-章节来源
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-
-### 模型解析（resolveModelFromRequest）
-- 解析顺序：stage 路由 > x-model > DEFAULT_MODEL
-- 受管提供商：忽略客户端 apiKey/baseUrl/providerType
-- 生产环境：对非受管 baseUrl 进行 SSRF 校验
-- thinkingConfig：可从 body 的 thinkingConfig/thinking 字段传入
-
-章节来源
-- [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-
-### 聊天面板（ChatPanel）
-- 功能要点
-  - 输入框与发送按钮、Enter 发送、禁用重复提交
-  - 草稿缓存与恢复
-  - 自动滚动到底部
+### 前端聊天面板（PBLV2Chat）
+- 功能特性
+  - 多行输入支持（Enter发送，Shift+Enter换行）
+  - 流式文本显示，实时反映AI回复
+  - 对话历史管理，自动滚动到底部
+  - 错误处理和重试机制
   - 语音转写集成
-  - 系统消息与普通消息样式区分
+- 状态管理
+  - 维护本地项目状态副本
+  - 通过project_patch事件同步服务器状态
+  - 处理用户消息和AI回复的时间戳
 
 章节来源
-- [components/scene-renderers/pbl/chat-panel.tsx](file://components/scene-renderers/pbl/chat-panel.tsx)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+
+### Instructor流式Hook（useInstructorStream）
+- 核心逻辑
+  - 管理SSE连接生命周期
+  - 解析不同类型的事件（token、tool_call、project_patch）
+  - 应用项目补丁到本地状态副本
+  - 处理评估链（task → milestone → final）
+- 错误处理
+  - 连接失败时的重试机制
+  - 部分失败的恢复策略
+  - 用户友好的错误提示
+
+章节来源
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+
+### 后端Instructor路由（/api/pbl/v2/instructor）
+- 请求处理
+  - JSON请求体验证
+  - 必填字段检查（project、userMessage）
+  - 模型配置解析
+- 执行流程
+  - 应用区域设置到项目
+  - 调用runInstructorTurn执行Agent逻辑
+  - 封装SSE响应流
+- 超时控制
+  - 最大执行时间300秒
+  - 信号取消支持
+
+章节来源
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
+
+### SSE事件系统
+- 事件类型定义
+  - SSETokenEvent：文本增量事件
+  - SSEToolCallEvent：工具调用事件
+  - 其他扩展事件类型
+- 响应封装
+  - createSSEResponse函数
+  - 自动添加SSE头部
+  - 心跳保活机制
+  - 信号取消支持
+
+章节来源
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
+
+### 数据模型（PBLProjectV2）
+- 项目结构
+  - 基本信息（title、description、language）
+  - 角色定义（roles）
+  - 里程碑和微任务（milestones、microtasks）
+  - 提交物和评估（submissions、evaluations）
+  - 对话线程（threads）
+  - 参与事件（engagementEvents）
+- 运行时状态
+  - UI阶段（uiPhase）
+  - 项目状态（status）
+  - 时间戳（createdAt、updatedAt）
+
+章节来源
+- [lib/pbl/v2/types.ts](file://lib/pbl/v2/types.ts)
 
 ## 依赖分析
 - 前端依赖
-  - usePBLChat 依赖 PBL 类型定义与模型配置工具
-  - ChatPanel 依赖 i18n、消息渲染组件与语音按钮
+  - React Hooks（useState、useEffect、useRef等）
+  - 图标库（lucide-react）
+  - i18n国际化
+  - 音频组件（SpeechButton）
 - 后端依赖
-  - 路由依赖模型解析、统一响应封装与 LLM 层
-  - LLM 层依赖 AI SDK 与思考模式适配
+  - Next.js框架（NextRequest、Response）
+  - 日志系统（createLogger）
+  - 模型解析（resolveModelFromRequest）
+  - AI SDK（LanguageModel）
 - 外部依赖
-  - AI 提供商（OpenAI/Anthropic/Google 等）通过 providers 注册
-  - 存储与使用量统计（异步、不影响主流程）
+  - AI提供商（OpenAI、Anthropic等）
+  - 存储和持久化服务
 
 ```mermaid
 graph LR
-UsePBLChat["use-pbl-chat.ts"] --> Types["lib/pbl/types.ts"]
-UsePBLChat --> ModelCfg["lib/utils/model-config.ts"]
-UsePBLChat --> Route["app/api/pbl/chat/route.ts"]
-Route --> ResolveModel["lib/server/resolve-model.ts"]
-Route --> ApiResponse["lib/server/api-response.ts"]
-Route --> CallLLM["lib/ai/llm.ts"]
+ChatPanel["chat.tsx"] --> UseStream["use-instructor-stream.ts"]
+UseStream --> SSE["sse.ts"]
+UseStream --> Types["types.ts"]
+Route["route.ts"] --> SSE
+Route --> ResolveModel["resolve-model.ts"]
+Route --> Instructor["instructor agent"]
 ```
 
 图表来源 
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [lib/pbl/types.ts](file://lib/pbl/types.ts)
-- [lib/utils/model-config.ts](file://lib/utils/model-config.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
+- [components/scene-renderers/pbl/v2/chat.tsx](file://components/scene-renderers/pbl/v2/chat.tsx)
+- [components/scene-renderers/pbl/v2/use-instructor-stream.ts](file://components/scene-renderers/pbl/v2/use-instructor-stream.ts)
+- [lib/pbl/v2/api/sse.ts](file://lib/pbl/v2/api/sse.ts)
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
 - [lib/server/resolve-model.ts](file://lib/server/resolve-model.ts)
-- [lib/server/api-response.ts](file://lib/server/api-response.ts)
-- [lib/ai/llm.ts](file://lib/ai/llm.ts)
-
-章节来源
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
 
 ## 性能考虑
-- 上下文长度控制：recentMessages 仅保留最近若干条，降低 token 消耗与延迟
-- 流式与重试：callLLM 支持重试与可选 validate，提升稳定性
-- 使用量统计：异步上报，不阻塞主流程
-- 模型路由：stage 路由可固定模型与 thinking 配置，减少解析开销
-
-[本节为通用指导，无需引用具体文件]
+- 流式传输：SSE流式返回减少首字节延迟
+- 状态同步：仅传输必要的增量更新（project_patch）
+- 连接优化：心跳保活防止中间层断开连接
+- 内存管理：及时清理不需要的状态和事件监听器
+- 错误恢复：部分失败时的状态回滚和重试机制
 
 ## 故障排查指南
 - 常见错误
-  - MISSING_REQUIRED_FIELD：检查 message 与 agent 是否传递
-  - INTERNAL_ERROR：查看服务端日志，确认 LLM 调用与上下文构建是否正常
-  - 完成流程未触发：检查 judge 回复是否包含 COMPLETE 且不包含 NEEDS_REVISION
+  - INVALID_REQUEST：请求体格式错误或缺少必填字段
+  - MISSING_REQUIRED_FIELD：project或userMessage为空
+  - 网络连接错误：SSE连接建立失败或中断
 - 调试建议
-  - 打印请求体与响应体，确认 agentType 与上下文是否正确
-  - 检查 x-model/x-api-key/x-base-url/x-provider-type 是否正确设置
-  - 确认 stage 路由是否覆盖了期望的模型与 thinking 配置
+  - 检查浏览器开发者工具的Network标签，查看SSE连接状态
+  - 验证项目状态是否正确传递到服务器
+  - 确认模型配置和环境变量设置正确
+  - 检查服务器日志中的错误堆栈信息
 
 章节来源
+- [app/api/pbl/v2/instructor/route.ts](file://app/api/pbl/v2/instructor/route.ts)
 - [lib/server/api-response.ts](file://lib/server/api-response.ts)
-- [app/api/pbl/chat/route.ts](file://app/api/pbl/chat/route.ts)
-- [components/scene-renderers/pbl/use-pbl-chat.ts](file://components/scene-renderers/pbl/use-pbl-chat.ts)
+
+## 向后兼容性
+- v1数据读取：保留对历史PBL v1项目的读取能力
+- 自动升级：将v1项目配置转换为v2格式
+- 迁移路径：新创建的项目直接使用v2格式
+- 混合支持：同一应用中可同时处理v1和v2项目
+
+章节来源
+- [lib/pbl/legacy/read.ts](file://lib/pbl/legacy/read.ts)
 
 ## 结论
-PBL 聊天 API 通过 @mention 路由将学生与不同智能体解耦，结合上下文构建与统一 LLM 层，实现稳定、可扩展的问答与评判流程。前端在收到 judge 完成信号后可自动推进问题序列，形成闭环教学体验。建议在集成时严格遵循请求参数结构与错误处理策略，确保上下文长度与模型配置合理，以获得最佳性能与用户体验。
-
-[本节为总结性内容，无需引用具体文件]
+PBL v2聊天API通过SSE流式架构提供了更高效、更可靠的实时对话体验。相比v1版本的@mention路由机制，v2系统采用了更简洁的统一接口设计，支持复杂的任务流程和评估机制。新的架构不仅提升了用户体验，还为未来的功能扩展奠定了坚实基础。建议在开发中充分利用SSE的流式特性，合理管理项目状态，确保良好的性能和用户体验。

@@ -13,7 +13,14 @@
 - [packages/@openmaic/storage/src/zustand/persist.ts](file://packages/@openmaic/storage/src/zustand/persist.ts)
 - [tests/pbl/v2/drain.test.ts](file://tests/pbl/v2/drain.test.ts)
 - [e2e/tests/interactive-iframe-keepalive-619.spec.ts](file://e2e/tests/interactive-iframe-keepalive-619.spec.ts)
+- [e2e/tests/settings-kv-persistence.spec.ts](file://e2e/tests/settings-kv-persistence.spec.ts)
 </cite>
+
+## 更新摘要
+**变更内容**
+- 增强了 E2E 测试中的数据库初始化逻辑，以处理因安全策略导致的 IndexedDB 初始化失败
+- 更新了测试环境配置，使其对不同部署配置的适应性更强
+- 改进了错误处理和重试机制，确保在受限环境中测试的稳定性
 
 ## 产品概述
 本仓库的 @openmaic/storage 包提供浏览器端的可插拔持久化层，核心目标是为 MAIC 课件与运行时数据提供稳定、可扩展、版本安全的本地存储能力。它包含：
@@ -89,7 +96,7 @@ DocStore-->>App : 返回文档
   - 文档：saveDocument → splitDocument → 写入三表；loadDocument → reassembleDocument → migrateDocument
   - 运行时：createSession（打版本戳）→ appendRecord（分配 seq，校验 payload）→ listRecords（按 seq 顺序）
 - 数据所有权边界
-  - 文档层：DSL 拥有实体形状与迁移；存储层负责“在哪里/如何”持久化
+  - 文档层：DSL 拥有实体形状与迁移；存储层负责"在哪里/如何"持久化
   - 运行层：会话由存储层打版本戳，记录无独立版本，跟随父会话
 
 ```mermaid
@@ -162,6 +169,8 @@ SESSIONS ||--o{ RECORDS : "按 sessionId 追加"
   - 文档编辑优先使用 putScene/getScene 增量操作，批量变更用 saveDocument
   - 运行时 appendRecord 仅在 active 会话写入；跨学习者迁移使用 mergeLearner
 
+**更新** 增强了测试环境的健壮性，特别是在处理 IndexedDB 初始化失败时的容错机制
+
 章节来源
 - [packages/@openmaic/storage/src/document/browser.ts](file://packages/@openmaic/storage/src/document/browser.ts)
 - [packages/@openmaic/storage/src/runtime/browser.ts](file://packages/@openmaic/storage/src/runtime/browser.ts)
@@ -169,3 +178,50 @@ SESSIONS ||--o{ RECORDS : "按 sessionId 追加"
 - [packages/@openmaic/storage/src/zustand/persist.ts](file://packages/@openmaic/storage/src/zustand/persist.ts)
 - [tests/pbl/v2/drain.test.ts](file://tests/pbl/v2/drain.test.ts)
 - [e2e/tests/interactive-iframe-keepalive-619.spec.ts](file://e2e/tests/interactive-iframe-keepalive-619.spec.ts)
+- [e2e/tests/settings-kv-persistence.spec.ts](file://e2e/tests/settings-kv-persistence.spec.ts)
+
+## 测试环境增强
+
+### IndexedDB 初始化容错机制
+
+**更新** 针对安全策略限制导致的 IndexedDB 初始化失败问题，增强了测试环境的容错能力：
+
+- **优雅降级策略**：当 IndexedDB 初始化失败时，测试自动降级到内存存储模式
+- **环境检测**：自动检测浏览器的存储限制和安全策略配置
+- **重试机制**：实现指数退避的重试逻辑，提高在不同部署环境下的成功率
+- **错误隔离**：确保单个存储后端的失败不会影响整体测试流程
+
+### 测试配置优化
+
+- **动态配置**：根据运行环境自动调整存储后端选择
+- **资源清理**：改进测试后的资源清理逻辑，避免存储污染
+- **并行执行**：优化测试并行执行时的存储隔离机制
+
+章节来源
+- [e2e/tests/settings-kv-persistence.spec.ts](file://e2e/tests/settings-kv-persistence.spec.ts)
+- [packages/@openmaic/storage/src/kv/browser.ts](file://packages/@openmaic/storage/src/kv/browser.ts)
+- [packages/@openmaic/storage/src/document/browser.ts](file://packages/@openmaic/storage/src/document/browser.ts)
+- [packages/@openmaic/storage/src/runtime/browser.ts](file://packages/@openmaic/storage/src/runtime/browser.ts)
+
+## 部署兼容性
+
+### 安全策略适配
+
+系统现在能够更好地处理各种浏览器安全策略：
+
+- **私有模式支持**：在浏览器私有模式下自动切换到兼容模式
+- **第三方 Cookie 限制**：适应严格的第三方 Cookie 限制策略
+- **存储配额管理**：智能处理存储空间不足的情况
+- **CSP 策略兼容**：符合严格的内容安全策略要求
+
+### 多环境支持
+
+- **开发环境**：启用详细的调试信息和错误报告
+- **生产环境**：优化性能并最小化存储开销
+- **CI/CD 环境**：提供稳定的测试执行环境
+- **移动端浏览器**：适配移动设备的存储限制
+
+章节来源
+- [packages/@openmaic/storage/src/kv/browser.ts](file://packages/@openmaic/storage/src/kv/browser.ts)
+- [packages/@openmaic/storage/src/document/browser.ts](file://packages/@openmaic/storage/src/document/browser.ts)
+- [packages/@openmaic/storage/src/runtime/browser.ts](file://packages/@openmaic/storage/src/runtime/browser.ts)
