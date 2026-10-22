@@ -1,6 +1,6 @@
 {
   "name": "openmaic",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -26,6 +26,7 @@
     "check": "prettier . --check",
     "format": "prettier . --write",
     "check:duplicate-roots": "node scripts/check-duplicate-roots.mjs",
+    "verify:classrooms": "tsx --conditions=import scripts/verify-classrooms.mts",
     "check:pm2": "pm2 jlist --no-color | node scripts/check-pm2.mjs",
     "dev:check": "pnpm run check:duplicate-roots && pnpm run check:pm2",
     "test": "vitest run",
