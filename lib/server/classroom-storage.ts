@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import type { QualityReport } from '@/lib/server/quality-validation';
 
 // CLASSROOMS_DIR 默认位于 cwd/data/classrooms（standalone 部署时 cwd 为 .next/standalone，
 // 数据实际在 /var/www/openmaic/data/classrooms——通过 OPENMAIC_CLASSROOMS_DIR 显式指定解耦），
@@ -73,6 +74,7 @@ export interface PersistedClassroomData {
   stage: Stage;
   scenes: Scene[];
   createdAt: string;
+  qualityReport?: QualityReport;
 }
 
 export function isValidClassroomId(id: string): boolean {
@@ -115,6 +117,7 @@ export async function persistClassroom(
     id: string;
     stage: Stage;
     scenes: Scene[];
+    qualityReport?: QualityReport;
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
@@ -123,6 +126,7 @@ export async function persistClassroom(
     stage: data.stage,
     scenes: data.scenes,
     createdAt: new Date().toISOString(),
+    ...(data.qualityReport ? { qualityReport: data.qualityReport } : {}),
   };
 
   await ensureClassroomsDir();

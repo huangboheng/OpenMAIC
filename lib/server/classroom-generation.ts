@@ -22,7 +22,16 @@ import { resolveModel } from '@/lib/server/resolve-model';
 import { getStageModel, type LlmStage } from '@/lib/server/model-routes';
 import type { LanguageModel } from 'ai';
 import type { ThinkingConfig } from '@/lib/types/provider';
-import { resolveVocationalActive } from '@/lib/config/feature-flags';
+import { resolveVocationalActive, isQualityValidationEnabled } from '@/lib/config/feature-flags';
+import {
+  withQualityGate,
+  validateSceneStructure,
+  judgeSceneQuality,
+  judgeCoherence,
+  type SceneQualityReport,
+  type CrossSceneCoherenceReport,
+} from '@/lib/server/quality-validation';
+import { buildCompleteScene } from '@openmaic/generation';
 import { buildSearchQuery } from '@/lib/server/search-query-builder';
 import { formatSearchResultsAsContext, searchWeb } from '@/lib/web-search';
 import type { BaiduSubSources, WebSearchProviderId } from '@/lib/web-search/types';
@@ -35,6 +44,7 @@ import {
 import { buildVideoManifestFromOutlines } from '@/lib/media/video-manifest';
 import type { UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
+import type { Action } from '@/lib/types/action';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
 
 const log = createLogger('Classroom');
@@ -563,6 +573,15 @@ export async function generateClassroom(
   log.info('Stage 2: Generating scene content and actions...');
   let generatedScenes = 0;
 
+  const qualityEnabled = isQualityValidationEnabled();
+  const qualityReports: SceneQualityReport[] = [];
+  let qualityJudgeModel: LanguageModel | null = null;
+  if (qualityEnabled) {
+    const resolved = await resolveModel({ stage: 'quality-judge' });
+    qualityJudgeModel = resolved.model;
+    log.info(`Quality validation enabled — using judge model: ${resolved.modelString}`);
+  }
+
   for (const [index, outline] of outlines.entries()) {
     const safeOutline = applyOutlineFallbacks(outline, true, {
       allowProceduralSkill: vocationalActive,
@@ -597,9 +616,10 @@ export async function generateClassroom(
     // gets the provider-bound AICallFn and the app injects its agentic PBL loop
     // as the classified fallback, preserving single-call → loop routing.
     const contentCall = await resolveSceneContentCall(safeOutline.type);
-    const content = await (async () => {
+
+    const generateScene = async (): Promise<{ content: NonNullable<Awaited<ReturnType<typeof generateSceneContent>>>; actions: Action[] } | null> => {
       try {
-        return await withGenerationRetry(
+        const content = await withGenerationRetry(
           () =>
             generateSceneContent(safeOutline, contentCall.aiCall, {
               agents,
@@ -624,27 +644,89 @@ export async function generateClassroom(
             onRetry: (event) => reportSceneRetry('content', event),
           },
         );
+        if (!content) return null;
+
+        const actionsAiCall = await getSceneActionsAiCall();
+        const actions = await withGenerationRetry(
+          () =>
+            generateSceneActions(safeOutline, content, actionsAiCall, {
+              agents,
+              languageDirective,
+            }),
+          {
+            label: `scene ${index + 1}/${outlines.length} actions`,
+            onRetry: (event) => reportSceneRetry('actions', event),
+          },
+        );
+        return { content, actions };
       } catch (error) {
-        return containPBLGenerationError(error, safeOutline.title);
+        containPBLGenerationError(error, safeOutline.title);
+        return null;
       }
-    })();
-    if (!content) {
-      log.warn(`Skipping scene "${safeOutline.title}" — content generation failed`);
-      continue;
+    };
+
+    let content: NonNullable<Awaited<ReturnType<typeof generateSceneContent>>> | null;
+    let actions: Action[];
+
+    if (qualityEnabled && qualityJudgeModel) {
+      const gateResult = await withQualityGate(
+        generateScene,
+        async (result) => {
+          const built = buildCompleteScene(safeOutline, result.content, result.actions, '');
+          if (!built) return { pass: false, issues: ['buildCompleteScene returned null'] };
+          const structural = validateSceneStructure(built);
+          if (!structural.valid) return { pass: false, issues: structural.errors };
+
+          const verdict = await judgeSceneQuality(
+            qualityJudgeModel!,
+            requirement,
+            safeOutline,
+            result.content,
+            result.actions,
+          );
+          if (!verdict.overallPass) return { pass: false, issues: verdict.issues };
+          return { pass: true, issues: [] };
+        },
+        {
+          label: `scene "${safeOutline.title}" quality`,
+          onRetry: async (attempt, issues) => {
+            log.warn(`Quality retry ${attempt} for "${safeOutline.title}": ${issues.join(', ')}`);
+            await options.onProgress?.({
+              step: 'generating_scenes',
+              progress: Math.max(progressStart, 31),
+              message: `Quality retry for "${safeOutline.title}" (attempt ${attempt + 1})`,
+              scenesGenerated: generatedScenes,
+              totalScenes: outlines.length,
+            });
+          },
+          onSkip: (issues) => {
+            log.warn(`Skipping scene "${safeOutline.title}" after quality retries: ${issues.join(', ')}`);
+          },
+        },
+      );
+
+      qualityReports.push({
+        sceneTitle: safeOutline.title,
+        structuralValid: gateResult.lastIssues.length === 0 || gateResult.result !== null,
+        passed: gateResult.result !== null,
+        attempts: gateResult.attempts,
+      });
+
+      if (!gateResult.result) {
+        continue;
+      }
+      content = gateResult.result.content;
+      actions = gateResult.result.actions;
+    } else {
+      const sceneResult = await generateScene();
+      if (!sceneResult) {
+        log.warn(`Skipping scene "${safeOutline.title}" — content generation failed`);
+        continue;
+      }
+      content = sceneResult.content;
+      actions = sceneResult.actions;
     }
 
-    const actionsAiCall = await getSceneActionsAiCall();
-    const actions = await withGenerationRetry(
-      () =>
-        generateSceneActions(safeOutline, content, actionsAiCall, {
-          agents,
-          languageDirective,
-        }),
-      {
-        label: `scene ${index + 1}/${outlines.length} actions`,
-        onRetry: (event) => reportSceneRetry('actions', event),
-      },
-    );
     log.info(`Scene "${safeOutline.title}": ${actions.length} actions`);
 
     const sceneId = createSceneWithActions(safeOutline, content, actions, api);
@@ -669,6 +751,27 @@ export async function generateClassroom(
 
   if (scenes.length === 0) {
     throw new Error('No scenes were generated');
+  }
+
+  // Phase: Cross-scene coherence check (L3)
+  let coherenceReport: CrossSceneCoherenceReport | undefined;
+  if (qualityEnabled && qualityJudgeModel && scenes.length > 1) {
+    const sceneSummaries = scenes.map((s) => ({
+      title: s.title,
+      type: s.type,
+      actionCount: s.actions?.length ?? 0,
+    }));
+    coherenceReport = await judgeCoherence(
+      qualityJudgeModel,
+      requirement,
+      outlines,
+      sceneSummaries,
+    );
+    if (!coherenceReport.overallPass) {
+      log.warn(`Cross-scene coherence failed: ${coherenceReport.issues.join(', ')}`);
+    } else {
+      log.info('Cross-scene coherence check passed');
+    }
   }
 
   // Phase: Media generation (after all scenes generated)
@@ -747,6 +850,27 @@ export async function generateClassroom(
       id: stageId,
       stage,
       scenes,
+      ...(qualityEnabled
+        ? {
+            qualityReport: {
+              sceneReports: qualityReports,
+              ...(coherenceReport ? { coherenceReport } : {}),
+              summary: {
+                totalScenes: outlines.length,
+                passed: qualityReports.filter((r) => r.passed).length,
+                skipped: outlines.length - qualityReports.filter((r) => r.passed).length,
+                coherencePassed: coherenceReport ? coherenceReport.overallPass : null,
+                overallVerdict:
+                  qualityReports.every((r) => r.passed) &&
+                  (!coherenceReport || coherenceReport.overallPass)
+                    ? 'pass'
+                    : qualityReports.some((r) => r.passed)
+                      ? 'pass_with_warnings'
+                      : 'skipped',
+              },
+            },
+          }
+        : {}),
     },
     options.baseUrl,
   );
