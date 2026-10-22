@@ -134,3 +134,26 @@ export async function persistClassroom(
     url: `${baseUrl}/classroom/${data.id}`,
   };
 }
+
+const CLASSROOM_MEDIA_MIME_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4',
+  // Opus as TTS providers return it: in an Ogg container.
+  '.opus': 'audio/ogg',
+};
+
+/** The type of a classroom media file, by its extension (`.png`, `.mp3`, ...). */
+export function classroomMediaMimeType(extension: string): string | undefined {
+  return CLASSROOM_MEDIA_MIME_TYPES[extension.toLowerCase()];
+}

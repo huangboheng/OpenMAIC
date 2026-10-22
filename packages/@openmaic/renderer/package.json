@@ -1,6 +1,6 @@
 {
   "name": "@openmaic/renderer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React component for rendering PPTist-style Slide JSON, extracted from OpenMAIC.",
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,11 @@
       "types": "./dist/snapshot/index.d.ts",
       "import": "./dist/snapshot/index.js"
     },
-    "./fonts.css": "./fonts.css"
+    "./fonts.css": "./fonts.css",
+    "./geometry": {
+      "types": "./dist/utils/element.d.ts",
+      "import": "./dist/utils/element.js"
+    }
   },
   "files": [
     "dist",
@@ -62,7 +66,7 @@
     "access": "public"
   },
   "peerDependencies": {
-    "echarts": ">=5",
+    "echarts": ">=5.5",
     "motion": ">=11",
     "react": ">=18",
     "react-dom": ">=18",
@@ -85,7 +89,8 @@
     "katex": "^0.16.33",
     "lucide-react": "^0.562.0",
     "tailwind-merge": "^3.4.0",
-    "tinycolor2": "^1.6.0"
+    "tinycolor2": "^1.6.0",
+    "@openmaic/geometry": "workspace:^"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.1",

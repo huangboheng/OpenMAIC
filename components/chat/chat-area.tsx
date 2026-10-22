@@ -23,6 +23,7 @@ import {
   MANUAL_STOP_END_OPTIONS,
   type EndSessionOptions,
   type SessionCleanupPayload,
+  type ChatMessageSendOptions,
 } from './use-chat-sessions';
 import { SessionList } from './session-list';
 import { LectureNotesView } from './lecture-notes-view';
@@ -38,7 +39,7 @@ interface ChatAreaProps {
   onLiveSpeech?: (text: string | null, agentId?: string | null) => void;
   onSpeechProgress?: (ratio: number | null) => void;
   onThinking?: (state: { stage: string; agentId?: string } | null) => void;
-  onCueUser?: (fromAgentId?: string, prompt?: string) => void;
+  onCueUser?: (fromAgentId?: string, prompt?: string, options?: string[]) => void;
   onLiveSessionError?: () => void;
   onSoftCloseSession?: (payload: SessionCleanupPayload) => void;
   onSoftClosingChange?: (softClosing: boolean, deadline?: number) => void;
@@ -65,7 +66,7 @@ export interface ChatAreaRef {
   continueActiveSoftClosingSession: () => boolean;
   softPauseActiveSession: () => Promise<void>;
   resumeActiveSession: () => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, options?: ChatMessageSendOptions) => Promise<void>;
   startDiscussion: (request: DiscussionRequest) => Promise<boolean>;
   startLecture: (sceneId: string) => Promise<string>;
   addLectureMessage: (sessionId: string, action: Action, actionIndex: number) => void;

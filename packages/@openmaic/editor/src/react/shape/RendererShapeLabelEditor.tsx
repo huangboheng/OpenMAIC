@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef, type CSSProperties } from 'react';
 import type { PPTShapeElement, ShapeText } from '@openmaic/dsl';
+import { RENDER_PATH_LIMITS, validateShapeGeometry } from '@openmaic/geometry';
 
-import { useElementFlip } from '@openmaic/renderer/elements';
+import { hasTextInsets, useElementFlip } from '@openmaic/renderer/elements';
 import { isSemanticallyEmptyText } from '../text/richText';
 import { RendererTextEditor } from '../text/RendererTextEditor';
 import type { TextContentChange, TextEditorController, TextFormatState } from '../text/types';
@@ -11,6 +12,7 @@ import type { EditIntent } from '../types';
 
 export interface RendererShapeLabelEditorProps {
   element: PPTShapeElement;
+  initialFocusPoint?: { left: number; top: number };
   onContentChange?: (change: TextContentChange) => void;
   onFormatChange?: (elementId: string, state: TextFormatState) => void;
   onControllerChange?: (controller: TextEditorController | null) => void;
@@ -33,6 +35,7 @@ function shapeText(element: PPTShapeElement): ShapeText {
 /** Inline ProseMirror label editor for a Shape selected in the renderer canvas. */
 export function RendererShapeLabelEditor({
   element,
+  initialFocusPoint,
   onContentChange,
   onFormatChange,
   onControllerChange,
@@ -42,7 +45,25 @@ export function RendererShapeLabelEditor({
 }: RendererShapeLabelEditorProps) {
   const controllerRef = useRef<TextEditorController | null>(null);
   const text = shapeText(element);
-  const { flipStyle } = useElementFlip(element.flipH, element.flipV);
+  const geometryValid = useMemo(
+    () =>
+      validateShapeGeometry(
+        {
+          path: element.path,
+          viewBox: element.viewBox,
+          width: element.width,
+          height: element.height,
+        },
+        RENDER_PATH_LIMITS,
+      ).ok,
+    [element.path, element.viewBox, element.width, element.height],
+  );
+  // Only the SVG renderer flips its parent. Recovered text has no parent flip
+  // to cancel, so applying the shape's flip here would mirror the edited label.
+  const { flipStyle } = useElementFlip(
+    geometryValid && element.flipH,
+    geometryValid && element.flipV,
+  );
   const justifyContent =
     text.align === 'top' ? 'flex-start' : text.align === 'bottom' ? 'flex-end' : 'center';
 
@@ -72,7 +93,7 @@ export function RendererShapeLabelEditor({
   return (
     <div
       data-renderer-shape-label-editor={element.id}
-      className="shape-text"
+      className="shape-text slide-renderer-prose"
       style={{
         position: 'absolute',
         inset: 0,
@@ -80,8 +101,15 @@ export function RendererShapeLabelEditor({
         flexDirection: 'column',
         justifyContent,
         overflowWrap: 'break-word',
-        lineHeight: text.lineHeight,
+        boxSizing: 'border-box',
+        padding: hasTextInsets(text.content) ? 0 : 10,
+        lineHeight: text.lineHeight ?? 1.625,
         letterSpacing: `${text.wordSpace || 0}px`,
+        // Match BaseShapeElement: paragraph margins affect the content height,
+        // which in turn affects vertically centered Shape labels.
+        ...({
+          '--paragraphSpace': `${text.paragraphSpace === undefined ? 5 : text.paragraphSpace}px`,
+        } as CSSProperties),
         transform: flipStyle,
       }}
     >
@@ -92,6 +120,7 @@ export function RendererShapeLabelEditor({
         defaultColor={text.defaultColor}
         defaultFontName={text.defaultFontName}
         autoFocus
+        initialFocusPoint={initialFocusPoint}
         onContentChange={onContentChange}
         onFormatChange={onFormatChange}
         onControllerChange={handleControllerChange}

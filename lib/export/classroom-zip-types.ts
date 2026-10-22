@@ -72,19 +72,25 @@ export function manifestAgentFromConfig(config: GeneratedAgentConfig): ManifestA
  */
 function sanitizeManifestVoiceConfig(value: unknown): AgentVoiceConfig | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { providerId, voiceId } = value as Record<string, unknown>;
+  const { providerId, modelId, voiceId } = value as Record<string, unknown>;
   if (typeof providerId !== 'string' || typeof voiceId !== 'string') return undefined;
-  return { providerId, voiceId };
+  if (modelId !== undefined && typeof modelId !== 'string') return undefined;
+  return { providerId, ...(modelId ? { modelId } : {}), voiceId };
 }
 
 /** Same contract as {@link sanitizeManifestVoiceConfig}, for the 3-layer descriptor. */
 function sanitizeManifestVoiceDesign(value: unknown): VoiceDesign | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { identity, texture, delivery } = value as Record<string, unknown>;
+  const { identity, texture, delivery, gender } = value as Record<string, unknown>;
   if (typeof identity !== 'string' || typeof texture !== 'string' || typeof delivery !== 'string') {
     return undefined;
   }
-  return { identity, texture, delivery };
+  return {
+    identity,
+    texture,
+    delivery,
+    ...(gender === 'male' || gender === 'female' ? { gender } : {}),
+  };
 }
 
 /**
@@ -136,6 +142,8 @@ export type ManifestAction = Omit<Action, 'audioId'> & {
 
 export interface MediaIndexEntry {
   type: 'audio' | 'image' | 'generated';
+  /** Original document ref; ZIP paths and refs are separate namespaces. */
+  sourceRef?: string;
   mimeType?: string;
   format?: string;
   duration?: number;

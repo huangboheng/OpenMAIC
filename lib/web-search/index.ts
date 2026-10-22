@@ -2,7 +2,11 @@ import { searchWithBaidu } from './baidu';
 import { searchWithBocha } from './bocha';
 import { searchWithBrave } from './brave';
 import { searchWithClaude } from './claude';
+import { searchWithDeepSeek } from './deepseek';
 import { searchWithDoubao } from './doubao';
+import { searchWithExa } from './exa';
+import { searchWithFirecrawl } from './firecrawl';
+import { searchWithKimi } from './kimi';
 import { searchWithMiniMax } from './minimax';
 import { searchWithSearxng } from './searxng';
 import { searchWithTavily } from './tavily';
@@ -19,6 +23,7 @@ export async function searchWeb(params: {
   baseUrl?: string;
   baiduSubSources?: BaiduSubSources;
   claudeModelId?: string;
+  signal?: AbortSignal;
 }): Promise<WebSearchResult> {
   const {
     providerId,
@@ -28,25 +33,56 @@ export async function searchWeb(params: {
     baseUrl,
     baiduSubSources,
     claudeModelId,
+    signal,
   } = params;
+
+  const abortOptions = signal ? { signal } : {};
 
   switch (providerId) {
     case 'baidu':
-      return searchWithBaidu({ query, apiKey, maxResults, baseUrl, subSources: baiduSubSources });
+      return searchWithBaidu({
+        query,
+        apiKey,
+        maxResults,
+        baseUrl,
+        subSources: baiduSubSources,
+        ...abortOptions,
+      });
     case 'bocha':
-      return searchWithBocha({ query, apiKey, maxResults, baseUrl });
+      return searchWithBocha({ query, apiKey, maxResults, baseUrl, ...abortOptions });
     case 'brave':
-      return searchWithBrave({ query, apiKey: apiKey || undefined, maxResults, baseUrl });
+      return searchWithBrave({
+        query,
+        apiKey: apiKey || undefined,
+        maxResults,
+        baseUrl,
+        ...abortOptions,
+      });
     case 'claude':
-      return searchWithClaude({ query, apiKey, modelId: claudeModelId, baseUrl, maxResults });
+      return searchWithClaude({
+        query,
+        apiKey,
+        modelId: claudeModelId,
+        baseUrl,
+        maxResults,
+        ...abortOptions,
+      });
+    case 'deepseek':
+      return searchWithDeepSeek({ query, apiKey, maxResults, baseUrl, ...abortOptions });
     case 'doubao':
-      return searchWithDoubao({ query, apiKey, maxResults, baseUrl });
+      return searchWithDoubao({ query, apiKey, maxResults, baseUrl, ...abortOptions });
+    case 'exa':
+      return searchWithExa({ query, apiKey, maxResults, baseUrl, ...abortOptions });
+    case 'firecrawl':
+      return searchWithFirecrawl({ query, apiKey, maxResults, baseUrl, ...abortOptions });
+    case 'kimi':
+      return searchWithKimi({ query, apiKey, maxResults, baseUrl, ...abortOptions });
     case 'minimax':
-      return searchWithMiniMax({ query, apiKey, maxResults, baseUrl });
+      return searchWithMiniMax({ query, apiKey, maxResults, baseUrl, ...abortOptions });
     case 'searxng':
-      return searchWithSearxng({ query, maxResults, baseUrl });
+      return searchWithSearxng({ query, maxResults, baseUrl, ...abortOptions });
     case 'tavily':
-      return searchWithTavily({ query, apiKey, maxResults, baseUrl });
+      return searchWithTavily({ query, apiKey, maxResults, baseUrl, ...abortOptions });
     default: {
       const exhaustive: never = providerId;
       throw new Error(`Unsupported web search provider: ${exhaustive}`);

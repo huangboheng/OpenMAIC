@@ -38,6 +38,7 @@ CLAUDE.local.md
 
 # generated: synced from packages/@openmaic/importer/dist for runtime URL import
 /public/vendor/maic-importer
+/public/vendor/standalone-player
 
 # misc
 .DS_Store
@@ -108,3 +109,12 @@ scripts/batch-generate-progress.json*
 
 # local MCP server config (per-developer, contains personal paths/credentials)
 .mcp.json
+
+# Operator model configuration (see openmaic.yml in RFC #1701); it names secrets via ${VAR}
+/openmaic.yml
+
+# Temporary render-service sources extracted by the mixed-pool regression test
+render-service/.owner-bound-parent-*/
+
+# Generated interactive libraries
+/public/vendor/interactive

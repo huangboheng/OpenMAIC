@@ -7,10 +7,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useSlotTTSProvidersConfig, useTTSSelection } from '@/lib/audio/use-tts-selection';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { resolveAgentVoice, getSelectableProvidersWithVoices } from '@/lib/audio/voice-resolver';
 import { playBrowserTTSPreview } from '@/lib/audio/browser-tts-preview';
-import { useVoxCPMVoiceProfiles } from '@/lib/audio/voxcpm-voices';
+import { useAllVoiceProfiles } from '@/lib/audio/voxcpm-voices';
 import { resolveAgentVoiceOptions } from '@/lib/audio/agent-voice';
 import { VOXCPM_AUTO_VOICE_ID, VOXCPM_TTS_PROVIDER_ID } from '@/lib/audio/voxcpm';
 import {
@@ -77,7 +78,7 @@ function AgentVoicePill({
   disabled?: boolean;
 }) {
   const { t, locale } = useI18n();
-  const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
+  const ttsProvidersConfig = useSlotTTSProvidersConfig();
   const agentVoiceOverrides = useSettingsStore((s) => s.agentVoiceOverrides);
   const setAgentVoiceOverride = useSettingsStore((s) => s.setAgentVoiceOverride);
   const resolved = resolveAgentVoice(agent, agentIndex, availableProviders, agentVoiceOverrides);
@@ -156,17 +157,12 @@ function AgentVoicePill({
         const res = await fetch('/api/generate/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // The tts slot names the provider and model on the server.
           body: JSON.stringify({
             text: previewText,
             audioId: 'voice-preview',
-            ttsProviderId: providerId,
-            ttsModelId: modelId || providerConfig?.modelId,
             ttsVoice: voiceId,
             ttsSpeed: 1,
-            ttsApiKey: providerConfig?.apiKey,
-            // Managed providers resolve their base URL server-side; only send
-            // the client's own base URL (custom providers).
-            ttsBaseUrl: providerConfig?.baseUrl || providerConfig?.customDefaultBaseUrl,
             ttsProviderOptions: providerOptions,
           }),
           signal: controller.signal,
@@ -241,7 +237,7 @@ function AgentVoicePill({
         side="bottom"
         align="end"
         sideOffset={4}
-        className="w-80 p-0 sm:w-96"
+        className="max-w-[calc(100vw-2rem)] overflow-hidden p-0 sm:w-96 w-80"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -258,7 +254,7 @@ function AgentVoicePill({
             />
           </div>
         </div>
-        <div className="max-h-80 overflow-y-auto p-1">
+        <div className="max-h-[min(320px,calc(var(--radix-popover-content-available-height)-64px))] min-h-0 overflow-y-auto p-1">
           {visibleProviderGroups.length === 0 && (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground/60">
               {t('agentBar.noMatchingVoices')}
@@ -355,12 +351,12 @@ function TeacherVoicePill({
   disabled?: boolean;
 }) {
   const { t, locale } = useI18n();
-  const ttsProviderId = useSettingsStore((s) => s.ttsProviderId);
-  const ttsVoice = useSettingsStore((s) => s.ttsVoice);
-  const setTTSProvider = useSettingsStore((s) => s.setTTSProvider);
+  // The tts slot names the provider; the user picks a voice of it.
+  const selection = useTTSSelection();
+  const ttsProviderId = selection?.providerId;
+  const ttsVoice = selection?.voice;
   const setTTSVoice = useSettingsStore((s) => s.setTTSVoice);
-  const setTTSProviderConfig = useSettingsStore((s) => s.setTTSProviderConfig);
-  const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
+  const ttsProvidersConfig = useSlotTTSProvidersConfig();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [voiceQuery, setVoiceQuery] = useState('');
   const [previewingId, setPreviewingId] = useState<string | null>(null);
@@ -437,17 +433,12 @@ function TeacherVoicePill({
         const res = await fetch('/api/generate/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // The tts slot names the provider and model on the server.
           body: JSON.stringify({
             text: previewText,
             audioId: 'voice-preview',
-            ttsProviderId: providerId,
-            ttsModelId: modelId || providerConfig?.modelId,
             ttsVoice: voiceId,
             ttsSpeed: 1,
-            ttsApiKey: providerConfig?.apiKey,
-            // Managed providers resolve their base URL server-side; only send
-            // the client's own base URL (custom providers).
-            ttsBaseUrl: providerConfig?.baseUrl || providerConfig?.customDefaultBaseUrl,
             ttsProviderOptions: providerOptions,
           }),
           signal: controller.signal,
@@ -511,7 +502,7 @@ function TeacherVoicePill({
         side="bottom"
         align="end"
         sideOffset={4}
-        className="w-80 p-0 sm:w-96"
+        className="max-w-[calc(100vw-2rem)] overflow-hidden p-0 sm:w-96 w-80"
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -528,7 +519,7 @@ function TeacherVoicePill({
             />
           </div>
         </div>
-        <div className="max-h-80 overflow-y-auto p-1">
+        <div className="max-h-[min(320px,calc(var(--radix-popover-content-available-height)-64px))] min-h-0 overflow-y-auto p-1">
           {visibleProviderGroups.length === 0 && (
             <div className="px-3 py-6 text-center text-sm text-muted-foreground/60">
               {t('agentBar.noMatchingVoices')}
@@ -543,11 +534,7 @@ function TeacherVoicePill({
                     : provider.providerName}
                 </div>
                 {group.voices.map((voice) => {
-                  const currentModelId = ttsProvidersConfig[ttsProviderId]?.modelId || '';
-                  const isActive =
-                    ttsProviderId === provider.providerId &&
-                    ttsVoice === voice.id &&
-                    currentModelId === (group.modelId || '');
+                  const isActive = ttsProviderId === provider.providerId && ttsVoice === voice.id;
                   const previewKey = `${provider.providerId}::${voice.id}`;
                   const isPreviewing = previewingId === previewKey;
                   const canPreview = !isNonPreviewableVoice(provider.providerId, voice.id);
@@ -562,11 +549,7 @@ function TeacherVoicePill({
                       <button
                         type="button"
                         onClick={() => {
-                          setTTSProvider(provider.providerId);
-                          setTTSVoice(voice.id);
-                          if (group.modelId) {
-                            setTTSProviderConfig(provider.providerId, { modelId: group.modelId });
-                          }
+                          setTTSVoice(voice.id, provider.providerId);
                           setPopoverOpen(false);
                         }}
                         className={cn(
@@ -619,12 +602,13 @@ export function AgentBar() {
   const agentMode = useSettingsStore((s) => s.agentMode);
   const setAgentMode = useSettingsStore((s) => s.setAgentMode);
   const setAgentSelectionIsUserSet = useSettingsStore((s) => s.setAgentSelectionIsUserSet);
-  const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
-  const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
+  const ttsProvidersConfig = useSlotTTSProvidersConfig();
+  // Narration is on when the workspace's tts slot resolves to a provider.
+  const ttsEnabled = !!useTTSSelection();
 
   const [open, setOpen] = useState(false);
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const { profiles: voxcpmProfiles } = useVoxCPMVoiceProfiles();
+  const { profiles: voiceProfiles } = useAllVoiceProfiles();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Load browser native TTS voices
@@ -646,7 +630,7 @@ export function AgentBar() {
   // providers + opt-in browser-native), shared with discussion TTS (#665).
   const availableProviders = getSelectableProvidersWithVoices(
     ttsProvidersConfig,
-    voxcpmProfiles,
+    voiceProfiles,
     browserVoices,
   );
 

@@ -5,22 +5,24 @@
  * from scene outlines.
  */
 
+import { validateShapeGeometry, shapeToTextFallback } from '@openmaic/geometry';
 import { nanoid } from 'nanoid';
 import katex from 'katex';
 import type {
   Action,
   PBLProject,
   PPTElement,
+  PPTShapeElement,
   QuizQuestion,
   SlideBackground,
   WidgetType,
 } from '@openmaic/dsl';
-import { isWidgetType, normalizeElement } from '@openmaic/dsl';
+import { isWidgetType, normalizeElement, safeKatexOptions } from '@openmaic/dsl';
 import { MAX_VISION_IMAGES } from './constants.js';
 import {
   formatImageDescription,
   formatImagePlaceholder,
-  sortDocumentImagesForVision,
+  partitionImagesForVision,
 } from './outline-formatters.js';
 import type {
   ImageMapping,
@@ -31,6 +33,7 @@ import type {
 } from './outline-types.js';
 import { DEFAULT_LANGUAGE_DIRECTIVE } from './outline-generator.js';
 import { postProcessInteractiveHtml } from './interactive-post-processor.js';
+import { findInteractiveScriptSyntaxFailure } from './interactive-script-validator.js';
 import { parseActionsFromStructuredOutput } from './action-parser.js';
 import { parseJsonResponse } from './json-repair.js';
 import {
@@ -72,11 +75,28 @@ const INTERACTIVE_WIDGET_ACTIONS = [
 
 // ── Options interfaces for scene generation functions ──
 
+export type SceneContentFailureCode = 'prompt-unavailable' | 'invalid-model-output';
+
+export interface SceneContentFailure {
+  code: SceneContentFailureCode;
+  message?: string;
+}
+
 export interface SceneContentOptions {
   assignedImages?: PdfImage[];
   imageMapping?: ImageMapping;
   visionEnabled?: boolean;
   generatedMediaMapping?: ImageMapping;
+  /**
+   * Pre-resolved bytes for the vision slice (RFC #1153 part 2, N3). The app's
+   * scene-content route resolves the slice's allocated asset ids server-side
+   * BEFORE calling the generator so the attachment bytes are settled before
+   * prompt assembly; when provided, the LLM message's vision images are built
+   * from these (matched to the slice ids), so the caller's aiCall resolution
+   * becomes a defensive no-op. Absent (package consumers, browser-backed
+   * runs), the srcs are derived from `imageMapping` exactly as before.
+   */
+  resolvedVisionImages?: Array<{ id: string; src: string; width?: number; height?: number }>;
   agents?: AgentInfo[];
   languageDirective?: string;
   /** Authoritative UI locale selected by the user, consumed by the PBL v2 planner. */
@@ -98,6 +118,7 @@ export interface SceneContentOptions {
   baselineContent?: GeneratedSlideContent;
   /** Optional host fallback for the app-only loop planner. */
   pblLoopFallback?: (input: PBLPlannerV2Input) => Promise<PBLProject>;
+  onFailure?: (failure: SceneContentFailure) => void;
   logger?: GenerationLogger;
 }
 
@@ -224,6 +245,7 @@ export async function generateSceneContent(
     imageMapping,
     visionEnabled,
     generatedMediaMapping,
+    resolvedVisionImages,
     agents,
     languageDirective,
     targetLanguage,
@@ -257,6 +279,7 @@ export async function generateSceneContent(
     return generateWidgetContent(outline, aiCall, languageDirective, {
       allowProceduralSkill,
       logger: log,
+      onFailure: options.onFailure,
     });
   }
 
@@ -269,14 +292,16 @@ export async function generateSceneContent(
         imageMapping,
         visionEnabled,
         generatedMediaMapping,
+        resolvedVisionImages,
         agents,
         languageDirective,
         editDirective,
         baselineContent,
         log,
+        options.onFailure,
       );
     case 'quiz':
-      return generateQuizContent(outline, aiCall, languageDirective, log);
+      return generateQuizContent(outline, aiCall, languageDirective, log, options.onFailure);
     case 'pbl':
       return generatePBLSceneContent(
         outline,
@@ -313,18 +338,25 @@ function isImageIdReference(value: string): boolean {
 }
 
 /**
- * Resolve image ID references in src field to actual base64 URLs
+ * Resolve image ID references in src field to the mapping's payload.
  *
  * AI generates: { type: "image", src: "img_1", ... }
- * This function replaces: { type: "image", src: "data:image/png;base64,...", ... }
+ * This function replaces: { type: "image", src: "<imageMapping[src]>", ... }
  *
  * Design rationale (Plan B):
  * - Simpler: AI only needs to know one field (src)
  * - Consistent: Generated JSON structure matches final PPTImageElement
  * - Intuitive: src is the image source, first as ID then as actual URL
  * - Less prompt complexity: No need to explain imageId vs src distinction
+ *
+ * The mapping VALUE is written verbatim, so the transport is decided entirely
+ * by the caller's `imageMapping` shape — no flag threading into this package
+ * (RFC #1153 part 2 B): a browser-backed mapping carries base64 data URLs and
+ * the element src becomes the data URL exactly as before; a server-backed
+ * mapping carries allocated pool asset ids and the element src becomes the
+ * asset id, which the renderer resolves through the pool registry.
  */
-function resolveImageIds(
+export function resolveImageIds(
   elements: GeneratedSlideData['elements'],
   imageMapping?: ImageMapping,
   generatedMediaMapping?: ImageMapping,
@@ -345,7 +377,7 @@ function resolveImageIds(
             log.warn(`No mapping for image ID: ${src}, removing element`);
             return null; // Remove invalid image elements
           }
-          log.debug(`Resolved image ID "${src}" to base64 URL`);
+          log.debug(`Resolved image ID "${src}" to its mapped source`);
           return { ...el, src: imageMapping[src] };
         }
 
@@ -471,7 +503,8 @@ function fixElementDefaults(
       // 1. Repair: a JSON `null` from the model means "absent" — strip nulls so
       //    normalize treats the field as missing and fills/derives it, instead
       //    of failing on a wrong-typed null (`start: null`, `text: null`, …).
-      // 2. Drop: if normalization still throws, discard the element. Keeping
+      // 2. Recover shape labels with the shared bounded text projection; discard
+      //    other elements when normalization still fails. Keeping
       //    the raw element would hand the malformed payload to consumers that
       //    read it unguarded (getElementRange / BaseLineElement / the PPTX
       //    exporter index straight into `start[0]`), crashing playback or
@@ -482,10 +515,28 @@ function fixElementDefaults(
         normalized = normalizeElement(stripNulls(el));
       } catch (err) {
         log.warn(
-          `Dropping malformed generated element: ${err instanceof Error ? err.message : String(err)}`,
+          `Malformed generated element: ${err instanceof Error ? err.message : String(err)}`,
         );
-        return null;
+        // The same recovery also handles malformed required path/viewBox types.
+        return el && typeof el === 'object' && el.type === 'shape'
+          ? shapeToTextFallback(el as unknown as PPTShapeElement)
+          : null;
       }
+
+      if (normalized.type === 'shape') {
+        const validation = validateShapeGeometry(normalized);
+        if (!validation.ok) {
+          const { field, position, message } = validation.error;
+          log.warn(
+            `Invalid generated shape; using text fallback when a label exists: ${field}${position === undefined ? '' : ` at ${position}`}: ${message}`,
+          );
+          return shapeToTextFallback(normalized);
+        }
+      }
+
+      // Ordinary model-authored text stays upright. Shape recovery returns
+      // above, preserving the original shape label's rotation in its text box.
+      if (normalized.type === 'text') normalized = { ...normalized, rotate: 0 };
 
       // Fit the image box to the assigned PDF image's real aspect ratio (`src` is
       // still the img_id at this point). Producer-specific, so it lives here, not
@@ -549,11 +600,14 @@ function processLatexElements(
       }
 
       try {
-        const html = katex.renderToString(latexStr, {
-          throwOnError: false,
-          displayMode: true,
-          output: 'html',
-        });
+        const html = katex.renderToString(
+          latexStr,
+          safeKatexOptions({
+            throwOnError: false,
+            displayMode: true,
+            output: 'html',
+          }),
+        );
 
         return {
           ...el,
@@ -578,41 +632,61 @@ async function generateSlideContent(
   imageMapping?: ImageMapping,
   visionEnabled?: boolean,
   generatedMediaMapping?: ImageMapping,
+  resolvedVisionImages?: Array<{ id: string; src: string; width?: number; height?: number }>,
   agents?: AgentInfo[],
   languageDirective?: string,
   editDirective?: string,
   baselineContent?: GeneratedSlideContent,
   log: GenerationLogger = noopGenerationLogger,
+  onFailure?: (failure: SceneContentFailure) => void,
 ): Promise<GeneratedSlideContent | null> {
   // Build assigned images description for the prompt
   let assignedImagesText = '无可用图片，禁止插入任何 image 元素';
   let visionImages: Array<{ id: string; src: string }> | undefined;
 
   if (assignedImages && assignedImages.length > 0) {
-    const sortedAssignedImages = sortDocumentImagesForVision(assignedImages);
+    // The partition is the shared ordering (RFC #1153 part 2, N3): the app's
+    // scene-content route pre-resolves the SAME `withSrc` candidates in this
+    // order, so the slice below can never admit an image the route has not
+    // resolved. `visionEnabled && imageMapping` off → every image is a plain
+    // text description listed in the ORIGINAL full vision-priority
+    // interleaved order (`sorted` — the pre-partition `sortedAssignedImages`
+    // order), NOT the slices-concatenated order, so a non-vision run with a
+    // mapping present (a non-vision model on a server-backed deployment) sees
+    // exactly the text ordering it saw before the partition refactor.
+    const { sorted, visionSlice, textOnlySlice, noSrcImages } = partitionImagesForVision(
+      assignedImages,
+      imageMapping,
+      MAX_VISION_IMAGES,
+    );
     if (visionEnabled && imageMapping) {
       // Vision mode: split into vision images and text-only
-      const withSrc = sortedAssignedImages.filter((img) => imageMapping[img.id]);
-      const visionSlice = withSrc.slice(0, MAX_VISION_IMAGES);
-      const textOnlySlice = withSrc.slice(MAX_VISION_IMAGES);
-      const noSrcImages = sortedAssignedImages.filter((img) => !imageMapping[img.id]);
-
       const visionDescriptions = visionSlice.map((img) => formatImagePlaceholder(img));
       const textDescriptions = [...textOnlySlice, ...noSrcImages].map((img) =>
         formatImageDescription(img),
       );
       assignedImagesText = [...visionDescriptions, ...textDescriptions].join('\n');
 
-      visionImages = visionSlice.map((img) => ({
-        id: img.id,
-        src: imageMapping[img.id],
-        width: img.width,
-        height: img.height,
-      }));
+      // When the route pre-resolved the slice, its resolved bytes are used
+      // verbatim (matched to the slice ids), so the caller's aiCall resolution
+      // is a defensive no-op; otherwise fall back to the mapping src (an
+      // allocated id the caller's aiCall resolves at prompt-assembly time).
+      const resolvedById = new Map(
+        (resolvedVisionImages ?? []).map((img) => [img.id, img] as const),
+      );
+      visionImages = visionSlice.map((img) => {
+        const resolved = resolvedById.get(img.id);
+        return (
+          resolved ?? {
+            id: img.id,
+            src: imageMapping[img.id],
+            width: img.width,
+            height: img.height,
+          }
+        );
+      });
     } else {
-      assignedImagesText = sortedAssignedImages
-        .map((img) => formatImageDescription(img))
-        .join('\n');
+      assignedImagesText = sorted.map((img) => formatImageDescription(img)).join('\n');
     }
   }
 
@@ -676,6 +750,7 @@ async function generateSlideContent(
   });
 
   if (!prompts) {
+    onFailure?.({ code: 'prompt-unavailable' });
     return null;
   }
 
@@ -727,13 +802,23 @@ async function generateSlideContent(
 
   if (!generatedData || !generatedData.elements || !Array.isArray(generatedData.elements)) {
     log.error(`Failed to parse AI response for: ${outline.title}`);
+    onFailure?.({ code: 'invalid-model-output' });
+    return null;
+  }
+
+  const invalidRotation = findInvalidShapeRotation(generatedData.elements);
+  if (invalidRotation) {
+    log.error(invalidRotation);
+    onFailure?.({ code: 'invalid-model-output', message: invalidRotation });
     return null;
   }
 
   log.debug(`Got ${generatedData.elements.length} elements for: ${outline.title}`);
 
   // Debug: Log image elements before resolution
-  const imageElements = generatedData.elements.filter((el) => el.type === 'image');
+  const imageElements = generatedData.elements.filter(
+    (el) => el && typeof el === 'object' && el.type === 'image',
+  );
   if (imageElements.length > 0) {
     log.debug(
       `Image elements before resolution:`,
@@ -775,7 +860,13 @@ async function generateSlideContent(
   const processedElements: PPTElement[] = videoNormalizedElements.map((el) => ({
     ...el,
     id: `${el.type}_${nanoid(8)}`,
-    rotate: 0,
+    // Ordinary text was reset above; recovered shape labels retain their angle.
+    rotate:
+      (el.type === 'shape' || el.type === 'text') &&
+      typeof el.rotate === 'number' &&
+      Number.isFinite(el.rotate)
+        ? el.rotate
+        : 0,
   })) as PPTElement[];
 
   // Process background
@@ -798,6 +889,26 @@ async function generateSlideContent(
   };
 }
 
+function findInvalidShapeRotation(elements: GeneratedSlideData['elements']): string | undefined {
+  for (const [index, element] of elements.entries()) {
+    if (!element || typeof element !== 'object') {
+      continue;
+    }
+    if (element.type !== 'shape' || !Object.prototype.hasOwnProperty.call(element, 'rotate')) {
+      continue;
+    }
+
+    const rotate = element.rotate;
+    if (rotate === null || (typeof rotate === 'number' && Number.isFinite(rotate))) {
+      continue;
+    }
+
+    const received = typeof rotate === 'number' ? String(rotate) : JSON.stringify(rotate);
+    return `Invalid shape rotation at shape[${index}].rotate: expected a finite number in degrees or null, received ${received}`;
+  }
+  return undefined;
+}
+
 /**
  * Generate quiz content
  */
@@ -806,6 +917,7 @@ async function generateQuizContent(
   aiCall: AICallFn,
   languageDirective?: string,
   log: GenerationLogger = noopGenerationLogger,
+  onFailure?: (failure: SceneContentFailure) => void,
 ): Promise<GeneratedQuizContent | null> {
   const quizConfig = outline.quizConfig || {
     questionCount: 3,
@@ -824,6 +936,7 @@ async function generateQuizContent(
   });
 
   if (!prompts) {
+    onFailure?.({ code: 'prompt-unavailable' });
     return null;
   }
 
@@ -833,34 +946,101 @@ async function generateQuizContent(
 
   if (!generatedQuestions || !Array.isArray(generatedQuestions)) {
     log.error(`Failed to parse AI response for: ${outline.title}`);
+    onFailure?.({ code: 'invalid-model-output' });
     return null;
   }
 
   log.debug(`Got ${generatedQuestions.length} questions for: ${outline.title}`);
 
-  // Ensure each question has an ID and normalize options format
+  // Ensure each question has an ID and normalize options format.
+  // Plain strings become letter/content pairs. Object fields stay as written.
   const questions: QuizQuestion[] = generatedQuestions.map((q) => {
     const isText = q.type === 'short_answer';
+    const options = isText ? undefined : normalizeQuizOptions(q.options);
     return {
       ...q,
       id: q.id || `q_${nanoid(8)}`,
-      options: isText ? undefined : normalizeQuizOptions(q.options),
-      answer: isText ? undefined : normalizeQuizAnswer(q as unknown as Record<string, unknown>),
+      options,
+      answer: isText
+        ? undefined
+        : normalizeQuizAnswer(q as unknown as Record<string, unknown>, options),
       hasAnswer: isText ? false : true,
     };
   });
 
+  const contractFailure = findQuizOptionsContractFailure(questions);
+  if (contractFailure) {
+    log.error(`Quiz option contract failed for "${outline.title}": ${contractFailure}`);
+    onFailure?.({ code: 'invalid-model-output' });
+    return null;
+  }
+
   return { questions };
 }
+
+const QUIZ_OPTION_VALUE = /^[A-Z]$/;
+
+/**
+ * Reason a built quiz breaks the choice-option contract, or null when it holds.
+ *
+ * Choice questions (everything except `short_answer`) need a non-empty option
+ * list whose `value`s are single ASCII letters A-Z, and every answer entry
+ * must equal one of those values exactly. Short-answer questions are skipped.
+ */
+export function findQuizOptionsContractFailure(questions: readonly QuizQuestion[]): string | null {
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
+    if (!question || question.type === 'short_answer') continue;
+
+    const where = question.id ? `question ${index + 1} (${question.id})` : `question ${index + 1}`;
+    const options = question.options;
+    if (!options || options.length === 0) {
+      return `${where}: choice question has no options`;
+    }
+
+    const optionValues = new Set<string>();
+
+    for (let optionIndex = 0; optionIndex < options.length; optionIndex += 1) {
+      const value = options[optionIndex]?.value;
+      if (typeof value !== 'string' || !QUIZ_OPTION_VALUE.test(value)) {
+        const shown = JSON.stringify(value);
+        return `${where}: option ${optionIndex + 1} value ${shown} is not a single letter A-Z`;
+      }
+
+      if (optionValues.has(value)) {
+        return `${where}: option ${optionIndex + 1} repeats value ${JSON.stringify(value)}`;
+      }
+
+      optionValues.add(value);
+    }
+
+    const answer = question.answer;
+    if (!answer || answer.length === 0) {
+      return `${where}: answer key does not reference an option value`;
+    }
+
+    for (const entry of answer) {
+      if (!optionValues.has(entry)) {
+        return `${where}: answer ${JSON.stringify(entry)} does not match an option value`;
+      }
+    }
+  }
+
+  return null;
+}
+
+type NormalizedQuizOption = { value: string; label: string };
 
 /**
  * Normalize quiz options from AI response.
  * AI may generate plain strings ["OptionA", "OptionB"] or QuizOption objects.
- * This normalizes to QuizOption[] format: { value: "A", label: "OptionA" }
+ * Plain strings become { value: "A", label: "OptionA" }. Object `value` and
+ * `label` are kept as provided — a letter in `label` with content in `value`
+ * is not swapped.
  */
-function normalizeQuizOptions(
+export function normalizeQuizOptions(
   options: unknown[] | undefined,
-): { value: string; label: string }[] | undefined {
+): NormalizedQuizOption[] | undefined {
   if (!options || !Array.isArray(options)) return undefined;
 
   return options.map((opt, index) => {
@@ -886,8 +1066,20 @@ function normalizeQuizOptions(
  * Normalize quiz answer from AI response.
  * AI may generate correctAnswer as string or string[], under various field names.
  * This normalizes to string[] format matching option values.
+ *
+ * The LLM writes the answer key inconsistently, as option CONTENT ("(6, 2)")
+ * or as a LETTER ("A"). Only exact, unique alignment is resolved: an entry
+ * that equals exactly one option value, or exactly one option label, becomes
+ * that option's value. Formatting variants (case, whitespace, full-width
+ * forms, wrapper punctuation) are NOT normalized, and ambiguous entries (two
+ * options sharing a value or a label) are left untouched — consistent with
+ * the grading-side resolver, which must not accept a variant a stored key
+ * would never resolve to.
  */
-function normalizeQuizAnswer(question: Record<string, unknown>): string[] | undefined {
+export function normalizeQuizAnswer(
+  question: Record<string, unknown>,
+  options?: { value: string; label: string }[],
+): string[] | undefined {
   // AI might use "correctAnswer", "answer", or "correct_answer"
   const raw =
     question.answer ??
@@ -895,10 +1087,25 @@ function normalizeQuizAnswer(question: Record<string, unknown>): string[] | unde
     (question as Record<string, unknown>).correct_answer;
   if (!raw) return undefined;
 
-  if (Array.isArray(raw)) {
-    return raw.map(String);
+  const answers = (Array.isArray(raw) ? raw : [raw]).map(String);
+
+  if (!options || options.length === 0) {
+    return answers;
   }
-  return [String(raw)];
+
+  // Exact alignment only (per review): value or label must match the answer
+  // byte-for-byte; no case folding, whitespace/Unicode normalization, or
+  // wrapper interpretation. Fail closed on ambiguity: convert only when
+  // exactly one distinct option value matches.
+  return answers.map((a) => {
+    const valueMatches = options.filter((o) => o.value === a);
+    const labelMatches = options.filter((o) => o.label === a);
+    const candidates = new Set<string>();
+    for (const o of valueMatches) candidates.add(o.value);
+    for (const o of labelMatches) candidates.add(o.value);
+    if (candidates.size === 1) return [...candidates][0];
+    return a;
+  });
 }
 
 /**
@@ -1065,7 +1272,11 @@ export async function generateWidgetContent(
   outline: SceneOutline,
   aiCall: AICallFn,
   languageDirective?: string,
-  options: { allowProceduralSkill?: boolean; logger?: GenerationLogger } = {},
+  options: {
+    allowProceduralSkill?: boolean;
+    logger?: GenerationLogger;
+    onFailure?: (failure: SceneContentFailure) => void;
+  } = {},
 ): Promise<GeneratedInteractiveContent | null> {
   const log = options.logger ?? noopGenerationLogger;
   const widgetType = outline.widgetType;
@@ -1177,6 +1388,7 @@ export async function generateWidgetContent(
   const prompts = buildPrompt(promptId, variables);
   if (!prompts) {
     log.error(`Failed to build ${widgetType} prompt for: ${outline.title}`);
+    options.onFailure?.({ code: 'prompt-unavailable' });
     return null;
   }
 
@@ -1186,6 +1398,17 @@ export async function generateWidgetContent(
 
   if (!html) {
     log.error(`Failed to extract HTML from ${widgetType} response for: ${outline.title}`);
+    options.onFailure?.({ code: 'invalid-model-output' });
+    return null;
+  }
+
+  // Reject visually valid but inert widgets whose classic inline JS cannot parse.
+  const scriptSyntaxFailure = findInteractiveScriptSyntaxFailure(html);
+  if (scriptSyntaxFailure) {
+    log.error(
+      `Generated ${widgetType} widget contains invalid inline JavaScript in script #${scriptSyntaxFailure.scriptIndex}: ${scriptSyntaxFailure.message}`,
+    );
+    options.onFailure?.({ code: 'invalid-model-output' });
     return null;
   }
 

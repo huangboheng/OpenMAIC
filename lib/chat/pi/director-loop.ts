@@ -9,6 +9,7 @@ import type { ThinkingConfig } from '@/lib/types/provider';
 import { buildDirectorPrompt, buildUserPrompt, toHistoryMessages } from './prompts';
 import { createDirectorCompactionRuntime } from './director-compaction';
 import type { DirectorToolTraceEntry, SendEvent } from './types';
+import type { ChildRuntimeMode } from './child-runtime';
 import { buildCallAgentTool } from './tools/call-agent';
 import { buildCloseSessionTool } from './tools/close-session';
 import { buildCueUserTool } from './tools/cue-user';
@@ -17,26 +18,9 @@ import {
   type DirectorSceneEvidenceMetadata,
   type DirectorSceneEvidencePacket,
 } from './tools/read-scene';
-import {
-  buildDirectorWebSearchTool,
-  type DirectorWebEvidencePacket,
-  type DirectorWebEvidenceMetadata,
-} from './tools/web-search';
-
-function formatWebEvidenceForDelegation(evidence: DirectorWebEvidencePacket): string {
-  return [
-    `Query: ${evidence.query}`,
-    `Retrieved at: ${evidence.retrievedAt}`,
-    evidence.answer ? `Search answer: ${evidence.answer}` : '',
-    'Exact sources:',
-    ...evidence.sources.map(
-      (source, index) =>
-        `${index + 1}. ${source.title}\nURL: ${source.url}\nExcerpt: ${source.excerpt}`,
-    ),
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
+import type { NativeWebSearchConfig } from './tools/web-search';
+import type { WhiteboardRuntimeService } from '@/lib/whiteboard/runtime/store';
+import type { ResolvedElementReference } from './element-reference';
 
 function formatSceneEvidenceForDelegation(evidence: DirectorSceneEvidencePacket[]): string {
   return evidence.map((packet) => packet.content).join('\n\n');
@@ -44,6 +28,9 @@ function formatSceneEvidenceForDelegation(evidence: DirectorSceneEvidencePacket[
 
 export async function runPiDirectorLoop(opts: {
   body: StatelessChatRequest;
+  elementReference?: ResolvedElementReference;
+  /** Area state for the current Scene when it travels without a component reference. */
+  interactiveStateNote?: string;
   agentConfigs: AgentConfig[];
   send: SendEvent;
   languageModel: LanguageModel;
@@ -55,7 +42,13 @@ export async function runPiDirectorLoop(opts: {
   maxAgentTurns: number;
   maxActionsPerAgent: number;
   enableWhiteboardTools: boolean;
-  enableWebSearch?: boolean;
+  childRuntimeMode?: ChildRuntimeMode;
+  enableNativeChildSpotlight?: boolean;
+  nativeWebSearchConfig?: NativeWebSearchConfig;
+  nativeWhiteboardService?: WhiteboardRuntimeService;
+  nativeWhiteboardStageId?: string;
+  nativeWhiteboardLearnerKey?: string;
+  requestStartManualVisibilityRevision?: number;
 }): Promise<void> {
   let totalAgents = 0;
   let totalActions = 0;
@@ -65,11 +58,39 @@ export async function runPiDirectorLoop(opts: {
   let endReason: string | undefined;
   let directorToolCalls = 0;
   const pendingSceneEvidence = new Map<string, DirectorSceneEvidencePacket>();
-  let latestWebEvidence: DirectorWebEvidencePacket | undefined;
+  // Request-scoped read-only evidence. `metadata` exists only when a component was
+  // referenced; area state alone carries content without any element identity.
+  const elementReferenceEvidence =
+    opts.elementReference || opts.interactiveStateNote
+      ? Object.freeze({
+          content: [opts.elementReference?.childEvidence, opts.interactiveStateNote]
+            .filter(Boolean)
+            .join('\n\n'),
+          ...(opts.elementReference ? { metadata: opts.elementReference.evidence } : {}),
+        })
+      : undefined;
   const directorToolTrace: DirectorToolTraceEntry[] = [];
   const maxDirectorToolCalls = Math.max(opts.maxAgentTurns * 3, opts.maxAgentTurns + 3);
   const piAgentResponses: AgentTurnSummary[] = [];
   const piWhiteboardLedger: WhiteboardActionRecord[] = [];
+  const requestStartCurrentScene = (() => {
+    const sceneId = opts.body.storeState.currentSceneId;
+    const scene = sceneId
+      ? opts.body.storeState.scenes.find((candidate) => candidate.id === sceneId)
+      : undefined;
+    if (!scene) return undefined;
+    const elementIds =
+      scene.content.type === 'slide'
+        ? scene.content.canvas.elements
+            .map((element) => element.id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        : [];
+    return Object.freeze({
+      sceneId: scene.id,
+      sceneType: scene.content.type,
+      elementIds: Object.freeze(elementIds),
+    });
+  })();
   const getAgentTurnCount = (): number => piAgentResponses.length;
   const isTeachingSubstantiveTurn = (summary: AgentTurnSummary): boolean => {
     const agent = opts.agentConfigs.find((candidate) => candidate.id === summary.agentId);
@@ -121,19 +142,6 @@ export async function runPiDirectorLoop(opts: {
         pendingSceneEvidence.set(evidence.details.sceneId, evidence);
       },
     }),
-    ...(opts.enableWebSearch
-      ? [
-          buildDirectorWebSearchTool({
-            stageId: opts.body.storeState.stage?.id,
-            onSearchStart: () => {
-              latestWebEvidence = undefined;
-            },
-            onEvidence: (evidence) => {
-              latestWebEvidence = evidence;
-            },
-          }),
-        ]
-      : []),
     buildCallAgentTool({
       body: opts.body,
       agentConfigs: opts.agentConfigs,
@@ -162,6 +170,14 @@ export async function runPiDirectorLoop(opts: {
       getWhiteboardLedger: () => piWhiteboardLedger,
       maxActionsPerAgent: opts.maxActionsPerAgent,
       enableWhiteboardTools: opts.enableWhiteboardTools,
+      childRuntimeMode: opts.childRuntimeMode ?? 'legacy',
+      enableNativeChildSpotlight: opts.enableNativeChildSpotlight === true,
+      nativeWebSearchConfig: opts.nativeWebSearchConfig,
+      nativeWhiteboardService: opts.nativeWhiteboardService,
+      nativeWhiteboardStageId: opts.nativeWhiteboardStageId,
+      nativeWhiteboardLearnerKey: opts.nativeWhiteboardLearnerKey,
+      requestStartManualVisibilityRevision: opts.requestStartManualVisibilityRevision ?? 0,
+      requestStartCurrentScene,
       isUserCued: () => userCued,
       isSessionClosed: () => sessionClosed,
       takeSceneEvidence: () => {
@@ -182,20 +198,7 @@ export async function runPiDirectorLoop(opts: {
           ),
         };
       },
-      takeWebEvidence: () => {
-        const evidence = latestWebEvidence;
-        latestWebEvidence = undefined;
-        if (!evidence) return undefined;
-        const metadata: DirectorWebEvidenceMetadata = {
-          query: evidence.query,
-          retrievedAt: evidence.retrievedAt,
-          sourceCount: evidence.sources.length,
-        };
-        return {
-          content: formatWebEvidenceForDelegation(evidence),
-          metadata,
-        };
-      },
+      elementReferenceEvidence,
     }),
     buildCloseSessionTool({
       closeSession,
@@ -213,9 +216,7 @@ export async function runPiDirectorLoop(opts: {
 
   const director = buildAgent({
     streamFn,
-    systemPrompt: buildDirectorPrompt(opts.body, opts.agentConfigs, opts.maxAgentTurns, {
-      enableWebSearch: opts.enableWebSearch,
-    }),
+    systemPrompt: buildDirectorPrompt(opts.body, opts.agentConfigs, opts.maxAgentTurns),
     tools,
     allowedToolNames: new Set(tools.map((tool) => tool.name)),
     history: toHistoryMessages(opts.body.messages, null),
@@ -224,7 +225,7 @@ export async function runPiDirectorLoop(opts: {
     afterToolCall: (context) => {
       directorToolCalls += 1;
       const evidenceStatus =
-        context.toolCall.name === 'read_scene' || context.toolCall.name === 'web_search'
+        context.toolCall.name === 'read_scene'
           ? (context.result.details as { status?: string } | undefined)?.status
           : undefined;
       const evidenceError = evidenceStatus !== undefined && evidenceStatus !== 'ok';
@@ -251,13 +252,20 @@ export async function runPiDirectorLoop(opts: {
   });
 
   try {
-    await director.prompt(buildUserPrompt(opts.body));
+    const directorEvidence = [opts.elementReference?.directorSummary, opts.interactiveStateNote]
+      .filter(Boolean)
+      .join('\n');
+    await director.prompt(buildUserPrompt(opts.body, directorEvidence || undefined));
     await director.waitForIdle();
   } finally {
     compactionRuntime.dispose();
   }
 
   if (opts.signal.aborted) return;
+
+  // Pi settles provider failures in state rather than rejecting prompt(). Let
+  // the route log and stream the actual reason instead of emitting a normal done.
+  if (director.state.errorMessage) throw new Error(director.state.errorMessage);
 
   if (!sessionClosed && !userCued && hasAgentContent()) {
     await cueUser({ fromAgentId: piAgentResponses.at(-1)?.agentId });

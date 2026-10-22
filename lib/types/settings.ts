@@ -10,7 +10,11 @@ export type SettingsSection =
   | 'pdf'
   | 'image'
   | 'video'
-  | 'web-search';
+  | 'web-fetch'
+  | 'web-search'
+  | 'skills'
+  | 'course-models'
+  | 'model-services';
 
 /**
  * Unified provider configuration stored in JSON format

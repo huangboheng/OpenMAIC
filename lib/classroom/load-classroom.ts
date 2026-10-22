@@ -1,5 +1,8 @@
 import { restoreAgentSelection } from '@/lib/orchestration/registry/agent-selection';
-import { applyGeneratedAgentsToRegistry } from '@/lib/orchestration/registry/store';
+import {
+  applyGeneratedAgentsToRegistry,
+  whenAgentRegistryLoaded,
+} from '@/lib/orchestration/registry/store';
 import {
   applyHydratedClassroomFallbackScenes,
   hydrateClassroomFallbackChats,
@@ -7,20 +10,31 @@ import {
 } from '@/lib/classroom/pbl-fallback-hydration';
 import type { ChatStorageSnapshot } from '@/lib/utils/chat-storage';
 import type { ChatSession } from '@/lib/types/chat';
+import { unmarkStageDeleted } from '@/lib/utils/deleted-stages';
+import { normalizeMediaUrls } from '@/lib/utils/normalize-media-urls';
 import { useMediaGenerationStore, type MediaTask } from '@/lib/store/media-generation';
 import {
   markStagePersistenceDirty,
   useStageStore,
   type StageSceneLoadToken,
 } from '@/lib/store/stage';
-import type { MediaFileRecord } from '@/lib/utils/database';
-import { unmarkStageDeleted } from '@/lib/utils/deleted-stages';
+import type { MediaFileRecord } from '@/lib/device-storage/database';
 import type { GeneratedAgentConfig, Scene, Stage } from '@/lib/types/stage';
-import type { PPTElement } from '@openmaic/dsl';
+import type { SceneOutline } from '@/lib/types/generation';
+import type { PPTElement, Slide } from '@openmaic/dsl';
 import {
   collectDocumentMediaElements,
   withDocumentLegacyVideoRecovery,
 } from '@/lib/media/media-task-resolution';
+import { slideMediaReferenceSlots } from '@/lib/media/slide-media-slots';
+import {
+  sceneCarriesMediaReference,
+  stageCarriesMediaReference,
+} from '@/lib/media/generated-media-references';
+import { isConcreteMediaAddress } from '@/lib/media/resolve-media-ref';
+import { createLogger } from '@/lib/logger';
+
+const moduleLog = createLogger('ClassroomLoad');
 
 /** Safety net so a hung sub-step (Web Lock, IndexedDB, network) cannot keep the page loading forever. */
 const DEFAULT_CLASSROOM_LOAD_TIMEOUT_MS = 30_000;
@@ -34,11 +48,27 @@ export interface ClassroomPayload {
 
 /** Thrown when the classroom API returns 401 — the user's session/access cookie expired. */
 export class ClassroomAuthError extends Error {
-  constructor(message = 'Authentication expired, please re-enter the classroom from the course page') {
+  constructor(
+    message = 'Authentication expired, please re-enter the classroom from the course page',
+  ) {
     super(message);
     this.name = 'ClassroomAuthError';
   }
 }
+
+/**
+ * What a classroom load concluded about the document itself.
+ *
+ * `'ready'` means this course is in the store. `'absent'` is a positive miss:
+ * the server has no readable course under this id. A load that could not get
+ * an answer throws inside `loadFromStorage` and ends `'failed'`, never
+ * `'absent'`.
+ */
+export type ClassroomLoadResult =
+  | { outcome: 'ready' }
+  | { outcome: 'absent' }
+  | { outcome: 'failed' }
+  | { outcome: 'cancelled' };
 
 interface Logger {
   info: (...args: unknown[]) => void;
@@ -65,12 +95,15 @@ export interface RunClassroomLoadArgs<TMediaTasks = unknown> {
   isCurrent: () => boolean;
   loadFromStorage: (classroomId: string, loadToken: StageSceneLoadToken) => Promise<void>;
   getCurrentStage: () => Stage | null;
-  fetchClassroom: (classroomId: string) => Promise<ClassroomPayload | null>;
-  applyFallbackScenes: (args: {
+  /** Server-side fallback when the document store has no course (legacy routes). */
+  fetchClassroom?: (classroomId: string) => Promise<ClassroomPayload | null>;
+  applyFallbackScenes?: (args: {
     loadToken: StageSceneLoadToken;
     stage: Stage;
     scenes: readonly Scene[];
   }) => Promise<boolean>;
+  /** Upper bound for the whole load; when exceeded the load fails with a timeout error. */
+  loadTimeoutMs?: number;
   loadRestoredMediaTasks: (stageId: string) => Promise<TMediaTasks>;
   applyRestoredMediaTasks: (tasks: TMediaTasks) => void;
   discardRestoredMediaTasks: (tasks: TMediaTasks) => void;
@@ -88,12 +121,16 @@ export interface RunClassroomLoadArgs<TMediaTasks = unknown> {
   applyGeneratedAgents: (stageId: string, configs: readonly GeneratedAgentConfig[]) => string[];
   getSettings: () => ClassroomLoadSettings;
   getAgent: (agentId: string) => AgentLookupResult | undefined;
+  /**
+   * Whether the owner's custom agents are in the registry (waited for, with a
+   * bound). While they are not, an id the registry does not know may be one of
+   * them, so a selection naming it is kept rather than downgraded.
+   */
+  agentsReady?: () => Promise<boolean>;
   restoreAgentSelection: typeof restoreAgentSelection;
   setError: (message: string) => void;
   setLoading: (loading: boolean) => void;
   log: Logger;
-  /** Upper bound for the whole load; when exceeded the load fails with a timeout error. */
-  loadTimeoutMs?: number;
 }
 
 /**
@@ -113,66 +150,73 @@ export function resetLegacyAgentFallbackProbes(): void {
   fruitlessLegacyProbeStageIds.clear();
 }
 
-export async function runClassroomLoad<TMediaTasks = unknown>({
-  classroomId,
-  loadToken,
-  isCurrent,
-  loadFromStorage,
-  getCurrentStage,
-  fetchClassroom,
-  applyFallbackScenes,
-  loadRestoredMediaTasks,
-  applyRestoredMediaTasks,
-  discardRestoredMediaTasks,
-  loadLegacyAgentFallbacks,
-  commitMigratedAgentConfigs,
-  applyGeneratedAgents,
-  getSettings,
-  getAgent,
-  restoreAgentSelection: restoreSelection,
-  setError,
-  setLoading,
-  log,
-  loadTimeoutMs,
-}: RunClassroomLoadArgs<TMediaTasks>): Promise<void> {
-  const timeoutMs = loadTimeoutMs ?? DEFAULT_CLASSROOM_LOAD_TIMEOUT_MS;
-
-  const runLoad = async (): Promise<void> => {
+async function runClassroomLoadAttempt<TMediaTasks = unknown>(
+  {
+    classroomId,
+    loadToken,
+    isCurrent,
+    loadFromStorage,
+    getCurrentStage,
+    fetchClassroom,
+    applyFallbackScenes,
+    loadRestoredMediaTasks,
+    applyRestoredMediaTasks,
+    discardRestoredMediaTasks,
+    loadLegacyAgentFallbacks,
+    commitMigratedAgentConfigs,
+    applyGeneratedAgents,
+    getSettings,
+    getAgent,
+    agentsReady,
+    restoreAgentSelection: restoreSelection,
+    setError,
+    setLoading,
+    log,
+  }: RunClassroomLoadArgs<TMediaTasks>,
+  timedOutRef: { value: boolean },
+): Promise<ClassroomLoadResult> {
+  try {
     await loadFromStorage(classroomId, loadToken);
-    if (!isCurrent()) return;
+    if (!isCurrent()) return { outcome: 'cancelled' };
 
-    if (!getCurrentStage()) {
-      log.info('No IndexedDB data, trying server-side storage for:', classroomId);
+    // Legacy fallback: the file-backed route may still hold a course the
+    // document store does not (old classrooms, local deployments).
+    if (!getCurrentStage() && fetchClassroom && applyFallbackScenes) {
+      log.info('No document-store data, trying server-side storage for:', classroomId);
       const classroom = await fetchClassroom(classroomId);
-      if (!isCurrent()) return;
-
+      if (!isCurrent()) return { outcome: 'cancelled' };
       if (classroom) {
-        const { stage, scenes } = classroom;
-        const applied = await applyFallbackScenes({ loadToken, stage, scenes });
-        if (!isCurrent()) return;
+        const applied = await applyFallbackScenes({
+          loadToken,
+          stage: classroom.stage,
+          scenes: classroom.scenes,
+        });
+        if (!isCurrent()) return { outcome: 'cancelled' };
         if (!applied) {
           log.info('Stage changed during server-side fallback hydration, skipping load:', {
-            requestedStageId: stage.id,
+            requestedStageId: classroom.stage.id,
             latestStageId: getCurrentStage()?.id,
           });
-          return;
+          return { outcome: 'cancelled' };
         }
         log.info('Loaded from server-side storage:', classroomId);
       }
     }
 
-    if (!isCurrent()) return;
-    if (!getCurrentStage()) {
-      // Neither IndexedDB nor server-side storage produced a stage. Fail loud
-      // with a retryable error instead of rendering an empty, broken stage.
-      throw new Error(`Classroom "${classroomId}" has no loadable data`);
-    }
+    // The server document store is the only place a course lives: nothing
+    // loaded means the server has no readable course under this id.
+    if (!getCurrentStage()) return { outcome: 'absent' };
+
+    // Metadata-only on the critical path: the default loader defers object-URL
+    // creation for non-priority blobs, so this await is a table read, not a
+    // full media hydration (the rest hydrates in the background after apply).
     const mediaTasks = await loadRestoredMediaTasks(classroomId);
     if (!isCurrent()) {
       discardRestoredMediaTasks(mediaTasks);
-      return;
+      return { outcome: 'cancelled' };
     }
     applyRestoredMediaTasks(mediaTasks);
+    offerOutstandingMediaRetries(classroomId);
 
     // ── Roster hydration: the stage document is the source of truth ──
     // The legacy IndexedDB mirror is consulted as a read-only, per-stage
@@ -185,7 +229,7 @@ export async function runClassroomLoad<TMediaTasks = unknown>({
     // mirror is not re-queried on every load of a classroom that has nothing
     // to migrate. A FAILED mirror read is neither merged nor remembered — the
     // next load retries the probe.
-    if (!isCurrent()) return;
+    if (!isCurrent()) return { outcome: 'cancelled' };
     const stageForRoster = getCurrentStage();
     // The absent-vs-empty distinction is load-bearing and deliberately NOT
     // collapsed here: `undefined` means the document predates roster
@@ -203,7 +247,7 @@ export async function runClassroomLoad<TMediaTasks = unknown>({
       const fallbacks = await loadLegacyAgentFallbacks(classroomId);
       // The registry is a global singleton: after any await, re-check that this
       // load is still current before letting the merged roster land anywhere.
-      if (!isCurrent()) return;
+      if (!isCurrent()) return { outcome: 'cancelled' };
       // `null` = the mirror read FAILED (not "mirror is empty"). Skip both
       // the merge and the memo so the next load retries the probe once
       // storage recovers — a transient IndexedDB error must not become a
@@ -223,10 +267,11 @@ export async function runClassroomLoad<TMediaTasks = unknown>({
       }
     }
 
-    if (!isCurrent()) return;
+    if (!isCurrent()) return { outcome: 'cancelled' };
     const generatedAgentIds = applyGeneratedAgents(classroomId, effectiveConfigs);
 
-    if (!isCurrent()) return;
+    const agentsKnown = agentsReady ? await agentsReady() : true;
+    if (!isCurrent()) return { outcome: 'cancelled' };
     const settings = getSettings();
     const { selection: next, isUserSet } = restoreSelection({
       persisted: { mode: settings.agentMode, selectedAgentIds: settings.selectedAgentIds },
@@ -235,11 +280,13 @@ export async function runClassroomLoad<TMediaTasks = unknown>({
       stageAgentIds: getCurrentStage()?.agentIds,
       isPresetAgent: (id) => {
         const agent = getAgent(id);
-        return !!agent && !agent.isGenerated;
+        // Unknown before the custom agents arrived: possibly one of them.
+        if (!agent) return !agentsKnown;
+        return !agent.isGenerated;
       },
     });
 
-    if (!isCurrent()) return;
+    if (!isCurrent()) return { outcome: 'cancelled' };
     if (next.mode !== settings.agentMode) settings.setAgentMode(next.mode);
     if (next.selectedAgentIds !== settings.selectedAgentIds) {
       settings.setSelectedAgentIds(next.selectedAgentIds);
@@ -247,141 +294,133 @@ export async function runClassroomLoad<TMediaTasks = unknown>({
     if (isUserSet !== settings.agentSelectionIsUserSet) {
       settings.setAgentSelectionIsUserSet(isUserSet);
     }
-  };
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      runLoad(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`Classroom load timed out after ${timeoutMs}ms`)),
-          timeoutMs,
-        );
-      }),
-    ]);
+    return { outcome: 'ready' };
   } catch (error) {
+    if (timedOutRef.value) return { outcome: 'cancelled' };
     log.error('Failed to load classroom:', error);
     if (isCurrent()) {
       setError(error instanceof Error ? error.message : 'Failed to load classroom');
     }
+    return isCurrent() ? { outcome: 'failed' } : { outcome: 'cancelled' };
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    if (isCurrent()) {
+    if (!timedOutRef.value && isCurrent()) {
       setLoading(false);
     }
   }
 }
 
-export async function fetchClassroomFromApi(classroomId: string): Promise<ClassroomPayload | null> {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+export async function runClassroomLoad<TMediaTasks = unknown>(
+  args: RunClassroomLoadArgs<TMediaTasks>,
+): Promise<ClassroomLoadResult> {
+  const timeoutMs = args.loadTimeoutMs ?? DEFAULT_CLASSROOM_LOAD_TIMEOUT_MS;
+  const timedOutRef = { value: false };
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const url = `${basePath}/api/classroom?id=${encodeURIComponent(classroomId)}`;
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(CLASSROOM_FETCH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      if (res.status === 401) {
-        console.warn(
-          `[Classroom] API auth failed for "${classroomId}": HTTP 401 — session or access cookie expired`,
-        );
-        throw new ClassroomAuthError();
-      }
-      console.warn(
-        `[Classroom] API fetch failed for "${classroomId}": HTTP ${res.status} ${res.statusText}`,
-      );
-      return null;
+    return await Promise.race([
+      runClassroomLoadAttempt(args, timedOutRef),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOutRef.value = true;
+          reject(new Error(`Classroom load timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    args.log.error('Failed to load classroom:', error);
+    if (args.isCurrent()) {
+      args.setError(error instanceof Error ? error.message : 'Failed to load classroom');
     }
-
-    const json = (await res.json()) as {
-      success?: boolean;
-      classroom?: ClassroomPayload;
-    };
-    if (!json.success || !json.classroom) {
-      console.warn(
-        `[Classroom] API fetch unexpected response for "${classroomId}":`,
-        json,
-      );
-      return null;
+    return args.isCurrent() ? { outcome: 'failed' } : { outcome: 'cancelled' };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (args.isCurrent()) {
+      args.setLoading(false);
     }
-    return json.classroom;
-  } catch (err) {
-    // Let auth errors propagate so runClassroomLoad shows an actionable message
-    // instead of the generic "no loadable data".
-    if (err instanceof ClassroomAuthError) throw err;
-    console.warn(`[Classroom] API fetch error for "${classroomId}":`, err);
-    return null;
   }
 }
 
-/** 将课堂数据中的绝对媒体 URL 重写为 basePath 相对路径
- * （兜底兼容浏览器缓存/本地存储中残留的旧绝对地址，避免跨域被拦截） */
-export function normalizeMediaUrls<T>(data: T): T {
-  const basePath = process.env.NEXT_PUBLIC_BASE_PATH;
-  if (!basePath) return data;
-  const pattern = /https?:\/\/[^/"]+\/(api\/classroom-media\/)/g;
-  const transform = (value: unknown): unknown => {
-    if (typeof value === 'string') return value.replace(pattern, `${basePath}/$1`);
-    if (Array.isArray(value)) return value.map(transform);
-    if (value && typeof value === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = transform(v);
-      return out;
-    }
-    return value;
-  };
-  return transform(data) as T;
+/**
+ * Restored media state split by hydration phase. `tasks` is metadata-complete
+ * and applied before first paint; records in `deferred` have their blob object
+ * URLs materialized afterwards in the background (see
+ * `hydrateDeferredMediaTasks`), so entering a media-heavy classroom never waits
+ * on `URL.createObjectURL` for every restored blob.
+ */
+export interface RestoredMediaTasks {
+  readonly stageId: string;
+  readonly tasks: Record<string, MediaTask>;
+  readonly deferred: readonly MediaFileRecord[];
 }
 
-export function applyClassroomStageAndScenes(
-  stage: Stage,
+/**
+ * Media refs owned by the scene the classroom opens on (the persisted cursor,
+ * else the first scene), plus the stage-level whiteboard — it stays open across
+ * standalone classroom switches, so its media can be visible before any scene
+ * is. Their blobs hydrate eagerly during load so the first visible page paints
+ * its media immediately; every other record defers.
+ */
+export function collectPriorityMediaRefs(
   scenes: readonly Scene[],
-  options: {
-    persist?: boolean;
-    chats?: ChatSession[];
-    chatSnapshot?: ChatStorageSnapshot;
-  } = {},
-): void {
-  // Explicit document (re)creation point: deletion only removes client-side
-  // data, so revisiting the classroom URL restores the server copy under the
-  // SAME id. Lift any same-session deleted flag before the store write, or
-  // every subsequent edit of the restored classroom would be silently dropped
-  // until a reload. This is a deliberate restore, not an in-flight flush —
-  // exactly the distinction `deleted-stages.ts` requires. The deletion EPOCH
-  // stays bumped: a pre-delete flush still in flight remains permanently
-  // stale and cannot overwrite the restored document, while the
-  // `saveToStorage` below (and every later edit) captures the current epoch
-  // and persists normally.
-  unmarkStageDeleted(stage.id);
-  const nextScenes = normalizeMediaUrls([...scenes]);
-  useStageStore.setState((state) => ({
-    stage: normalizeMediaUrls(stage),
-    scenes: nextScenes,
-    currentSceneId: nextScenes[0]?.id ?? null,
-    chats: options.chats ?? [],
-    chatSnapshot: options.chatSnapshot ?? { sessions: [], restoreMarker: null },
-    // 从服务端/存储加载的课堂场景齐全，标记为完成以启用课程完成页与连续学习“下一节”导航
-    generationComplete: nextScenes.length > 0,
-    generationEpoch: state.generationEpoch + 1,
-    mode: 'playback',
-  }));
-  if (options.persist !== false) {
-    void useStageStore.getState().saveToStorage();
-  }
+  currentSceneId: string | null,
+  stageWhiteboard: readonly Pick<Slide, 'background' | 'elements'>[] = [],
+): Set<string> {
+  const refs = new Set<string>();
+  const collect = (slide: Pick<Slide, 'background' | 'elements'>) => {
+    for (const slot of slideMediaReferenceSlots(slide)) {
+      const ref = slot.read();
+      if (ref && !isConcreteMediaAddress(ref)) refs.add(ref);
+      // Task lookup also binds by element id (see resolveMediaTaskForElement),
+      // so a record keyed `stage:<elementId>` belongs to the opening scene even
+      // when the slot carries a different opaque ref and no placeholderRef.
+      if (slot.element) refs.add(slot.element.id);
+    }
+  };
+  for (const slide of stageWhiteboard) collect(slide);
+  const scene = scenes.find((candidate) => candidate.id === currentSceneId) ?? scenes[0];
+  if (!scene) return refs;
+  if (scene.content.type === 'slide') collect(scene.content.canvas);
+  for (const slide of scene.whiteboards ?? []) collect(slide);
+  return refs;
 }
 
-export async function loadRestoredMediaTasksFromDB(
-  stageId: string,
-): Promise<Record<string, MediaTask>> {
+export async function loadRestoredMediaTasksFromDB(stageId: string): Promise<RestoredMediaTasks> {
   try {
-    const { db } = await import('@/lib/utils/database');
+    const { db } = await import('@/lib/device-storage/database');
     const records = await db.mediaFiles.where('stageId').equals(stageId).toArray();
     const state = useStageStore.getState();
-    const documentElements =
-      state.stage?.id === stageId ? collectDocumentMediaElements(state.stage, state.scenes) : [];
-    return buildRestoredMediaTasks(stageId, records, documentElements);
+    const sameStage = state.stage?.id === stageId;
+    const documentElements = sameStage
+      ? collectDocumentMediaElements(state.stage, state.scenes)
+      : [];
+    const priorityRefs = sameStage
+      ? collectPriorityMediaRefs(state.scenes, state.currentSceneId, state.stage?.whiteboard ?? [])
+      : new Set<string>();
+    // Legacy singleton video recovery assigns a placeholderRef at the end of
+    // the build (see withDocumentLegacyVideoRecovery), so classify against the
+    // recovered binding too — otherwise the opening scene's legacy video is
+    // deferred and stays pending until idle hydration reaches it. The metadata
+    // pass hydrates nothing, it only learns each record's effective ref.
+    const recoveredRefByElementId = new Map<string, string | undefined>(
+      Object.entries(buildRestoredMediaTasks(stageId, records, documentElements, () => false)).map(
+        ([key, task]) => [key, task.placeholderRef] as const,
+      ),
+    );
+    const deferred: MediaFileRecord[] = [];
+    const tasks = buildRestoredMediaTasks(stageId, records, documentElements, (record) => {
+      const elementId = record.id.includes(':')
+        ? record.id.split(':').slice(1).join(':')
+        : record.id;
+      const recoveredRef = recoveredRefByElementId.get(elementId);
+      const isPriority =
+        priorityRefs.has(elementId) ||
+        (!!record.placeholderRef && priorityRefs.has(record.placeholderRef)) ||
+        (!!recoveredRef && priorityRefs.has(recoveredRef));
+      if (!isPriority) deferred.push(record);
+      return isPriority;
+    });
+    return { stageId, tasks, deferred };
   } catch {
-    return {};
+    return { stageId, tasks: {}, deferred: [] };
   }
 }
 
@@ -389,6 +428,7 @@ export function buildRestoredMediaTasks(
   stageId: string,
   records: readonly MediaFileRecord[],
   documentElements: readonly PPTElement[] = [],
+  shouldHydrateBlob: (record: MediaFileRecord) => boolean = () => true,
 ): Record<string, MediaTask> {
   const restored: Record<string, MediaTask> = {};
   for (const rec of records) {
@@ -411,7 +451,14 @@ export function buildRestoredMediaTasks(
       continue;
     }
 
-    const blob = rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType });
+    // A deferred record keeps its done status (so generation resume never
+    // re-runs it) but carries no objectUrl yet: media resolution treats a
+    // known task without bytes as pending and re-renders when background
+    // hydration fills the URL in.
+    const hydrate = shouldHydrateBlob(rec);
+    const objectUrl = hydrate
+      ? URL.createObjectURL(rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType }))
+      : undefined;
     restored[elementId] = {
       elementId,
       placeholderRef: rec.placeholderRef,
@@ -419,8 +466,8 @@ export function buildRestoredMediaTasks(
       status: 'done',
       prompt: rec.prompt,
       params,
-      objectUrl: URL.createObjectURL(blob),
-      poster: rec.poster ? URL.createObjectURL(rec.poster) : undefined,
+      objectUrl,
+      poster: hydrate && rec.poster ? URL.createObjectURL(rec.poster) : undefined,
       retryCount: 0,
       stageId,
     };
@@ -428,17 +475,194 @@ export function buildRestoredMediaTasks(
   return withDocumentLegacyVideoRecovery(restored, documentElements, stageId);
 }
 
-export function applyRestoredMediaTasks(tasks: Record<string, MediaTask>): void {
-  if (Object.keys(tasks).length === 0) return;
-  useMediaGenerationStore.setState((state) => ({
-    tasks: { ...state.tasks, ...tasks },
-  }));
+/**
+ * Monotonic token identifying the latest classroom restore. Applying a new
+ * restore (another classroom, or a reload of the same one) supersedes every
+ * earlier deferred hydration loop, which then stops before materializing more
+ * URLs — both to drop work for an abandoned classroom and to keep bytes read
+ * by an older load from reaching a newer load's tasks.
+ */
+let hydrationEpoch = 0;
+
+export function applyRestoredMediaTasks(
+  restored: RestoredMediaTasks,
+  isLoadCurrent?: () => boolean,
+): void {
+  const epoch = ++hydrationEpoch;
+  if (Object.keys(restored.tasks).length > 0) {
+    useMediaGenerationStore.setState((state) => ({
+      tasks: { ...state.tasks, ...restored.tasks },
+    }));
+  }
+  // Blob hydration continues off the load path; each deferred URL lands as an
+  // in-place task update that media resolution picks up as pending → url.
+  if (restored.deferred.length > 0) {
+    // Live only while this restore is both the latest applied one and still
+    // owned by the current classroom load: `isLoadCurrent` is the load token /
+    // effect-cleanup check, so navigation away stops the loop at the next idle
+    // boundary instead of minting URLs for a classroom nobody is watching.
+    const isLive = () => epoch === hydrationEpoch && (isLoadCurrent?.() ?? true);
+    void hydrateDeferredMediaTasks(restored.stageId, restored.deferred, isLive).catch((error) => {
+      moduleLog.warn('Deferred media hydration failed:', error);
+    });
+  }
 }
 
-export function discardRestoredMediaTasks(tasks: Record<string, MediaTask>): void {
-  for (const task of Object.values(tasks)) {
+/** Why an outstanding element shows as failed: nothing generated it. */
+export const OUTSTANDING_MEDIA_ERROR = 'This media was not generated';
+
+/**
+ * The media a course still waits for that nothing will generate: a course no
+ * generation run produces (made in the browser before 1.2.0) whose slides
+ * still carry an outline's generation placeholder with no task restored for
+ * it (no refusal record, no cached bytes). Each becomes a failed, retryable
+ * task, so the element offers Retry; nothing is generated until the author
+ * asks. A course a server job produces has its job's tasks instead.
+ */
+export function outstandingMediaRetryTasks(input: {
+  stageId: string;
+  stage: Pick<Stage, 'whiteboard'> | null;
+  scenes: readonly Scene[];
+  outlines: readonly SceneOutline[];
+  serverProduced: boolean;
+  tasks: Readonly<Record<string, MediaTask>>;
+}): Record<string, MediaTask> {
+  if (input.serverProduced) return {};
+  const known = new Set<string>();
+  for (const [key, task] of Object.entries(input.tasks)) {
+    known.add(key);
+    if (task.placeholderRef) known.add(task.placeholderRef);
+  }
+  const outstanding: Record<string, MediaTask> = {};
+  for (const outline of input.outlines) {
+    for (const request of outline.mediaGenerations ?? []) {
+      const ref = request.elementId;
+      if (known.has(ref) || outstanding[ref]) continue;
+      const carried =
+        input.scenes.some(
+          (scene) => scene.order === outline.order && sceneCarriesMediaReference(scene, ref),
+        ) || stageCarriesMediaReference(input.stage, ref);
+      if (!carried) continue;
+      outstanding[ref] = {
+        elementId: ref,
+        type: request.type,
+        status: 'failed',
+        prompt: request.prompt,
+        params: { aspectRatio: request.aspectRatio, style: request.style },
+        error: OUTSTANDING_MEDIA_ERROR,
+        retryCount: 0,
+        stageId: input.stageId,
+      };
+    }
+  }
+  return outstanding;
+}
+
+/** Offer Retry for the open course's outstanding media (see outstandingMediaRetryTasks). */
+export function offerOutstandingMediaRetries(stageId: string): void {
+  const { stage, scenes, outlines, outlineProducer } = useStageStore.getState();
+  if (stage?.id !== stageId) return;
+  const outstanding = outstandingMediaRetryTasks({
+    stageId,
+    stage,
+    scenes,
+    outlines,
+    serverProduced: outlineProducer === 'server-job',
+    tasks: useMediaGenerationStore.getState().tasks,
+  });
+  if (Object.keys(outstanding).length === 0) return;
+  useMediaGenerationStore.setState((state) => ({ tasks: { ...outstanding, ...state.tasks } }));
+}
+
+export function discardRestoredMediaTasks(restored: RestoredMediaTasks): void {
+  // Only eagerly hydrated tasks own object URLs; deferred records hold raw
+  // blobs and are dropped with nothing to revoke.
+  for (const task of Object.values(restored.tasks)) {
     if (task.objectUrl) URL.revokeObjectURL(task.objectUrl);
     if (task.poster) URL.revokeObjectURL(task.poster);
+  }
+}
+
+/** Records hydrated per idle slice — a handful of `createObjectURL` calls. */
+const MEDIA_HYDRATION_CHUNK_SIZE = 4;
+
+/** Upper bound on one idle slice, so a busy main thread cannot starve hydration. */
+const MEDIA_HYDRATION_IDLE_TIMEOUT_MS = 1000;
+
+/** Yield to the browser between hydration chunks (idle callback when available). */
+function nextIdleSlice(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => resolve(), { timeout: MEDIA_HYDRATION_IDLE_TIMEOUT_MS });
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+/**
+ * Materialize object URLs for restored media records whose blobs were deferred
+ * during the blocking load phase. Runs chunk-by-chunk at idle time. A record
+ * whose task has since been replaced (classroom switch, regeneration, retry)
+ * is skipped and its freshly minted URLs are revoked immediately, so a late
+ * hydration can never leak URLs or overwrite another stage's task. The
+ * `status !== 'done'` check is what catches in-flight replacements: only a
+ * deferred restore is `done` without an `objectUrl`, because regeneration and
+ * retry pass through `pending`/`generating` before they can complete.
+ *
+ * `isLive` gates the whole loop, not individual records: it is re-checked
+ * before each chunk is materialized, so a superseded restore (another
+ * classroom applied, or this stage reloaded — see `hydrationEpoch`) stops
+ * before minting URLs for records nobody will consume. Callers that omit it
+ * (tests) get an always-live loop.
+ */
+export async function hydrateDeferredMediaTasks(
+  stageId: string,
+  records: readonly MediaFileRecord[],
+  isLive: () => boolean = () => true,
+): Promise<void> {
+  for (let start = 0; start < records.length; start += MEDIA_HYDRATION_CHUNK_SIZE) {
+    await nextIdleSlice();
+    if (!isLive()) return;
+    const chunk = records.slice(start, start + MEDIA_HYDRATION_CHUNK_SIZE);
+    const hydrated = chunk.map((rec) => {
+      const elementId = rec.id.includes(':') ? rec.id.split(':').slice(1).join(':') : rec.id;
+      const blob = rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType });
+      return {
+        elementId,
+        objectUrl: URL.createObjectURL(blob),
+        poster: rec.poster ? URL.createObjectURL(rec.poster) : undefined,
+      };
+    });
+    useMediaGenerationStore.setState((state) => {
+      let changed = false;
+      const tasks = { ...state.tasks };
+      for (const entry of hydrated) {
+        const existing = tasks[entry.elementId];
+        if (
+          !existing ||
+          existing.stageId !== stageId ||
+          existing.status !== 'done' ||
+          existing.objectUrl
+        ) {
+          URL.revokeObjectURL(entry.objectUrl);
+          if (entry.poster) URL.revokeObjectURL(entry.poster);
+          continue;
+        }
+        let poster = entry.poster;
+        if (poster && existing.poster) {
+          URL.revokeObjectURL(poster);
+          poster = undefined;
+        }
+        tasks[entry.elementId] = {
+          ...existing,
+          objectUrl: entry.objectUrl,
+          ...(poster ? { poster } : {}),
+        };
+        changed = true;
+      }
+      return changed ? { tasks } : state;
+    });
   }
 }
 
@@ -509,41 +733,18 @@ export function mergeLegacyAgentFallbacks(
 }
 
 /**
- * Read the legacy roster mirror for a stage as contract-shaped configs.
- * Read-only: production code only reads this table as a migration source for
- * pre-single-source classrooms (plus deletion hygiene when a stage is
- * removed); nothing writes new rows. Returns `null` when the read fails so
- * the caller can distinguish "empty mirror" (memoizable) from "read failed"
- * (retry on the next load).
+ * The legacy roster mirror for a stage, as contract-shaped configs.
+ *
+ * The mirror lived in the pre-server browser database, which the load path no
+ * longer reads: a course whose roster predates the document-embedded model
+ * reaches the server through the one-way importer, which lifts the roster with
+ * {@link mergeLegacyAgentFallbacks} on the way. A course loaded here is a server
+ * document, so its mirror is empty.
  */
 export async function loadLegacyAgentFallbacksFromDB(
-  stageId: string,
+  _stageId: string,
 ): Promise<GeneratedAgentConfig[] | null> {
-  try {
-    const { getGeneratedAgentsByStageId } = await import('@/lib/utils/database');
-    const records = await getGeneratedAgentsByStageId(stageId);
-    return records.map((record) => {
-      // Historical mirror rows spread the whole generated profile, so rows may
-      // carry a voiceConfig that never made it into the declared record type.
-      const voiceConfig = (record as { voiceConfig?: GeneratedAgentConfig['voiceConfig'] })
-        .voiceConfig;
-      return {
-        id: record.id,
-        name: record.name,
-        role: record.role,
-        persona: record.persona,
-        avatar: record.avatar,
-        color: record.color,
-        priority: record.priority,
-        ...(voiceConfig ? { voiceConfig } : {}),
-        ...(record.voiceDesign ? { voiceDesign: record.voiceDesign } : {}),
-      };
-    });
-  } catch {
-    // Signal failure (vs. an empty mirror): the probe memo must not treat a
-    // transient IndexedDB error as "nothing to migrate".
-    return null;
-  }
+  return [];
 }
 
 /**
@@ -562,18 +763,93 @@ export function commitMigratedAgentConfigsToStore(
   markStagePersistenceDirty([{ kind: 'stage' }]);
 }
 
+export async function fetchClassroomFromApi(
+  classroomId: string,
+): Promise<ClassroomPayload | null> {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  try {
+    const url = `${basePath}/api/classroom?id=${encodeURIComponent(classroomId)}`;
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(CLASSROOM_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      if (res.status === 401) {
+        console.warn(
+          `[Classroom] API auth failed for "${classroomId}": HTTP 401 — session or access cookie expired`,
+        );
+        throw new ClassroomAuthError();
+      }
+      console.warn(
+        `[Classroom] API fetch failed for "${classroomId}": HTTP ${res.status} ${res.statusText}`,
+      );
+      return null;
+    }
+
+    const json = (await res.json()) as {
+      success?: boolean;
+      classroom?: ClassroomPayload;
+    };
+    if (!json.success || !json.classroom) {
+      console.warn(`[Classroom] API fetch unexpected response for "${classroomId}":`, json);
+      return null;
+    }
+    return json.classroom;
+  } catch (err) {
+    // Let auth errors propagate so runClassroomLoad shows an actionable message
+    // instead of the generic "no loadable data".
+    if (err instanceof ClassroomAuthError) throw err;
+    console.warn(`[Classroom] API fetch error for "${classroomId}":`, err);
+    return null;
+  }
+}
+
+export { normalizeMediaUrls } from '@/lib/utils/normalize-media-urls';
+
+export function applyClassroomStageAndScenes(
+  stage: Stage,
+  scenes: readonly Scene[],
+  options: {
+    persist?: boolean;
+    chats?: ChatSession[];
+    chatSnapshot?: ChatStorageSnapshot;
+  } = {},
+): void {
+  // Explicit document (re)creation point: deletion only removes client-side
+  // data, so revisiting the classroom URL restores the server copy under the
+  // SAME id. Lift any same-session deleted flag before the store write, or
+  // every subsequent edit of the restored classroom would be silently dropped
+  // until a reload.
+  unmarkStageDeleted(stage.id);
+  const nextScenes = normalizeMediaUrls([...scenes]);
+  useStageStore.setState((state) => ({
+    stage: normalizeMediaUrls(stage),
+    scenes: nextScenes,
+    currentSceneId: nextScenes[0]?.id ?? null,
+    chats: options.chats ?? [],
+    chatSnapshot: options.chatSnapshot ?? { sessions: [], restoreMarker: null },
+    // 从服务端/存储加载的课堂场景齐全，标记为完成以启用课程完成页与连续学习“下一节”导航
+    generationComplete: nextScenes.length > 0,
+    generationEpoch: state.generationEpoch + 1,
+    mode: 'playback',
+  }));
+  if (options.persist !== false) {
+    void useStageStore.getState().saveToStorage();
+  }
+}
+
 export const defaultClassroomLoadDeps = {
-  applyFallbackScenes: (args: ApplyHydratedClassroomFallbackScenesArgs) =>
-    applyHydratedClassroomFallbackScenes({
-      ...args,
-      hydrateChats: hydrateClassroomFallbackChats,
-    }),
-  fetchClassroom: fetchClassroomFromApi,
   loadRestoredMediaTasks: loadRestoredMediaTasksFromDB,
   applyRestoredMediaTasks,
   discardRestoredMediaTasks,
   loadLegacyAgentFallbacks: loadLegacyAgentFallbacksFromDB,
   commitMigratedAgentConfigs: commitMigratedAgentConfigsToStore,
   applyGeneratedAgents: applyGeneratedAgentsToRegistry,
+  agentsReady: () => whenAgentRegistryLoaded(),
   restoreAgentSelection,
+  fetchClassroom: fetchClassroomFromApi,
+  applyFallbackScenes: (args: ApplyHydratedClassroomFallbackScenesArgs) =>
+    applyHydratedClassroomFallbackScenes({
+      ...args,
+      hydrateChats: hydrateClassroomFallbackChats,
+    }),
 };

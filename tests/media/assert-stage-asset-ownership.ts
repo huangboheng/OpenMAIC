@@ -18,7 +18,7 @@ export async function expectDocumentAssetOwnership({
   audioRowIds,
   poolHas,
 }: AssetOwnershipSnapshot): Promise<void> {
-  const refs = collectStageAssetRefs(document, { mediaRows: [], audioRows: [] });
+  const refs = collectStageAssetRefs(document);
   const allocated = [...refs.document].filter(
     (ref) =>
       /^ast_[\w-]+$/i.test(ref) &&
@@ -27,7 +27,7 @@ export async function expectDocumentAssetOwnership({
   );
 
   for (const ref of allocated) {
-    const isAudio = refs.speechAudioId.has(ref);
+    const isAudio = refs.speechAudioId.has(ref) || refs.slideAudioSrc.has(ref);
     const compatibilityId = isAudio ? ref : `${document.stage.id}:${ref}`;
     expect(
       isAudio ? audioRowIds.has(compatibilityId) : mediaRowIds.has(compatibilityId),

@@ -928,24 +928,7 @@ export async function deleteStageWithRelatedData(stageId: string): Promise<void>
     stageId,
     async (document, store) =>
       withRuntimeStorageExclusiveLockUntilSettled(async (releaseCaller) => {
-        const {
-          buildStageAssetReclamationPlan,
-          executeStageAssetReclamation,
-          loadStageAssetInventory,
-        } = await import('@/lib/media/reclaim-stage-assets');
-        const deletionDocument = document ?? {
-          stage: { id: stageId, name: '', createdAt: 0, updatedAt: 0 },
-          scenes: [],
-        };
-        const inventory = await loadStageAssetInventory(deletionDocument);
-        const assetPlan = buildStageAssetReclamationPlan(
-          stageId,
-          inventory.refs,
-          inventory.mediaRows,
-          inventory.audioRows,
-        );
         await store.deleteDocument(stageId);
-        await executeStageAssetReclamation(assetPlan, null);
         await db.transaction(
           'rw',
           [

@@ -11,6 +11,51 @@ import { createLogger } from '@/lib/logger';
 
 const log = createLogger('RenderService');
 
+export const RENDER_OWNER_HEADER = 'x-openmaic-render-owner';
+export const RENDER_OWNER_BOUND_HEADER = 'x-openmaic-render-owner-bound';
+const RENDER_OWNER_BOUND_VALUE = '1';
+
+/** Headers the app asserts on every request to its private render service. */
+export function renderServiceOwnerHeaders(ownerId: string): Record<string, string> {
+  return { [RENDER_OWNER_HEADER]: ownerId };
+}
+
+/**
+ * Defense in depth for job responses. The owner-bound route namespace prevents
+ * legacy instances from executing job operations; this marker gates relaying
+ * their responses. Only the UI capability probe uses the health marker.
+ */
+export function isRenderOwnerBoundResponse(response: Response): boolean {
+  return response.headers.get(RENDER_OWNER_BOUND_HEADER) === RENDER_OWNER_BOUND_VALUE;
+}
+
+async function fetchRenderServiceHealth(url: string): Promise<Response> {
+  return proxyFetch(`${url}/health`, {
+    method: 'GET',
+    signal: AbortSignal.timeout(3000),
+  });
+}
+
+/**
+ * Rebuild a proxy response with every owner-resolution header attached.
+ * Rebuilding also works for immutable redirects and does not pull a stream.
+ */
+export function withRenderOwnerResponseHeaders(
+  response: Response,
+  ownerHeaders: Headers,
+): Response {
+  const headers = new Headers(response.headers);
+  ownerHeaders.forEach((value, name) => {
+    if (name.toLowerCase() !== 'set-cookie') headers.append(name, value);
+  });
+  for (const cookie of ownerHeaders.getSetCookie()) headers.append('Set-Cookie', cookie);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 /** The configured base URL of the render service, or null when the capability is off. */
 export function getRenderServiceUrl(): string | null {
   const raw = process.env.RENDER_SERVICE_URL?.trim();
@@ -38,23 +83,33 @@ export function resolveRenderServiceUrl(): { url: string } | { error: 'not_confi
   return url ? { url } : { error: 'not_configured' };
 }
 
+export interface RenderServiceCapability {
+  enabled: boolean;
+  /** Omitted when a compatible service does not report admission state. */
+  accepting?: boolean;
+}
+
 /**
  * Whether the configured render service is actually reachable and healthy.
- * Probes `GET /health` with a short timeout. Returns false (rather than
+ * Probes `GET /health` with a short timeout. Returns disabled (rather than
  * throwing) when unconfigured or unreachable, so the capability endpoint can
  * report a truthful enabled/disabled state and the UI degrades cleanly.
  */
-export async function checkRenderServiceHealth(): Promise<boolean> {
+export async function getRenderServiceCapability(): Promise<RenderServiceCapability> {
   const url = getRenderServiceUrl();
-  if (!url) return false;
+  if (!url) return { enabled: false };
   try {
-    const res = await proxyFetch(`${url}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(3000),
-    });
-    return res.ok;
+    const res = await fetchRenderServiceHealth(url);
+    if (!res.ok || !isRenderOwnerBoundResponse(res)) return { enabled: false };
+    // Admission state is optional, but owner binding is mandatory. This keeps a
+    // newer app from advertising an older, unscoped render service as usable.
+    const body = (await res.json().catch(() => null)) as { accepting?: unknown } | null;
+    return {
+      enabled: true,
+      ...(typeof body?.accepting === 'boolean' ? { accepting: body.accepting } : {}),
+    };
   } catch (error) {
     log.info('Render service health check failed:', error instanceof Error ? error.message : error);
-    return false;
+    return { enabled: false };
   }
 }

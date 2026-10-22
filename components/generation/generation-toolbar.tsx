@@ -55,9 +55,9 @@ const MAX_COURSE_MATERIAL_SIZE_BYTES = MAX_COURSE_MATERIAL_SIZE_MB * 1024 * 1024
 
 // ─── Types ───────────────────────────────────────────────────
 export interface GenerationToolbarProps {
-  webSearch: boolean;
-  onWebSearchChange: (v: boolean) => void;
-  onSettingsOpen?: (section?: SettingsSection) => void;
+  webSearch?: boolean;
+  onWebSearchChange?: (v: boolean) => void;
+  onSettingsOpen?: (section: SettingsSection) => void;
   // PDF
   courseMaterials: SelectedCourseMaterial[];
   onCourseMaterialsAdd: (files: File[]) => void;
@@ -67,7 +67,7 @@ export interface GenerationToolbarProps {
 
 // ─── Component ───────────────────────────────────────────────
 export function GenerationToolbar({
-  webSearch,
+  webSearch = false,
   onWebSearchChange,
   onSettingsOpen,
   courseMaterials,
@@ -423,7 +423,7 @@ export function GenerationToolbar({
               <button
                 onClick={() => {
                   if (!selectedWebSearchAvailable) return;
-                  onWebSearchChange(!webSearch);
+                  onWebSearchChange?.(!webSearch);
                 }}
                 className={cn(
                   'w-full flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-all',

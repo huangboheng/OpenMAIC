@@ -9,6 +9,7 @@ vi.stubGlobal('fetch', fetchMock);
 const config: VideoGenerationConfig = {
   providerId: 'happyhorse',
   apiKey: 'test-key',
+  model: 'happyhorse-1.0-t2v',
 };
 
 describe('HappyHorse video adapter', () => {
@@ -40,6 +41,7 @@ describe('HappyHorse video adapter', () => {
       'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis',
       {
         method: 'POST',
+        redirect: 'manual',
         headers: {
           Authorization: 'Bearer test-key',
           'Content-Type': 'application/json',

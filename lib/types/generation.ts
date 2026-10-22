@@ -15,10 +15,14 @@ import type { MediaGenerationRequest } from '@/lib/media/types';
  */
 export interface PdfImage {
   id: string; // e.g., "img_1", "img_2"
-  src: string; // base64 data URL (empty when stored in IndexedDB)
+  src: string; // base64 data URL (empty when the bytes are a pool asset)
   pageNumber: number; // Page number in PDF
   description?: string; // Optional description for AI context
-  storageId?: string; // Reference to IndexedDB (session_xxx_img_1)
+  /**
+   * Pool asset id of the image bytes (RFC #1153 part 2 B): the extracted
+   * images are pool assets, so generation is fed by id.
+   */
+  assetId?: string; // Allocated asset-pool id
   width?: number; // Image width (px or normalized)
   height?: number; // Image height (px or normalized)
   originalId?: string; // ID assigned by the extractor before bundle-level normalization
@@ -41,8 +45,36 @@ export interface SelectedCourseMaterial {
   lastModified: number;
   type: string;
   order: number;
+  /** Allocated asset-pool id once the file has been ingested (part 0). */
+  assetId?: string;
+  /**
+   * SHA-256 of the file bytes, computed at upload time. This is the stable
+   * half of the extraction-cache key: two uploads of the same bytes get
+   * different allocated asset ids but the same digest (part 1).
+   */
+  contentDigest?: string;
 }
 
+/** One source document of a generation's material bundle. */
+export interface DocumentSource {
+  id: string;
+  name: string;
+  size: number;
+  lastModified?: number;
+  mimeType?: string;
+  order: number;
+  /** Allocated asset-pool id for this source. */
+  assetId?: string;
+  /** Legacy extractor provider selected for this source. */
+  providerId?: string;
+  /**
+   * SHA-256 of the source bytes, computed at upload time. Together with the
+   * extractor identity it keys the extraction derivation cache (part 1).
+   */
+  contentDigest?: string;
+}
+
+/** Legacy session document source used by the client-side generation preview. */
 export interface SessionDocumentSource {
   id: string;
   name: string;

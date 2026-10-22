@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import { Reorder } from 'motion/react';
 import { MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SceneThumbnailContent } from '@/components/stage/scene-thumbnail-content';
 import { SCENE_CREATION_ENABLED } from '@/lib/edit/scene-creation-enabled';
-import { sceneHasIssues } from '@/lib/edit/content-validation';
+import { useSceneIssues } from '@/lib/edit/use-scene-issues';
+import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import type { Scene } from '@/lib/types/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useStageStore } from '@/lib/store/stage';
@@ -38,6 +39,9 @@ function ThumbItemComponent({
   onDelete,
 }: ThumbItemProps) {
   const { t } = useI18n();
+  const issues = useSceneIssues(scene);
+  const hasError = issues.some((issue) => issue.severity === 'error');
+  const issueLabel = t(hasError ? 'edit.nav.sceneHasErrors' : 'edit.nav.sceneIncomplete');
   const viewportSize = useCanvasStore.use.viewportSize();
   const viewportRatio = useCanvasStore.use.viewportRatio();
   const updateScene = useStageStore.use.updateScene();
@@ -130,11 +134,17 @@ function ThumbItemComponent({
         {/* Page-level "incomplete content" dot — surfaces a scene with any
             content issue (blank narration / no actions / unbound cue …) so the
             user can spot it in the rail without opening every page. */}
-        {sceneHasIssues(scene) && (
+        {issues.length > 0 && (
           <span
-            title={t('edit.nav.sceneIncomplete')}
-            aria-label={t('edit.nav.sceneIncomplete')}
-            className="absolute right-1 top-1 z-10 size-2 rounded-full bg-amber-400 shadow-sm ring-2 ring-white dark:ring-slate-900"
+            role="img"
+            title={issueLabel}
+            aria-label={issueLabel}
+            data-testid="scene-issue-marker"
+            data-severity={hasError ? 'error' : 'warning'}
+            className={cn(
+              'absolute right-1 top-1 z-10 size-2 rounded-full shadow-sm ring-2 ring-white dark:ring-slate-900',
+              hasError ? 'bg-red-500' : 'bg-amber-400',
+            )}
           />
         )}
         {/* Scene header — index badge + title. Title doubles as the
@@ -275,26 +285,3 @@ function ThumbItemComponent({
  * read-only inside Pro mode (no auto-exit on click).
  */
 export const ThumbItem = memo(ThumbItemComponent);
-
-/**
- * Cheap "near viewport" IntersectionObserver so off-screen thumbs
- * skip the live ThumbnailSlide render (which mounts a downscaled
- * slide-renderer scene). Items within 200px of the viewport remain
- * eager so scrolling feels instant.
- */
-function useNearViewport(ref: React.RefObject<Element | null>) {
-  const [visible, setVisible] = useState(true);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) setVisible(e.isIntersecting);
-      },
-      { root: null, rootMargin: '200px 0px', threshold: 0 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [ref]);
-  return visible;
-}

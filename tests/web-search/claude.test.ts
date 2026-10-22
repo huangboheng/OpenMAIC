@@ -57,6 +57,18 @@ describe('searchWithClaude', () => {
     mockProvider.tools.webSearch_20250305.mockClear();
   });
 
+  it('passes the caller signal to the underlying AI SDK request', async () => {
+    const signal = new AbortController().signal;
+    mockAIResponse();
+
+    await searchWithClaude({ query: 'test', apiKey: 'sk-test', signal });
+
+    expect(mockGenerateText).toHaveBeenCalledWith(
+      expect.objectContaining({ abortSignal: signal }),
+      'web-search-claude',
+    );
+  });
+
   // ── fetch interceptor: allowed_callers injection ──────────────────────────
 
   it('injects allowed_callers=["direct"] on the basic tool (Haiku 4.5 request body)', async () => {
@@ -148,15 +160,15 @@ describe('searchWithClaude', () => {
     expect(mockProvider).toHaveBeenCalledWith(CLAUDE_WEB_SEARCH_DEFAULT_MODEL);
   });
 
-  it('uses the provided model, trimmed', async () => {
+  it('preserves the provided model without a post-authorization rewrite', async () => {
     mockAIResponse();
     await searchWithClaude({ query: 'test', apiKey: 'sk-test', modelId: '  claude-opus-5  ' });
-    expect(mockProvider).toHaveBeenCalledWith('claude-opus-5');
+    expect(mockProvider).toHaveBeenCalledWith('  claude-opus-5  ');
   });
 
   it('falls back to the default model for a blank modelId', async () => {
     mockAIResponse();
-    await searchWithClaude({ query: 'test', apiKey: 'sk-test', modelId: '   ' });
+    await searchWithClaude({ query: 'test', apiKey: 'sk-test', modelId: '' });
     expect(mockProvider).toHaveBeenCalledWith(CLAUDE_WEB_SEARCH_DEFAULT_MODEL);
   });
 

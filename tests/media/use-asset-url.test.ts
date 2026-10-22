@@ -1,11 +1,13 @@
 import { IDBFactory } from 'fake-indexeddb';
-import { BrowserAssetStore, HttpAssetStore } from '@openmaic/storage';
+import { BrowserAssetStore, HttpAssetStore, toAssetId } from '@openmaic/storage';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearAssetPool, putAsset, replaceAsset } from '@/lib/media/asset-pool';
+import { getAssetPool } from '@/lib/media/asset-pool';
+import { useInMemoryAssetPool } from '@/tests/helpers/in-memory-document-store';
 import { resolveMediaRef } from '@/lib/media/resolve-media-ref';
 import {
   __resetAssetReplacementChannelForTesting,
   bindAssetReplacementChannel,
+  notifyAssetReplaced,
 } from '@/lib/media/asset-replacement-events';
 import {
   assetRefExists,
@@ -102,7 +104,7 @@ describe('asset URL ownership', () => {
     const ref = await pool.put(new Blob(['old'], { type: 'text/plain' }));
 
     await expect(withAssetUrl(ref, (url) => url, pool)).resolves.toBe('blob:test-1');
-    await pool.replace(ref, new Blob(['new'], { type: 'text/plain' }));
+    await pool.replace(toAssetId(ref), new Blob(['new'], { type: 'text/plain' }));
     await expect(withAssetUrl(ref, (url) => url, pool)).resolves.toBe('blob:test-2');
     expect(URL.createObjectURL).toHaveBeenCalledTimes(2);
 
@@ -110,8 +112,12 @@ describe('asset URL ownership', () => {
   });
 
   it('publishes same-id replacement bytes to an active lease', async () => {
-    vi.stubGlobal('indexedDB', new IDBFactory());
-    const ref = await putAsset(new Blob(['old'], { type: 'text/plain' }));
+    const { teardown } = await useInMemoryAssetPool();
+    // Same-id replacement is a store capability, not an application one: the
+    // browser-facing `AssetPoolStore` surface deliberately does not expose it,
+    // so the concrete store is what this reaches through.
+    const pool = getAssetPool() as unknown as BrowserAssetStore;
+    const ref = await pool.put(new Blob(['old'], { type: 'text/plain' }));
     const urls: string[] = [];
     let resolveFirst!: () => void;
     let resolveSecond!: () => void;
@@ -129,7 +135,8 @@ describe('asset URL ownership', () => {
     });
 
     await first;
-    await replaceAsset(ref, new Blob(['new'], { type: 'text/plain' }));
+    await pool.replace(toAssetId(ref), new Blob(['new'], { type: 'text/plain' }));
+    await notifyAssetReplaced(ref, pool);
     await second;
 
     expect(urls).toEqual(['blob:test-1', 'blob:test-2']);
@@ -137,7 +144,7 @@ describe('asset URL ownership', () => {
 
     cleanup();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    await clearAssetPool();
+    await teardown();
   });
 
   it('makes a replacement broadcast outrank an older in-flight HTTP resolve', async () => {

@@ -207,7 +207,9 @@ function HomePage() {
     const previous = thumbnailsRef.current;
     thumbnailsRef.current = slides;
     setThumbnails(slides);
-    window.setTimeout(() => revokeThumbnailSlideMediaUrls(previous), 0);
+    window.setTimeout(() => {
+      for (const slide of Object.values(previous)) revokeThumbnailSlideMediaUrls(slide);
+    }, 0);
   };
 
   // Close dropdowns when clicking outside
@@ -293,7 +295,9 @@ function HomePage() {
     void Promise.all([loadClassrooms(), loadFolders()]).finally(() => setHydrated(true));
 
     return () => {
-      revokeThumbnailSlideMediaUrls(thumbnailsRef.current);
+      for (const slide of Object.values(thumbnailsRef.current)) {
+        revokeThumbnailSlideMediaUrls(slide);
+      }
       thumbnailsRef.current = {};
     };
   }, []);

@@ -1,3 +1,4 @@
+import type { InteractiveStateEvidence } from '@/lib/interactive/chat-observation';
 /**
  * Shared Type Definitions for Multi-Agent Orchestration
  *
@@ -294,6 +295,7 @@ import type { SceneOutline } from '@/lib/types/generation';
 import type { AgentTurnSummary, WhiteboardActionRecord } from '@/lib/orchestration/types';
 import type { DirectorCompactionTrace } from '@/lib/chat/pi/director-compaction';
 import type { DirectorToolTraceEntry } from '@/lib/chat/pi/types';
+import type { BaiduSubSources, WebSearchProviderId } from '@/lib/web-search/types';
 
 /**
  * Accumulated director state passed between per-agent requests.
@@ -304,6 +306,32 @@ export interface DirectorState {
   agentResponses: AgentTurnSummary[];
   whiteboardLedger: WhiteboardActionRecord[];
 }
+
+/** Browser-selected identity for one PPT element. Content is resolved by the Host. */
+export interface SlideElementReference {
+  kind: 'slide_element';
+  sceneId: string;
+  elementId: string;
+}
+
+/** Browser-selected identity for one source-authored Interactive DOM component. */
+export interface InteractiveComponentReference {
+  kind: 'interactive_component';
+  sceneId: string;
+  selector: string;
+}
+
+/** Identity only; content is resolved from this request's Stage snapshot. */
+export interface WhiteboardElementReference {
+  kind: 'whiteboard_element';
+  whiteboardId: string;
+  elementId: string;
+}
+
+export type ElementReference =
+  | SlideElementReference
+  | InteractiveComponentReference
+  | WhiteboardElementReference;
 
 /**
  * Request body for the stateless chat API
@@ -321,6 +349,8 @@ export interface StatelessChatRequest {
     currentSceneId: string | null;
     mode: StageMode;
     whiteboardOpen: boolean;
+    /** Browser-owned manual visibility revision captured for this request. */
+    whiteboardManualVisibilityRevision?: number;
     /**
      * Post-submit quiz state for the CURRENT scene, hydrated by the client
      * from localStorage when the active scene is a graded quiz. Lets the
@@ -341,6 +371,10 @@ export interface StatelessChatRequest {
       }>;
     };
   };
+  /** Optional Pi-only, identity-only reference to one classroom component. */
+  elementReference?: ElementReference;
+  /** Request-scoped browser evidence, never a tool permission or static definition. */
+  interactiveState?: InteractiveStateEvidence;
   /** Agent configuration */
   config: {
     agentIds: string[];
@@ -393,6 +427,16 @@ export interface StatelessChatRequest {
   thinking?: ThinkingConfig;
   /** UI-selected per-model thinking config. Takes precedence over `thinking`. */
   thinkingConfig?: ThinkingConfig;
+  /** Toolbar-selected Web Search provider. Resolved server-side independently from the LLM. */
+  webSearchProviderId?: WebSearchProviderId;
+  /** Selected provider credential only; server-managed credentials remain authoritative. */
+  webSearchApiKey?: string;
+  /** Selected provider base URL only; validated server-side and ignored for managed providers. */
+  webSearchBaseUrl?: string;
+  /** Selected Claude Web Search model only. */
+  webSearchModelId?: string;
+  /** Selected Baidu Web Search sub-sources only. */
+  baiduSubSources?: BaiduSubSources;
 }
 
 /**
@@ -437,7 +481,18 @@ export type StatelessEvent =
       type: 'thinking';
       data: { stage: 'director' | 'agent_loading'; agentId?: string };
     }
-  | { type: 'cue_user'; data: { fromAgentId?: string; prompt?: string } }
+  | {
+      type: 'whiteboard';
+      data:
+        | { kind: 'visibility_query'; queryId: string; stageId: string }
+        | {
+            kind: 'open' | 'close';
+            stageId: string;
+            manualVisibilityRevision: number;
+          }
+        | { kind: 'projection'; stageId: string; lastSeq: number };
+    }
+  | { type: 'cue_user'; data: { fromAgentId?: string; prompt?: string; options?: string[] } }
   | {
       type: 'done';
       data: {

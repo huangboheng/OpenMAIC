@@ -5,7 +5,7 @@
  * Endpoint: https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
  *
  * Supported models:
- * - qwen-image-max     (highest quality)
+ * - qwen-image-3.0     (recommended)
  * - z-image-turbo      (fast, good quality)
  *
  * API docs: https://help.aliyun.com/zh/model-studio/developer-reference/text-to-image
@@ -16,9 +16,12 @@ import type {
   ImageGenerationOptions,
   ImageGenerationResult,
 } from '../types';
+import { mediaFetchFor } from '../media-fetch';
 import { probeAuth } from '../probe-auth';
+import { assertNotRedirected } from '../redirect-guard';
+import { requireModel } from '../require-model';
 
-const DEFAULT_MODEL = 'qwen-image-max';
+const DEFAULT_MODEL = 'qwen-image-3.0';
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com';
 
 /**
@@ -42,7 +45,7 @@ export async function testQwenImageConnectivity(
   return probeAuth({
     providerName: 'Qwen Image',
     request: () =>
-      fetch(`${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`, {
+      mediaFetchFor(config)(`${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`, {
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -64,34 +67,40 @@ export async function generateWithQwenImage(
 ): Promise<ImageGenerationResult> {
   const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
 
-  const response = await fetch(`${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
+  const response = await mediaFetchFor(config)(
+    `${baseUrl}/api/v1/services/aigc/multimodal-generation/generation`,
+    {
+      method: 'POST',
+      redirect: 'manual',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: requireModel(config.model, 'Qwen Image'),
+        input: {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  text: options.prompt,
+                },
+              ],
+            },
+          ],
+        },
+        parameters: {
+          negative_prompt: options.negativePrompt || undefined,
+          prompt_extend: true,
+          watermark: false,
+          size: resolveDashScopeSize(options),
+        },
+      }),
     },
-    body: JSON.stringify({
-      model: config.model || DEFAULT_MODEL,
-      input: {
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                text: options.prompt,
-              },
-            ],
-          },
-        ],
-      },
-      parameters: {
-        negative_prompt: options.negativePrompt || undefined,
-        prompt_extend: true,
-        watermark: false,
-        size: resolveDashScopeSize(options),
-      },
-    }),
-  });
+  );
+
+  assertNotRedirected(response, 'Qwen Image');
 
   if (!response.ok) {
     const text = await response.text();

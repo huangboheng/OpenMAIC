@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import type { MediaGenerationRequest } from '@/lib/media/types';
-import { db } from '@/lib/utils/database';
+import { db } from '@/lib/device-storage/database';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('MediaGenerationStore');
@@ -34,6 +34,8 @@ export interface MediaTask {
   posterAssetId?: string; // Allocated poster identity used by late scene reconciliation
   error?: string;
   errorCode?: string; // Structured error code (e.g. 'CONTENT_SENSITIVE')
+  /** Whether Retry may be offered, when the producer of the task says (a generation run does). */
+  retryable?: boolean;
   retryCount: number;
   stageId: string;
 }
@@ -213,10 +215,18 @@ export const useMediaGenerationStore = create<MediaGenerationState>()((set, get)
             stageId,
           };
         } else {
-          // Re-wrap blob with stored mimeType — IndexedDB may drop Blob.type
-          const blob = rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType });
-          const objectUrl = URL.createObjectURL(blob);
-          const poster = rec.poster ? URL.createObjectURL(rec.poster) : undefined;
+          // Prefer a durable hosted URL when present; otherwise materialize
+          // the classic IndexedDB bytes as browser object URLs.
+          const objectUrl = rec.ossKey
+            ? rec.ossKey
+            : URL.createObjectURL(
+                rec.blob.type ? rec.blob : new Blob([rec.blob], { type: rec.mimeType }),
+              );
+          const poster = rec.posterOssKey
+            ? rec.posterOssKey
+            : rec.poster
+              ? URL.createObjectURL(rec.poster)
+              : undefined;
           restored[elementId] = {
             elementId,
             placeholderRef: rec.placeholderRef,

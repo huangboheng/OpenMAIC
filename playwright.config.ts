@@ -42,29 +42,23 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: process.env.CI ? 'pnpm build && pnpm start' : 'pnpm dev',
+    // In CI the production build runs as a dedicated workflow step before
+    // Playwright, so this only boots the already-built server (`pnpm start`).
+    // Locally we run the dev server.
+    command: process.env.CI ? 'pnpm start' : 'pnpm dev',
     url: 'http://localhost:3002/favicon.ico',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    // Enable the MAIC Editor (Pro mode) so editor e2e can reach it.
-    // These are build-time NEXT_PUBLIC_* flags, so they must be set when the
-    // webServer runs `pnpm build` (CI) or `pnpm dev` (local).
-    //
-    // NEXT_PUBLIC_BASE_PATH is forced empty so the e2e dev server is NOT
-    // mounted under /openmaic (the value .env.local uses for the Philochora
-    // reverse-proxy deployment). Tests navigate bare paths (/classroom/:id,
-    // /favicon.ico probe); a basePath would 404 every navigation. A real
-    // process env value (even '') takes precedence over .env.local.
-    //
-    // NODE_ENV must stay 'development': the Playwright runner injects
-    // NODE_ENV=test into the webServer process, which is never the intent for
-    // a dev server under test. (An earlier crash blamed Turbopack testMode;
-    // the real root cause was the session-secret mismatch above.)
+    // NEXT_PUBLIC_BASE_PATH is forced empty so the e2e server is NOT mounted
+    // under /openmaic. NODE_ENV stays 'development' locally because Playwright
+    // injects NODE_ENV=test into the webServer process.
     env: {
-      NODE_ENV: 'development',
+      ...(process.env.CI ? {} : { NODE_ENV: 'development' }),
       PORT: '3002',
       NEXT_PUBLIC_MAIC_EDITOR_ENABLED: 'true',
       NEXT_PUBLIC_BASE_PATH: '',
+      NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED: 'true',
+      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
     },
   },
 });

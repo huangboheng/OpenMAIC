@@ -14,6 +14,8 @@ export interface PDFProviderConfig {
   id: PDFProviderId;
   name: string;
   requiresApiKey: boolean;
+  /** Authenticates with a key pair (`credentials`) rather than one API key. */
+  requiresCredentials?: boolean;
   baseUrl?: string;
   icon?: string;
   features: string[]; // ['text', 'images', 'tables', 'formulas', 'layout-analysis', etc.]
@@ -35,6 +37,18 @@ export interface PDFParserConfig {
    * Off by default; enable only in a trusted server/dev/test context.
    */
   allowEnvFallback?: boolean;
+  /** Skip image extraction when the caller needs text only. */
+  textOnly?: boolean;
+  /**
+   * The base URL is server configuration, not caller input: it may reach a
+   * local network without ALLOW_LOCAL_NETWORKS (cloud metadata stays refused).
+   */
+  managed?: boolean;
+  /**
+   * The caller stopped waiting (a deleted material, a deadline, shutdown): the
+   * extractor aborts its requests, polls and commands and rejects.
+   */
+  signal?: AbortSignal;
 }
 
 // Note: ParsedPdfContent is imported from @/lib/types/pdf to avoid duplication

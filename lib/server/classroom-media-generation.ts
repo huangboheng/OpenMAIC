@@ -32,7 +32,7 @@ import {
 } from '@/lib/server/provider-config';
 import type { SceneOutline } from '@/lib/types/generation';
 import type { Scene } from '@/lib/types/stage';
-import type { SpeechAction } from '@/lib/types/action';
+import type { LegacySpeechAction, SpeechAction } from '@/lib/types/action';
 import type { ImageProviderId } from '@/lib/media/types';
 import type { VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId } from '@/lib/audio/types';
@@ -235,7 +235,7 @@ export interface TTSBackfillStats {
  * voice; uses the {voice} template URL only when the default voice exists.
  */
 function stampAudioFields(
-  speechAction: SpeechAction,
+  speechAction: LegacySpeechAction,
   baseAudioId: string,
   existingVoiceFiles: string[],
   baseUrl: string,

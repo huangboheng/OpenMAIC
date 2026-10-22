@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import type { StageMode } from '@/lib/types/stage';
 import { HeaderControls } from './stage/header-controls';
@@ -9,6 +10,11 @@ interface HeaderProps {
   readonly mode?: StageMode;
   readonly canEdit?: boolean;
   readonly onToggleEditMode?: () => void;
+  readonly proModeActive?: boolean;
+  readonly backControl?: ReactNode;
+  readonly hideBackControl?: boolean;
+  readonly hideGlobalControls?: boolean;
+  readonly hideCourseActions?: boolean;
 }
 
 export function Header({ currentSceneTitle, mode, canEdit, onToggleEditMode }: HeaderProps) {

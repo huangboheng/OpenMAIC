@@ -69,8 +69,18 @@ describe('generated JSON Schema — Stage', () => {
     const voiced = {
       ...agent,
       id: 'gen-2',
-      voiceConfig: { providerId: 'tts', voiceId: 'v1' },
+      voiceConfig: { providerId: 'tts', modelId: 'model-1', voiceId: 'v1' },
       voiceDesign: { identity: 'adult narrator', texture: 'low', delivery: 'calm' },
+    };
+    const gendered = {
+      ...agent,
+      id: 'gen-3',
+      voiceDesign: {
+        identity: '年轻女性学生',
+        texture: '清亮',
+        delivery: '轻快',
+        gender: 'female' as const,
+      },
     };
     expect(
       v({
@@ -78,7 +88,7 @@ describe('generated JSON Schema — Stage', () => {
         name: 'n',
         createdAt: 1,
         updatedAt: 2,
-        generatedAgentConfigs: [agent, voiced],
+        generatedAgentConfigs: [agent, voiced, gendered],
       }),
     ).toBe(true);
   });

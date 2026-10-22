@@ -2,6 +2,7 @@
 
 import { memo, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { answerIncludesOption } from '@/lib/quiz/grading';
 import {
   PieChart,
   CheckCircle2,
@@ -15,7 +16,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('QuizView');
@@ -97,14 +97,8 @@ async function gradeShortAnswerQuestion(
 ): Promise<QuestionResult> {
   const pts = q.points ?? 1;
   try {
-    const modelConfig = getCurrentModelConfig();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'x-model': modelConfig.modelString,
-      'x-api-key': modelConfig.apiKey,
-    };
-    if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
-    if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
+    // The server grades with the workspace's classroom model.
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 
     const res = await fetch('/api/quiz-grade', {
       method: 'POST',
@@ -248,7 +242,7 @@ function SingleChoiceQuestion({
       <div className="grid gap-2">
         {question.options?.map((opt) => {
           const selected = value === opt.value;
-          const isCorrectOpt = isReview && question.answer?.includes(opt.value);
+          const isCorrectOpt = isReview && answerIncludesOption(question, opt.value);
           const isWrong = isReview && selected && result?.status === 'incorrect';
 
           return (
@@ -358,7 +352,7 @@ function MultipleChoiceQuestion({
       <div className="grid gap-2">
         {question.options?.map((opt) => {
           const isSelected = selected.includes(opt.value);
-          const isCorrectOpt = isReview && question.answer?.includes(opt.value);
+          const isCorrectOpt = isReview && answerIncludesOption(question, opt.value);
           const isWrong = isReview && isSelected && !isCorrectOpt;
 
           return (

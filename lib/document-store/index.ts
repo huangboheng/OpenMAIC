@@ -23,12 +23,14 @@ export {
 } from './store';
 export {
   accessDocument,
+  canonicalizeLegacySnapshot,
   documentLockName,
   getLegacyDocumentStore,
   mutateDocument,
   withDocumentLock,
   DocumentLockUnavailableError,
   DocumentStorageGenerationChangedError,
+  type AssetRefConverter,
   type DocumentAccessResult,
   type DocumentMigrationDeps,
   type LegacyDocumentSnapshot,

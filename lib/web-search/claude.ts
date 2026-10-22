@@ -106,9 +106,10 @@ export async function searchWithClaude(params: {
   modelId?: string;
   baseUrl?: string;
   maxResults?: number;
+  signal?: AbortSignal;
 }): Promise<WebSearchResult> {
   const { query, maxResults } = params;
-  const modelId = params.modelId?.trim() || CLAUDE_WEB_SEARCH_DEFAULT_MODEL;
+  const modelId = params.modelId || CLAUDE_WEB_SEARCH_DEFAULT_MODEL;
   // Keys and URLs are pasted by hand into Settings; surrounding whitespace
   // would otherwise be sent verbatim and come back as "invalid x-api-key".
   const apiKey = params.apiKey.trim();
@@ -138,6 +139,7 @@ export async function searchWithClaude(params: {
         ],
         maxOutputTokens: CLAUDE_MAX_OUTPUT_TOKENS,
         tools: { web_search: webSearch },
+        ...(params.signal ? { abortSignal: params.signal } : {}),
       },
       'web-search-claude',
     );

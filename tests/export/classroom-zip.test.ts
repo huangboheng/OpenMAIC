@@ -28,15 +28,13 @@ describe('rewriteAudioRefsToIds', () => {
   });
 
   test('skips speech actions without audioRef', () => {
-    const actions = [
-      { id: 'a1', type: 'speech' as const, text: 'Hello', audioUrl: 'https://example.com/a.mp3' },
-    ];
+    const actions = [{ id: 'a1', type: 'speech' as const, text: 'Hello' }];
     const result = rewriteAudioRefsToIds(actions, {});
     expect(result[0]).toMatchObject({
       type: 'speech',
       text: 'Hello',
-      audioUrl: 'https://example.com/a.mp3',
     });
+    expect(result[0]).not.toHaveProperty('audioId');
   });
 
   test('replaces discussion agentIndex with imported agentId', () => {
@@ -111,22 +109,23 @@ describe('actionsToManifest', () => {
     expect(result[1]).toMatchObject({ type: 'spotlight', elementId: 'el1' });
   });
 
-  test('preserves audioUrl when audioId is absent', () => {
+  test('a speech action without audioId exports no audio reference at all', () => {
+    // audioUrl is gone from the contract: the manifest carries only the zip
+    // path reference (audioRef), never a raw URL.
     const actions = [
       {
         id: 'act1',
         type: 'speech' as const,
         text: 'Hi',
-        audioUrl: 'https://cdn.example.com/hi.mp3',
       } as SpeechAction,
     ];
     const result = actionsToManifest(actions, new Map());
     expect(result[0]).toMatchObject({
       type: 'speech',
       text: 'Hi',
-      audioUrl: 'https://cdn.example.com/hi.mp3',
     });
     expect(result[0]).not.toHaveProperty('audioRef');
+    expect(result[0]).not.toHaveProperty('audioUrl');
   });
 
   test('converts discussion agentId to agentIndex', () => {
@@ -253,7 +252,7 @@ describe('manifest round-trip', () => {
       avatar: '/avatars/teacher.png',
       color: '#3b82f6',
       priority: 10,
-      voiceConfig: { providerId: 'some-tts', voiceId: 'voice-1' },
+      voiceConfig: { providerId: 'some-tts', modelId: 'model-1', voiceId: 'voice-1' },
       voiceDesign: { identity: 'adult narrator', texture: 'low and clear', delivery: 'measured' },
     };
 
@@ -319,5 +318,36 @@ describe('manifest round-trip', () => {
 
     expect('voiceConfig' in imported).toBe(false);
     expect(imported.voiceDesign).toEqual({ identity: 'adult', texture: 'low', delivery: 'calm' });
+  });
+
+  test('a language-independent voiceDesign.gender survives export and import', () => {
+    const config: GeneratedAgentConfig = {
+      id: 'gen-original',
+      name: '小青',
+      role: 'student',
+      persona: '认真听课',
+      avatar: '/avatars/student.png',
+      color: '#ec4899',
+      priority: 5,
+      voiceDesign: {
+        identity: '年轻女性学生',
+        texture: '清亮',
+        delivery: '轻快',
+        gender: 'female',
+      },
+    };
+
+    const imported = agentConfigFromManifest(
+      JSON.parse(JSON.stringify(manifestAgentFromConfig(config))),
+      'gen-new',
+    );
+
+    expect(imported.voiceDesign).toEqual({
+      identity: '年轻女性学生',
+      texture: '清亮',
+      delivery: '轻快',
+      gender: 'female',
+    });
+    expect(imported.id).toBe('gen-new');
   });
 });

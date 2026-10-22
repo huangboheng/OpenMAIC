@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { PPTElement, PPTShapeElement, PPTTableElement, PPTTextElement } from '@openmaic/dsl';
+import { RENDER_PATH_LIMITS, shapeToTextFallback, validateShapeGeometry } from '@openmaic/geometry';
 
 import { SlideCanvas, useViewportSize } from '@openmaic/renderer';
 import { SelectionOverlay } from './handles/SelectionOverlay';
@@ -44,6 +45,26 @@ import { isSemanticallyEmptyText } from './text/richText';
 import { EDITOR_REACT_STYLES } from './styles';
 import type { TextEditorController } from './text/types';
 import { EMPTY_SELECTION, type EditableSlideCanvasProps } from './types';
+
+/** Match the renderer's recovery box without replacing the stored shape. */
+function projectInteractionElements(elements: PPTElement[]): PPTElement[] {
+  return elements.flatMap((element): PPTElement[] => {
+    if (element.type !== 'shape') return [element];
+    if (validateShapeGeometry(element, RENDER_PATH_LIMITS).ok) return [element];
+    const fallback = shapeToTextFallback(element);
+    if (!fallback) return [];
+    return [
+      {
+        ...element,
+        left: fallback.left,
+        top: fallback.top,
+        width: fallback.width,
+        height: fallback.height,
+        rotate: fallback.rotate,
+      },
+    ];
+  });
+}
 
 /**
  * EditableSlideCanvas — the renderer v2 editing surface. It renders the
@@ -101,6 +122,20 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
   } = props;
 
   const activeSelection = selection ?? EMPTY_SELECTION;
+  const sourceInteractionElements = useMemo(
+    () => projectInteractionElements(slide.elements),
+    [slide.elements],
+  );
+  const selectedElementId =
+    activeSelection.elementIds.length === 1 ? activeSelection.elementIds[0] : undefined;
+  // A historical shape may still render as text under the renderer's fallback,
+  // but changing its box or path would make the editor validate the malformed
+  // geometry and reject the commit. Do not preview gestures that cannot persist.
+  const selectedShapeGeometryWritable = useMemo(() => {
+    if (!selectedElementId) return true;
+    const selected = slide.elements.find((element) => element.id === selectedElementId);
+    return selected?.type !== 'shape' || validateShapeGeometry(selected).ok;
+  }, [selectedElementId, slide.elements]);
   const interactive = Boolean(onElementsChange || onSelectionChange);
   const textEditingEnabled = Boolean(onTextContentChange);
   const tableEditingEnabled = Boolean(onTableCellChange);
@@ -128,6 +163,9 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
       !element.lock &&
       !hiddenElementIds?.includes(element.id),
   )?.id;
+  const hasActiveEditor = Boolean(
+    activeEditingTextId || activeEditingShapeId || activeEditingTableId,
+  );
   const textControllerRef = useRef<TextEditorController | null>(null);
   const tableEditorRef = useRef<RendererTableEditorController | null>(null);
   const textAutoSizeRef = useRef<TextAutoSizeController | null>(null);
@@ -171,7 +209,13 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
 
   const handleTextClick = useCallback(
     (element: PPTElement, event: ReactPointerEvent) => {
-      if (!textEditingEnabled || element.type !== 'text' || element.lock) return;
+      if (
+        !textEditingEnabled ||
+        (element.type !== 'text' && element.type !== 'shape') ||
+        element.lock ||
+        (element.type === 'shape' && isSemanticallyEmptyText(element.text?.content ?? ''))
+      )
+        return;
       pendingTextFocusPointRef.current = {
         elementId: element.id,
         left: event.clientX,
@@ -253,6 +297,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
     onElementPointerDown,
   } = useEditGesture({
     slide,
+    interactionElements: sourceInteractionElements,
     scale: canvasScale,
     selection: activeSelection,
     snapping,
@@ -295,6 +340,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
     scale: canvasScale,
     snapping,
     shapePathFormulas,
+    selectedElementId: selectedElementId ?? null,
     onElementsChange,
   });
 
@@ -311,6 +357,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
   const { shapeKeypointDrag, onShapeKeypointPointerDown } = useShapeKeypointGesture({
     scale: canvasScale,
     shapePathFormulas,
+    selectedElementId: selectedElementId ?? null,
     onElementsChange,
   });
 
@@ -321,7 +368,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
   // hosts (`onSelectionChange` — see the surface comment below); the hook itself
   // also requires `onSelectionChange` to publish.
   const { marqueeRect, onCanvasPointerDown } = useMarqueeGesture({
-    slide,
+    slide: { ...slide, elements: sourceInteractionElements },
     scale: canvasScale,
     overlayRef,
     viewportStyles,
@@ -369,6 +416,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
     const hidden = new Set(hiddenElementIds);
     return displayElements.filter((element) => !hidden.has(element.id));
   }, [displayElements, hiddenElementIds]);
+  const interactionElements = useMemo(() => projectInteractionElements(elements), [elements]);
   const activeGuides = resizeDrag?.guides ?? dragGuides;
   // Touch suppression belongs to mutation gestures: select-only hosts keep
   // native touch panning, while tap-select still receives pointer events.
@@ -447,9 +495,15 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
     (element: PPTShapeElement, defaultContent: ReactNode) => {
       if (activeEditingShapeId !== element.id)
         return renderShapeLabel?.(element, defaultContent) ?? defaultContent;
+      const pendingFocusPoint = pendingTextFocusPointRef.current;
+      const initialFocusPoint =
+        pendingFocusPoint?.elementId === element.id
+          ? { left: pendingFocusPoint.left, top: pendingFocusPoint.top }
+          : undefined;
       return (
         <RendererShapeLabelEditor
           element={element}
+          initialFocusPoint={initialFocusPoint}
           onContentChange={onTextContentChange}
           onFormatChange={onTextFormatChange}
           onControllerChange={handleTextEditorChange}
@@ -520,7 +574,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
   const handleCanvasPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (creationActive) return;
-      if ((!activeEditingTextId && !activeEditingTableId) || event.button !== 0) return;
+      if (!hasActiveEditor || event.button !== 0) return;
       const target = event.target;
       if (
         target instanceof Element &&
@@ -532,7 +586,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
       }
       publishSelection(EMPTY_SELECTION);
     },
-    [activeEditingTableId, activeEditingTextId, creationActive, publishSelection],
+    [creationActive, hasActiveEditor, publishSelection],
   );
 
   return (
@@ -601,15 +655,14 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
               style={{
                 position: 'absolute',
                 inset: 0,
-                pointerEvents:
-                  activeEditingTextId || activeEditingTableId || creationActive ? 'none' : 'auto',
+                pointerEvents: hasActiveEditor || creationActive ? 'none' : 'auto',
                 touchAction: editingTouchAction,
               }}
             />
           )}
           <ElementInteractionLayer
-            elements={elements}
-            sourceElements={slide.elements}
+            elements={interactionElements}
+            sourceElements={sourceInteractionElements}
             selection={activeSelection}
             interactive={interactive && !creationActive}
             movable={Boolean(onElementsChange)}
@@ -641,7 +694,7 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
               case show NO handles — only the stroke highlight (feedback). */}
           {!creationActive &&
             Boolean(onElementsChange) &&
-            elements.map((el) => {
+            interactionElements.map((el) => {
               if (el.type !== 'line') return null;
               if (!activeSelection.elementIds.includes(el.id) || el.lock) return null;
               return (
@@ -673,10 +726,11 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
           {!creationActive &&
             Boolean(onElementsChange) &&
             activeSelection.elementIds.length === 1 &&
-            elements.map((el) => {
+            interactionElements.map((el) => {
               if (el.type === 'line') return null;
               if (!activeSelection.elementIds.includes(el.id) || el.lock) return null;
-              const handles = getResizeHandles(el);
+              const handles =
+                el.type === 'shape' && !selectedShapeGeometryWritable ? [] : getResizeHandles(el);
               const rotatable = canRotate(el);
               if (handles.length === 0 && !rotatable) return null;
               return (
@@ -705,8 +759,13 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
           {!creationActive &&
             Boolean(onElementsChange) &&
             activeSelection.elementIds.length === 1 &&
-            elements.map((el) => {
-              if (el.type !== 'shape' || !activeSelection.elementIds.includes(el.id)) return null;
+            interactionElements.map((el) => {
+              if (
+                el.type !== 'shape' ||
+                !activeSelection.elementIds.includes(el.id) ||
+                !selectedShapeGeometryWritable
+              )
+                return null;
               return (
                 <ShapeKeypointHandles
                   key={`shape-keypoints-${el.id}`}
@@ -817,7 +876,11 @@ export function EditableSlideCanvas(props: EditableSlideCanvasProps) {
               pointerEvents: 'none',
             }}
           >
-            <SelectionOverlay elements={elements} selection={activeSelection} scale={canvasScale} />
+            <SelectionOverlay
+              elements={interactionElements}
+              selection={activeSelection}
+              scale={canvasScale}
+            />
           </div>
         </div>
       </div>

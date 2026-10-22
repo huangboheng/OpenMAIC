@@ -18,6 +18,7 @@ import { SlideThumbnail } from '@/components/slide-renderer/SlideThumbnail';
 import { ThumbnailInteractive } from '@/components/slide-renderer/components/ThumbnailInteractive';
 import { useStageStore, useCanvasStore } from '@/lib/store';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import type { SceneType, SlideContent, InteractiveContent } from '@/lib/types/stage';
 import { PENDING_SCENE_ID } from '@/lib/store/stage';
 import { withBasePath } from '@/lib/utils/base-path';
@@ -46,6 +47,7 @@ export function SceneSidebar({
   const { scenes, currentSceneId, setCurrentSceneId, generatingOutlines, generationStatus } =
     useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
+  const generationInterrupted = useStageStore.use.generationInterrupted();
   const viewportSize = useCanvasStore.use.viewportSize();
   const viewportRatio = useCanvasStore.use.viewportRatio();
 
@@ -203,7 +205,7 @@ export function SceneSidebar({
                 <div className="relative aspect-video w-full rounded overflow-hidden bg-gray-100 dark:bg-gray-800 ring-1 ring-black/5 dark:ring-white/5">
                   <div className="absolute inset-0 flex items-center justify-center">
                     {isSlide && slideContent ? (
-                      <SlideThumbnail
+                      <LazySlideThumbnail
                         slide={slideContent.canvas}
                         sceneId={scene.id}
                         viewportSize={viewportSize}
@@ -341,7 +343,8 @@ export function SceneSidebar({
           {generatingOutlines.length > 0 &&
             (() => {
               const outline = generatingOutlines[0];
-              const isFailed = failedOutlines.some((f) => f.id === outline.id);
+              const isFailed =
+                generationInterrupted || failedOutlines.some((f) => f.id === outline.id);
               const isRetrying = retryingOutlineId === outline.id;
               const isPaused = generationStatus === 'paused';
               const isActive = currentSceneId === PENDING_SCENE_ID;
@@ -408,7 +411,7 @@ export function SceneSidebar({
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
                       {isFailed ? (
                         <div className="flex items-center gap-1 text-xs font-medium text-red-500/90 dark:text-red-400">
-                          {onRetryOutline ? (
+                          {onRetryOutline && !generationInterrupted ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -428,7 +431,9 @@ export function SceneSidebar({
                           <span>
                             {isRetrying
                               ? t('generation.retryingScene')
-                              : t('stage.generationFailed')}
+                              : generationInterrupted
+                                ? t('stage.generationInterrupted')
+                                : t('stage.generationFailed')}
                           </span>
                         </div>
                       ) : (
@@ -556,6 +561,42 @@ export function SceneSidebar({
         {/* Spacer to push toggle button area */}
         <div className="mt-auto" />
       </div>
+    </div>
+  );
+}
+
+/**
+ * Viewport-gated slide thumbnail for the playback sidebar. Scenes far outside
+ * the viewport render SlideThumbnail's cheap placeholder instead of a full
+ * SlideCanvas — which also spares every off-screen video element its
+ * `preload="metadata"` fetch when the classroom opens. The placeholder keeps
+ * the same box size, so gating never shifts layout.
+ */
+function LazySlideThumbnail({
+  slide,
+  sceneId,
+  viewportSize,
+  viewportRatio,
+  size,
+}: {
+  readonly slide: SlideContent['canvas'];
+  readonly sceneId: string;
+  readonly viewportSize: number;
+  readonly viewportRatio: number;
+  readonly size: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const visible = useNearViewport(ref);
+  return (
+    <div ref={ref} className="flex h-full w-full items-center justify-center">
+      <SlideThumbnail
+        slide={slide}
+        sceneId={sceneId}
+        viewportSize={viewportSize}
+        viewportRatio={viewportRatio}
+        size={size}
+        visible={visible}
+      />
     </div>
   );
 }

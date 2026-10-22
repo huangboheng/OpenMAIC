@@ -829,7 +829,7 @@ describe('fetchServerProviders — TTS stale selection', () => {
     // 持久化状态：provider 已是服务端托管的 minimax-tts，但 voice 是从未被
     // 解析过的初始值 'default'（非 minimax 真实音色）。
     storage.set(
-      'settings-storage',
+      SETTINGS_KV_KEY,
       JSON.stringify({
         version: 4,
         state: {

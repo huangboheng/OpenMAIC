@@ -10,9 +10,11 @@
 
 结论：落后 260 个提交与两个大版本；直接合并将产生 57 处冲突文件；上游 4 项破坏性重构中有 3 项正面取代了本仓的自有实现。
 
+> 2026-10-22 更新：本文记录的同步动作已执行，最新基线为上游 `e19ed13f`（v1.2.1）、314 个提交、60 处冲突。执行过程、验证与遗留风险见 `10 合并执行记录`；第 3–8 节的数字保留为 2026-10-11 的决策基线。
+
 读者：需要在「同步上游 / 继续自研」之间做取舍的人，以及几周后回来复核数字是否仍然成立的维护者。
 
-一级章节按读者的提问顺序切分：`3 结论` → `4 差了多少` → `5/6/7 差在哪`（依次按上游侧、本仓侧、两侧交集三个归属面）→ `8 要不要补`。`9 参考 / 引用` 与 `10 修订历史` 是固定槽位。
+一级章节按读者的提问顺序切分：`3 结论` → `4 差了多少` → `5/6/7 差在哪`（依次按上游侧、本仓侧、两侧交集三个归属面）→ `8 要不要补` → `9 参考 / 引用` → `10 合并执行记录` → `11 修订历史`。`9` 与 `11` 是固定槽位，`10` 是本次执行的追加记录。
 
 ## 2 目录
 
@@ -42,7 +44,13 @@
   - 9.1 复现命令
   - 9.2 数据口径与取证日期
   - 9.3 未验证项
-- 10 修订历史
+- 10 合并执行记录（2026-10-22）
+  - 10.1 基线与冲突
+  - 10.2 解决原则
+  - 10.3 兼容层与拆分
+  - 10.4 验证
+  - 10.5 遗留风险
+- 11 修订历史
 
 ## 3 结论：落后 260 个提交、两个大版本，直接合并撞 57 处冲突
 
@@ -289,8 +297,61 @@
 | `#1007` 资产池各分片的落地顺序与依赖 | 未逐条核对，仅确认 `packages/@openmaic/storage` 的字节存储抽象存在且版本从 0.2.5 跃至 0.37.3 |
 | 上游 `fix` 提交中哪些确切覆盖了本仓的对应补丁 | **未验证**——`8` 未给结论；真要同步时必须逐个比对 diff，不能凭 scope 与标题相似就判定可丢弃 |
 
-## 10 修订历史
+## 10 合并执行记录（2026-10-22）
+
+本节记录 `custom-main` 实际同步上游 `v1.2.1` 的执行结果，不替代前述差异分析与路线评估。
+
+### 10.1 基线与冲突
+
+| 项 | 值 |
+|---|---|
+| 上游基线 | `upstream/main` = `e19ed13f`（v1.2.1，2026-10-22 fetch） |
+| 本仓基线 | `custom-main` = `a3c96d53` |
+| 提交差 | 落后 314 个提交，领先 106 个私有提交 |
+| 干跑冲突 | 60 个文件 = 49 个内容冲突 + 11 个修改/删除冲突 |
+| 合并落点 | 独立分支 `merge/upstream-1.2.1`，worktree `.worktrees/upstream-1.2.1` |
+
+### 10.2 解决原则
+
+1. **生成主链路保留本仓实现**：`app/page.tsx` → `app/generation-preview/page.tsx` → `app/classroom/[id]/page.tsx` 三页与 `classroom-generation` / `classroom-job-runner` / `classroom-media-generation` / `use-scene-generator` / `media-popover` 继续作为默认链路；上游新的 `/api/generation-runs`、`/workbench`、`ClassroomSurface` 并列保留，不接入本仓默认入口。
+2. **边缘路由保留 `proxy.ts`**：`middleware.ts` 保持删除；上游针对 middleware 的测试改为直接测试 `@/proxy`。
+3. **本地能力全部保留**：TTS 预生成/回填、导师音色切换、连续学习、Philochora 回调、自有 OAuth、访问码、隐藏设置入口、密钥审计、多 key 轮询、basePath 静态资源、部署脚本。
+4. **服务端配置采用上游**：`lib/server/provider-config.ts` 以上游 v1.2.1 为基线，回放本仓多 key 轮询、密钥访问审计与 `isServerLLMConfigured`。
+5. **设置 store 保留本仓客户端配置**：继续以本仓 2139 行 store 管理 provider/key/model；补上游 `getValidASRLanguage`、`ttsVoiceProviderId` 与 `legacyModelSettings` 兼容字段。
+6. **AudioPlayer 双兼容**：保留上游共享 audio element、legacy URL 拉取与 abort，同时保留本仓 `{voice}` 模板、当前音色→默认音色→IndexedDB 的回退链。
+
+### 10.3 兼容层与拆分
+
+| 变更 | 目的 |
+|---|---|
+| 恢复 `classroom-generation`、`classroom-job-runner`、`classroom-job-store`、`classroom-media-generation`、`use-scene-generator`、`scene-generation`、`regen-lock`、`utils/database`、`utils/model-config`、`settings-validation`、`image-storage`、`use-draft-cache`、`pbl-fallback-hydration` 等本仓模块 | 上游删除但本仓生成链路仍依赖 |
+| `lib/media/client-media-generation.ts` | 本仓客户端媒体生成与上游 `retryMediaTask` 分文件并存，`media-orchestrator` 只再导出前者 |
+| `lib/utils/normalize-media-urls.ts` | 从 `load-classroom` 拆出，避免 stage store 因导入该工具而拉起整条加载链路 |
+| stage store 兼容 actions | 补 `generationEpoch`、`setGeneratingOutlines`、`setGenerationStatus`、`addFailedOutline`、`markGenerationCompleteIfDone` 等旧链路 API |
+| asset-pool 兼容 | 新存储无 in-place replace，`replaceAsset` 以 remove + put 模拟；`removeAsset` 直连池 |
+| `model-routes` 兼容 | 新增 `generate-classroom` stage 映射到 `classroom` slot；`getStageModel` 返回 `undefined`（上游已移除 `MODEL_ROUTES`） |
+
+### 10.4 验证
+
+| 检查 | 结果 |
+|---|---|
+| `pnpm exec tsc -p tsconfig.json --noEmit` | 0 errors |
+| `pnpm exec tsc -p tsconfig.build.json --noEmit` | 0 errors |
+| `pnpm build` | 通过（Next.js 16.3.3，生成 `BUILD_ID`） |
+| `vitest run tests/audio tests/classroom tests/store tests/hooks --no-file-parallelism` | 84 个文件 / 873 项通过 |
+| `gitnexus detect_changes scope=all` | `risk_level: critical`，6825 symbols / 2553 files / 678 processes（整仓同步的预期结果） |
+
+### 10.5 遗留风险
+
+1. **双生成管线并存**：本仓默认入口走客户端旧链路，上游新链路（generation-runs、workbench、ClassroomSurface、server-first 持久化）已入库但未接入默认 UI；后续若切换入口需单独迁移 TTS/质量校验等挂载点。
+2. **设置权威双轨**：客户端 settings store 与服务端 `/api/model-config` 同时存在；上游新的模型服务 UI 与本仓 provider 配置 UI 的边界需在后续迭代收敛。
+3. **`replaceAsset` 语义变化**：服务端资产池不支持原地替换，现以 remove + put 模拟；旧客户端 TTS 再生成若依赖稳定 id，需在运行时验证。
+4. **未做浏览器/E2E 冒烟**：本轮验证到 build + 单元测试；课堂播放、语音切换、连续学习回调的端到端行为尚未在浏览器中实测。
+5. **移除了 3 个上游测试**：`course-materials.test.ts`、`owner-generation-gate.test.ts`、`settings-model-settings-migration.test.ts` 分别断言本仓未采用的工具栏、课堂页与 v5 设置迁移；保留会造成与既定架构冲突，后续如需采用对应上游能力应连同测试恢复。
+
+## 11 修订历史
 
 | 版本 | 日期 | 改动 |
 |------|------|------|
 | v1.0.0 | 2026-10-11 | 首版。基于 `upstream/main` = `7d324aa8` 与 `custom-main` = `482c17a0` 的差异对比，记录分叉规模、上游四项破坏性重构与旧→新路径映射、本仓私有能力与 308 个可整体存活文件、`merge-tree` 干跑得知的 57 处冲突构成、8 处死 import、三组正面撕裂，以及三条同步路线的成本评估（本轮不执行）。所有数字附复现命令与取证日期，4 条断言显式标为未验证 |
+| v1.1.0 | 2026-10-22 | 追加第 11 节合并执行记录：上游基线推进到 `e19ed13f`（v1.2.1），314 提交/60 冲突，记录独立集成分支、六条解决原则、兼容层拆分、tsc/build/873 项单测结果与五条遗留风险 |

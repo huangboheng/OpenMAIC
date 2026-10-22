@@ -422,7 +422,12 @@ export async function generateClassroom(
   // Web search (optional, graceful degradation)
   let researchContext: string | undefined;
   if (input.enableWebSearch) {
-    const webSearchConfig = resolveClassroomWebSearchConfig(input);
+    const webSearchConfig = await resolveClassroomWebSearchConfig(null, {
+      webSearchProviderId: input.webSearchProviderId,
+      webSearchApiKey: input.webSearchApiKey,
+      webSearchModelId: input.webSearchModelId,
+      baiduSubSources: input.baiduSubSources,
+    });
     if (webSearchConfig) {
       // Re-resolve the query-rewrite model only when explicitly routed. If
       // resolution itself fails (e.g. unknown provider in the route), fall back

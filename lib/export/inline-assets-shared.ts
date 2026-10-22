@@ -4,11 +4,18 @@ export interface InlineReport {
 }
 
 export interface InlineOptions {
+  /** Deployment origin for resolving self-hosted interactive libraries outside a browser. */
+  baseUrl?: string;
   fetchImpl?: typeof fetch;
   maxAssetBytes?: number;
   fetcher?: FetchAsset;
   /** Keep original remote import-map entries as an online fallback. Default true. */
   keepImportmapFallbacks?: boolean;
+  /**
+   * Leave audio and video sources (`<video src>`, `<audio src>` and their
+   * `<source src>` children) unfetched, for exports that carry no media.
+   */
+  skipMedia?: boolean;
 }
 
 export type FetchAsset = (

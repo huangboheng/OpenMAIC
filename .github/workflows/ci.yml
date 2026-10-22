@@ -6,15 +6,23 @@ on:
     # only ever proves one part merged into the branch, so without a push
     # trigger the accumulated state of the branch that eventually reaches main
     # is never built on its own.
-    branches: [main, integration/kv-asset-server-backend]
+    branches:
+      [
+        main,
+        integration/kv-asset-server-backend,
+        integration/agent-workbench,
+        integration/material-library,
+        integration/workbench-home,
+      ]
   pull_request:
     branches:
       [
         main,
-        feat/maic-editor-v0,
-        feat/maic-editor-v1,
         runtime-server-backend,
         integration/kv-asset-server-backend,
+        integration/agent-workbench,
+        integration/material-library,
+        integration/workbench-home,
       ]
 
 concurrency:
@@ -25,17 +33,47 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  issue-triage:
+    name: Issue Triage (offline contracts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: node --test .github/scripts/issue-triage.test.mjs
+
   check:
     name: Lint, Typecheck & Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      # Cheap bash-only check so a broken helper fails before pnpm install.
+      # Quiet annotations: the expected-failure case would otherwise paint
+      # the check with a fake ::error::.
+      - name: Parallel runner self-test
+        env:
+          CI_PARALLEL_ANNOTATE: '0'
+        run: |
+          set -euo pipefail
+          scripts/ci-run-parallel.sh ok 'true' ok2 'true'
+          if scripts/ci-run-parallel.sh ok 'true' bad 'exit 7'; then
+            echo 'ci-run-parallel.sh should have failed'
+            exit 1
+          fi
 
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -51,7 +89,7 @@ jobs:
       # once, so the previous commit is not the range that needs checking, and
       # publishing requires this run to be green.
       - name: Package version bumps (main push)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           base="$BEFORE_SHA"
@@ -84,6 +122,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Root proxy integration tests load current and historical render-service
+      # sources. They need the standalone service's Node dependencies as well.
+      - name: Install render-service test dependencies
+        working-directory: render-service
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: npm ci
+
+      - name: Node engine contract
+        run: pnpm check:node-engine
+
       # `postinstall` builds all five @openmaic packages, and some of them
       # generate tracked, publishable files (renderer's fonts.css and its KaTeX
       # font snapshot). The publish workflow refuses to release when the build
@@ -111,26 +160,36 @@ jobs:
           fi
           echo "Tracked package files match the commit under test."
 
-      - name: Prettier
-        run: pnpm check
+      # These four do not share state. Sequential they were ~2 minutes; the
+      # slowest (ESLint) is the new bound.
+      - name: Prettier, ESLint, TypeScript, i18n
+        run: |
+          scripts/ci-run-parallel.sh \
+            'prettier' 'pnpm check' \
+            'eslint' 'pnpm lint' \
+            'tsc' 'npx tsc --noEmit' \
+            'i18n' 'pnpm check:i18n-keys'
 
-      - name: ESLint
-        run: pnpm lint
-
-      - name: TypeScript
-        run: npx tsc --noEmit
-
-      - name: i18n Key Alignment
-        run: pnpm check:i18n-keys
-
+      # Keep these sequential. Running root vitest alongside the storage
+      # package on a 4-core runner made 5s-timeout tests flake (CPU
+      # contention, not a product regression).
       - name: Unit Tests
         run: pnpm test
 
       - name: Unit Tests (importer)
         run: pnpm --filter @openmaic/importer test
 
+      - name: Unit Tests (geometry)
+        run: pnpm --filter @openmaic/geometry test
+
       - name: Unit Tests (dsl)
         run: pnpm --filter @openmaic/dsl test
+
+      - name: Unit Tests (renderer)
+        run: pnpm --filter @openmaic/renderer test
+
+      - name: Unit Tests (editor)
+        run: pnpm --filter @openmaic/editor test
 
       - name: TypeScript (generation)
         run: pnpm --filter @openmaic/generation run typecheck
@@ -179,15 +238,16 @@ jobs:
   render-service:
     name: Render Service (typecheck + tests)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # The producer dep bundles puppeteer; skip its Chromium download — the unit
     # tests exercise the service's boundaries (unzip, admission, body caps) and
     # never launch a browser.
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           # render-service is its own npm package (own lockfile, Node-only deps),
@@ -214,20 +274,64 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The app stores every course in PostgreSQL and refuses to start without
+    # DATABASE_URL, so the browser suite runs against a real database; specs
+    # seed their courses through the app's own persistence endpoint.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: openmaic
+          POSTGRES_USER: openmaic
+          POSTGRES_PASSWORD: openmaic-e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openmaic -d openmaic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://openmaic:openmaic-e2e@localhost:5432/openmaic
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Install Playwright browsers
-        run: pnpm exec playwright install chromium --with-deps
+      # Browser tarballs live under ~/.cache/ms-playwright. A cold download of
+      # Chromium from the Playwright CDN has sat for 20+ minutes on this runner
+      # fleet; a lockfile-keyed cache turns that into a restore.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
+      # Browser tarball only. `install-deps` talks to Ubuntu apt; on this
+      # runner fleet that mirror has sat through the whole 15-minute job
+      # budget. ubuntu-latest already ships the libraries Chromium needs.
+      # Bound the Microsoft CDN download so a stall retries instead of hanging.
+      - name: Install Playwright Chromium
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if timeout -k 10 240 pnpm exec playwright install chromium; then
+              exit 0
+            fi
+            echo "Playwright Chromium download attempt ${attempt} failed, retrying..."
+            sleep 5
+          done
+          echo "::error::Playwright Chromium download failed after 3 attempts."
+          exit 1
 
       # Measures the emitted cover cards in Chromium. Lives with the unit tests
       # (it needs the compiler), but only this job has a browser, so it runs
@@ -238,7 +342,10 @@ jobs:
           COVER_LAYOUT_BROWSER: '1'
 
       - name: Interactive static HTML Chromium smoke
-        run: pnpm exec vitest run tests/video-export/interactive-static-html.browser.test.ts
+        run: >-
+          pnpm exec vitest run
+          tests/video-export/interactive-static-html.browser.test.ts
+          tests/video-export/interactive-self-hosted.browser.test.ts
         env:
           INTERACTIVE_STATIC_BROWSER: '1'
 
@@ -274,12 +381,87 @@ jobs:
             fi
           done
 
+      # Incremental compilation artifacts only. Keyed on the lockfile plus
+      # next.config.ts so a dependency or webpack-rule change misses; source
+      # edits still reuse the restore-key prefix.
+      - name: Cache Next.js build
+        uses: actions/cache@v6
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('next.config.ts') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      # Dedicated so a cold `next build` is not charged against Playwright's
+      # webServer readiness budget (120s). NEXT_PUBLIC_MAIC_EDITOR_ENABLED is a
+      # build-time flag and must be set here, not only on `pnpm start`.
+      - name: Build
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_MAIC_EDITOR_ENABLED: 'true'
+          NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED: 'true'
+
       - name: Run e2e tests
         run: pnpm exec playwright test
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  docker-main-image:
+    name: Main image (deps + builder)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # The main Dockerfile was never built in CI, so an install step that no
+    # longer fits in a small Docker VM (#1526) or fails on the host's mounts
+    # (#1506) only surfaced on users' machines. Build the deps and builder
+    # stages whenever an input to them changes; the runner stage only copies
+    # their outputs.
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect main-image changes
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then base="$PR_BASE"; else base="$PUSH_BEFORE"; fi
+          if [ -z "$base" ] || ! git rev-parse --verify --quiet "$base^{commit}" >/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The builder stage copies the whole context (`COPY . .`), so almost any
+          # file is an image input. Skip only when every changed file is docs.
+          changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '(^docs/|\.md$)'; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Only documentation changed; skipping the image build."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Buildx
+        if: steps.changes.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      # target=builder builds deps as well (COPY --from=deps), which is where
+      # the install and the package builds run.
+      - name: Build deps + builder stages
+        if: steps.changes.outputs.changed == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: builder
+          push: false
+          load: false
+          cache-from: type=gha,scope=openmaic-main-image
+          cache-to: type=gha,scope=openmaic-main-image,mode=max

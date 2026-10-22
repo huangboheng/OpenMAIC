@@ -11,6 +11,7 @@ import type {
   RenderJobRecord,
 } from '../src/types.js';
 import { createMemoryArtifactStore, createMemoryJobStore } from './support/fakes.js';
+import { owner, submitRender } from './support/identities.js';
 
 const scratch: string[] = [];
 
@@ -50,6 +51,22 @@ async function waitForJob(
   throw new Error(`Timed out waiting for job ${id}`);
 }
 
+/**
+ * Project cleanup runs after the job reaches its terminal status, so a bare
+ * `access` right after `waitForJob` races the removal.
+ */
+async function waitForCleanup(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      await access(path);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(`Timed out waiting for ${path} to be removed`);
+}
+
 const renderOptions = { fps: 30, quality: 'standard', format: 'mp4' } as const;
 
 describe('RenderCoordinator through the RenderExecutor seam', () => {
@@ -76,7 +93,7 @@ describe('RenderCoordinator through the RenderExecutor seam', () => {
       jobDeadlineMs: 12_345,
     });
     const dir = await projectDir();
-    const id = await coordinator.submit(coordinator.reserve('alice'), dir, renderOptions);
+    const id = await submitRender(coordinator, 'alice', dir, renderOptions);
 
     const job = await waitForJob(jobs, id, (current) => current.status === 'succeeded');
     expect(executor.requests).toHaveLength(1);
@@ -108,13 +125,37 @@ describe('RenderCoordinator through the RenderExecutor seam', () => {
     );
     const coordinator = new RenderCoordinator(executor, jobs, artifacts.store);
     const dir = await projectDir();
-    const id = await coordinator.submit(coordinator.reserve('bob'), dir, renderOptions);
+    const id = await submitRender(coordinator, 'bob', dir, renderOptions);
     await waitForJob(jobs, id, () => executor.requests.length === 1);
 
-    expect(await coordinator.cancel(id)).toBe(true);
+    expect(await coordinator.cancelForOwner(id, owner('bob'))).toBe(true);
     const job = await waitForJob(jobs, id, (current) => current.status === 'cancelled');
     expect(job.failure).toEqual({ code: 'cancelled', message: 'Render cancelled' });
-    await expect(access(dir)).rejects.toThrow();
+    await waitForCleanup(dir);
+  });
+
+  it('keeps default-executor late success cancellable when no publication was committed', async () => {
+    const jobs = createMemoryJobStore();
+    const artifacts = createMemoryArtifactStore();
+    let settle!: (result: RenderExecutionResult) => void;
+    const executor = new FakeExecutor(
+      () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    );
+    const coordinator = new RenderCoordinator(executor, jobs, artifacts.store);
+    const dir = await projectDir();
+    const id = await submitRender(coordinator, 'late-default', dir, renderOptions);
+    await waitForJob(jobs, id, () => executor.requests.length === 1);
+
+    expect(await coordinator.cancelForOwner(id, owner('late-default'))).toBe(true);
+    settle({ status: 'succeeded' });
+
+    const job = await waitForJob(jobs, id, (current) => current.status === 'cancelled');
+    expect(job.failure).toEqual({ code: 'cancelled', message: 'Render cancelled' });
+    expect(artifacts.paths.has(id)).toBe(false);
+    await waitForCleanup(dir);
   });
 
   it('keeps deadline failure classification from a replaceable executor', async () => {
@@ -128,7 +169,7 @@ describe('RenderCoordinator through the RenderExecutor seam', () => {
       jobDeadlineMs: 42,
     });
     const dir = await projectDir();
-    const id = await coordinator.submit(coordinator.reserve('carol'), dir, renderOptions);
+    const id = await submitRender(coordinator, 'carol', dir, renderOptions);
 
     const job = await waitForJob(jobs, id, (current) => current.status === 'failed');
     expect(executor.requests[0].deadlineMs).toBe(42);
@@ -138,7 +179,7 @@ describe('RenderCoordinator through the RenderExecutor seam', () => {
       failure: { code: 'deadline_exceeded' },
     });
     expect(artifacts.paths.has(id)).toBe(false);
-    await expect(access(dir)).rejects.toThrow();
+    await waitForCleanup(dir);
   });
 
   it('classifies unexpected executor errors and still performs cleanup', async () => {
@@ -149,13 +190,13 @@ describe('RenderCoordinator through the RenderExecutor seam', () => {
     });
     const coordinator = new RenderCoordinator(executor, jobs, artifacts.store);
     const dir = await projectDir();
-    const id = await coordinator.submit(coordinator.reserve('dana'), dir, renderOptions);
+    const id = await submitRender(coordinator, 'dana', dir, renderOptions);
 
     const job = await waitForJob(jobs, id, (current) => current.status === 'failed');
     expect(job).toMatchObject({
       error: 'executor unavailable',
       failure: { code: 'execution_failed', message: 'executor unavailable' },
     });
-    await expect(access(dir)).rejects.toThrow();
+    await waitForCleanup(dir);
   });
 });

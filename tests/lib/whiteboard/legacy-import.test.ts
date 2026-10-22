@@ -133,6 +133,27 @@ describe('dormant Legacy whiteboard import seam', () => {
     expect((await service.read('stage-1')).whiteboard?.id).toBe('legacy-board');
   });
 
+  it('imports an inverted legacy viewportRatio as 9/16 (height/width)', async () => {
+    const { service } = harness();
+    const run = createLegacyWhiteboardImporterForTests({
+      service,
+      provenanceEligible: () => true,
+      loadDocument: async () =>
+        document([
+          {
+            id: 'legacy-board',
+            viewportSize: 1000,
+            viewportRatio: 16 / 9,
+            elements: [],
+          },
+        ]),
+    });
+    await expect(run('stage-1')).resolves.toMatchObject({ status: 'imported' });
+    // The old stage API wrote the 16:9 landscape as width/height; the import
+    // must project the sheet at 9/16 so it renders 1000 x 562.5, not portrait.
+    expect((await service.read('stage-1')).whiteboard?.viewportRatio).toBe(9 / 16);
+  });
+
   it('reports exact replay when commit response loss is followed by one failed recovery read', async () => {
     const backing = new BrowserRuntimeStore({
       indexedDB: new IDBFactory(),
@@ -397,15 +418,8 @@ describe('dormant Legacy whiteboard import seam', () => {
     expect((await service.read('stage-1')).whiteboard?.id).toBe('runtime-winner');
   });
 
-  it('disables automatic import whenever server persistence is requested', () => {
-    const previous = process.env.NEXT_PUBLIC_PERSISTENCE;
-    process.env.NEXT_PUBLIC_PERSISTENCE = '1';
-    try {
-      expect(isLegacyWhiteboardAutoImportEligible()).toBe(false);
-    } finally {
-      if (previous === undefined) delete process.env.NEXT_PUBLIC_PERSISTENCE;
-      else process.env.NEXT_PUBLIC_PERSISTENCE = previous;
-    }
+  it('never imports automatically: documents and runtime always live on the server', () => {
+    expect(isLegacyWhiteboardAutoImportEligible()).toBe(false);
   });
 
   it('disables automatic import for any explicit storage configuration', () => {

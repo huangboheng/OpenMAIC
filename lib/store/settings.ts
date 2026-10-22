@@ -19,7 +19,12 @@ import type { TTSProviderId, ASRProviderId, BuiltInTTSProviderId } from '@/lib/a
 import type { AgentVoiceOverride } from '@/lib/audio/voice-resolver';
 import { getServerVoiceList } from '@/lib/audio/voice-resolver';
 import { isCustomTTSProvider, isCustomASRProvider } from '@/lib/audio/types';
-import { ASR_PROVIDERS, DEFAULT_TTS_VOICES, TTS_PROVIDERS } from '@/lib/audio/constants';
+import {
+  ASR_PROVIDERS,
+  CUSTOM_ASR_DEFAULT_LANGUAGES,
+  DEFAULT_TTS_VOICES,
+  TTS_PROVIDERS,
+} from '@/lib/audio/constants';
 import { DEFAULT_VOXCPM_BACKEND, VOXCPM_MODEL_ID, VOXCPM_VLLM_MODEL_ID } from '@/lib/audio/voxcpm';
 import { PDF_PROVIDERS } from '@/lib/pdf/constants';
 import type { PDFProviderId } from '@/lib/pdf/types';
@@ -72,6 +77,28 @@ function pruneThinkingConfigs(
 export const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 2] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 
+/**
+ * Validate and resolve ASR language for a given provider.
+ * Keeps current language if supported by the provider, otherwise falls back
+ * to the provider's default supported language (or 'auto').
+ */
+export function getValidASRLanguage(providerId: ASRProviderId, currentLanguage?: string): string {
+  if (!providerId || typeof providerId !== 'string') return 'auto';
+  let supportedLanguages: readonly string[];
+  if (isCustomASRProvider(providerId)) {
+    supportedLanguages = CUSTOM_ASR_DEFAULT_LANGUAGES;
+  } else {
+    supportedLanguages =
+      ASR_PROVIDERS[providerId as keyof typeof ASR_PROVIDERS]?.supportedLanguages || [];
+  }
+  const isLanguageValid = Boolean(
+    typeof currentLanguage === 'string' &&
+      currentLanguage &&
+      supportedLanguages.includes(currentLanguage),
+  );
+  return isLanguageValid && currentLanguage ? currentLanguage : supportedLanguages[0] || 'auto';
+}
+
 export interface SettingsState {
   // Model selection
   providerId: ProviderId;
@@ -86,6 +113,10 @@ export interface SettingsState {
 
   // Audio settings (new unified audio configuration)
   ttsProviderId: TTSProviderId;
+  /** The provider the selected narration voice belongs to (upstream alias). */
+  ttsVoiceProviderId: TTSProviderId;
+  /** Legacy model settings kept by the upstream v5 migration (compat). */
+  legacyModelSettings?: Record<string, unknown>;
   ttsVoice: string;
   ttsSpeed: number;
   asrProviderId: ASRProviderId;
@@ -278,7 +309,7 @@ export interface SettingsState {
 
   // Audio actions
   setTTSProvider: (providerId: TTSProviderId) => void;
-  setTTSVoice: (voice: string) => void;
+  setTTSVoice: (voice: string, providerId?: TTSProviderId) => void;
   setTTSSpeed: (speed: number) => void;
   setASRProvider: (providerId: ASRProviderId) => void;
   setASRLanguage: (language: string) => void;
@@ -470,6 +501,7 @@ function isUsableMediaProvider(
 // Initialize default audio config
 const getDefaultAudioConfig = () => ({
   ttsProviderId: 'browser-native-tts' as TTSProviderId,
+  ttsVoiceProviderId: 'browser-native-tts' as TTSProviderId,
   ttsVoice: 'default',
   ttsSpeed: 1.0,
   asrProviderId: 'browser-native' as ASRProviderId,
@@ -481,6 +513,7 @@ const getDefaultAudioConfig = () => ({
     // by a stale default (#665).
     'openai-tts': { apiKey: '', baseUrl: '', enabled: true },
     'azure-tts': { apiKey: '', baseUrl: '', enabled: true },
+    'google-tts': { apiKey: '', baseUrl: '', enabled: true },
     'glm-tts': { apiKey: '', baseUrl: '', enabled: true },
     'qwen-tts': { apiKey: '', baseUrl: '', enabled: true },
     'voxcpm-tts': {
@@ -563,6 +596,7 @@ const getDefaultVideoConfig = () => ({
     sora: { apiKey: '', baseUrl: '', enabled: false },
     'minimax-video': { apiKey: '', baseUrl: '', enabled: false },
     'grok-video': { apiKey: '', baseUrl: '', enabled: false },
+    'openrouter-video': { apiKey: '', baseUrl: '', enabled: false },
     happyhorse: { apiKey: '', baseUrl: '', enabled: false },
   } as Record<VideoProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
@@ -1041,11 +1075,18 @@ export const useSettingsStore = create<SettingsState>()(
               : DEFAULT_TTS_VOICES[providerId as BuiltInTTSProviderId] || 'default';
             return {
               ttsProviderId: providerId,
+              ttsVoiceProviderId: providerId,
               ...(shouldUpdateVoice && { ttsVoice: defaultVoice }),
             };
           }),
 
-        setTTSVoice: (voice) => set({ ttsVoice: voice }),
+        setTTSVoice: (voice, providerId) =>
+          set((state) => ({
+            ttsVoice: voice,
+            ...(providerId && providerId !== state.ttsProviderId
+              ? { ttsProviderId: providerId, ttsVoiceProviderId: providerId }
+              : {}),
+          })),
 
         setTTSSpeed: (speed) => set({ ttsSpeed: speed }),
 
@@ -1420,8 +1461,21 @@ export const useSettingsStore = create<SettingsState>()(
                   // while preserving custom IDs from env/YAML in server order.
                   const filteredModels = info.models?.length
                     ? info.models.map((id) => {
-                        const currentModel = findModelById(key, currentModels, id);
-                        const builtInModel = findModelById(key, PROVIDERS[key]?.models, id);
+                        type LooseModel = {
+                          id: string;
+                          name?: string;
+                          capabilities?: Record<string, unknown>;
+                        };
+                        const currentModel = findModelById(
+                          key,
+                          currentModels,
+                          id,
+                        ) as LooseModel | undefined;
+                        const builtInModel = findModelById(
+                          key,
+                          PROVIDERS[key]?.models,
+                          id,
+                        ) as LooseModel | undefined;
                         const model =
                           currentModel && builtInModel
                             ? {
@@ -1924,11 +1978,16 @@ export const useSettingsStore = create<SettingsState>()(
           }
         }
 
-        // Add default audio config if missing
+        // Add default audio config if missing, preserving the persisted provider
+        // (the defaults would otherwise reset it to browser-native-tts).
         if (!state.ttsProvidersConfig || !state.asrProvidersConfig) {
-          const defaultAudioConfig = getDefaultAudioConfig();
-          Object.assign(state, defaultAudioConfig);
+          const persistedTtsProviderId = state.ttsProviderId;
+          const persistedAsrProviderId = state.asrProviderId;
+          Object.assign(state, getDefaultAudioConfig());
+          if (persistedTtsProviderId) state.ttsProviderId = persistedTtsProviderId;
+          if (persistedAsrProviderId) state.asrProviderId = persistedAsrProviderId;
         }
+        if (!state.ttsVoiceProviderId) state.ttsVoiceProviderId = state.ttsProviderId;
         ensureBuiltInAudioProviders(state);
         ensureBuiltInWebSearchProviders(state);
 

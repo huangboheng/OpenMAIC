@@ -6,28 +6,66 @@
  * extraction: reserve(identity) atomically claims a slot, submit() consumes it,
  * and release() undoes it when extraction fails.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { ArtifactStore } from './artifact-store.js';
 import { config } from './config.js';
 import type { JobStore } from './job-store.js';
 import type { RenderExecutor } from './render-executor.js';
+import { emitRenderEvent, type RenderEventSink, type RenderOutcome } from './events.js';
+import { Semaphore } from './semaphore.js';
 import type {
+  AdmissionIdentity,
   RenderCancelledFailure,
   RenderExecutionResult,
   RenderFailedFailure,
   RenderJobRecord,
   RenderOptions,
+  RenderOwnerId,
+  RenderResourceSettlement,
 } from './types.js';
 
-/** Thrown when admission control rejects a submission (mapped to HTTP 429). */
-export class RenderRejectedError extends Error {}
+/**
+ * Machine-readable admission-rejection code, surfaced as `reason` on HTTP 429
+ * responses so clients can react to backpressure without parsing prose.
+ */
+export type RenderRejectionReason = 'queue_full' | 'per_identity_limit' | 'resource_unavailable';
+
+/**
+ * Thrown when admission control rejects a submission (mapped to HTTP 429).
+ *
+ * `reason` is set when a rejection comes from an admission cap
+ * ({@link RenderRejectionReason}) and left undefined for internal invariants
+ * that have no client-facing remedy.
+ */
+export class RenderRejectedError extends Error {
+  constructor(
+    message: string,
+    readonly reason?: RenderRejectionReason,
+  ) {
+    super(message);
+  }
+}
+
+function planPathForProject(dir: string): string {
+  return join(
+    dirname(dir),
+    `.render-plan-${createHash('sha256').update(dir).digest('hex').slice(0, 12)}`,
+  );
+}
 
 /** An accepted admission slot, returned by RenderCoordinator.reserve. */
 export interface Reservation {
-  identity: string;
+  readonly admissionIdentity: AdmissionIdentity;
   consumed: boolean;
+}
+
+export interface RenderSubmission {
+  readonly reservation: Reservation;
+  readonly ownerId: RenderOwnerId;
+  readonly projectDir: string;
+  readonly options: RenderOptions;
 }
 
 interface QueuedJob {
@@ -41,18 +79,29 @@ export interface RenderCoordinatorOptions {
   maxQueue?: number;
   maxJobsPerUser?: number;
   jobDeadlineMs?: number;
+  /** Where lifecycle events go. Defaults to one JSON line per event on stdout. */
+  onEvent?: RenderEventSink;
 }
 
 export class RenderCoordinator {
   private running = 0;
+  private readonly retainedProjects = new Set<string>();
   private readonly queue: QueuedJob[] = [];
   private readonly controllers = new Map<string, AbortController>();
-  private readonly activeByIdentity = new Map<string, number>();
+  private readonly activeByIdentity = new Map<AdmissionIdentity, number>();
   private pending = 0;
   private readonly maxConcurrency: number;
   private readonly maxQueue: number;
   private readonly maxJobsPerUser: number;
   private readonly jobDeadlineMs: number;
+  private readonly executionGate: Semaphore;
+  private readonly onEvent: RenderEventSink;
+  /**
+   * Timing per in-flight job, so a start can report its queue wait and a finish
+   * can separate that wait from the render itself. An entry is removed by
+   * `finishEvent`, which also makes the finish idempotent.
+   */
+  private readonly jobTiming = new Map<string, { submittedAt: number; startedAt?: number }>();
 
   constructor(
     private readonly executor: RenderExecutor,
@@ -64,6 +113,13 @@ export class RenderCoordinator {
     this.maxQueue = options.maxQueue ?? config.maxQueue;
     this.maxJobsPerUser = options.maxJobsPerUser ?? config.maxJobsPerUser;
     this.jobDeadlineMs = options.jobDeadlineMs ?? config.jobDeadlineMs;
+    this.executionGate = new Semaphore(this.maxConcurrency);
+    this.onEvent = options.onEvent ?? emitRenderEvent;
+  }
+
+  /** Run video exports within their execution budget. */
+  private runWithExecutionSlot<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    return this.executionGate.run(task, signal);
   }
 
   /** Total jobs occupying the system: reserved + queued + running. */
@@ -71,22 +127,45 @@ export class RenderCoordinator {
     return this.pending + this.queue.length + this.running;
   }
 
-  /** Claim an admission slot before buffering or extracting the archive. */
-  reserve(identity: string): Reservation {
+  /**
+   * Whether the system currently has room for another job (queue below the
+   * global cap). Exposed for `/health` as a deliberate aggregate-only signal:
+   * no occupancy counts, and never per-identity state — identity keys are
+   * client IPs when the service runs behind a trusted proxy, so publishing
+   * them would leak the list of active users' addresses.
+   */
+  get accepting(): boolean {
+    return this.executor.accepting?.() !== false && this.inSystem < this.maxQueue;
+  }
+
+  /**
+   * Claim an admission slot before buffering or extracting the archive.
+   * Throws {@link RenderRejectedError} with reason `queue_full` once the
+   * global cap is reached, or `per_identity_limit` when this identity already
+   * holds `maxJobsPerUser` active jobs.
+   */
+  reserve(admissionIdentity: AdmissionIdentity): Reservation {
+    if (this.executor.accepting?.() === false) {
+      throw new RenderRejectedError('The resource owner is unavailable.', 'resource_unavailable');
+    }
     if (this.inSystem >= this.maxQueue) {
-      throw new RenderRejectedError('The render queue is full; try again shortly.');
+      throw new RenderRejectedError('The render queue is full; try again shortly.', 'queue_full');
     }
     if (this.maxJobsPerUser > 0) {
-      const active = this.activeByIdentity.get(identity) ?? 0;
+      const active = this.activeByIdentity.get(admissionIdentity) ?? 0;
       if (active >= this.maxJobsPerUser) {
         throw new RenderRejectedError(
           `A render is already in progress (limit ${this.maxJobsPerUser}).`,
+          'per_identity_limit',
         );
       }
     }
-    this.activeByIdentity.set(identity, (this.activeByIdentity.get(identity) ?? 0) + 1);
+    this.activeByIdentity.set(
+      admissionIdentity,
+      (this.activeByIdentity.get(admissionIdentity) ?? 0) + 1,
+    );
     this.pending += 1;
-    return { identity, consumed: false };
+    return { admissionIdentity, consumed: false };
   }
 
   /** Release a reservation that will not become a job. */
@@ -94,23 +173,23 @@ export class RenderCoordinator {
     if (reservation.consumed) return;
     reservation.consumed = true;
     this.pending = Math.max(0, this.pending - 1);
-    this.decrementIdentity(reservation.identity);
+    this.decrementIdentity(reservation.admissionIdentity);
   }
 
-  private decrementIdentity(identity: string): void {
+  private decrementIdentity(identity: AdmissionIdentity): void {
     const next = (this.activeByIdentity.get(identity) ?? 0) - 1;
     if (next <= 0) this.activeByIdentity.delete(identity);
     else this.activeByIdentity.set(identity, next);
   }
 
   /** Enqueue a render against a held reservation and return its stable job id. */
-  async submit(
-    reservation: Reservation,
-    projectDir: string,
-    options: RenderOptions,
-  ): Promise<string> {
+  async submit({ reservation, ownerId, projectDir, options }: RenderSubmission): Promise<string> {
     if (reservation.consumed) throw new RenderRejectedError('Reservation already used');
 
+    if (this.executor.accepting?.() === false) {
+      this.release(reservation);
+      throw new RenderRejectedError('The resource owner is unavailable.', 'resource_unavailable');
+    }
     reservation.consumed = true;
     this.pending = Math.max(0, this.pending - 1);
 
@@ -118,7 +197,8 @@ export class RenderCoordinator {
     const now = Date.now();
     const record: RenderJobRecord = {
       id,
-      userId: reservation.identity,
+      ownerId,
+      admissionIdentity: reservation.admissionIdentity,
       status: 'queued',
       progress: 0,
       currentStage: 'queued',
@@ -129,19 +209,36 @@ export class RenderCoordinator {
     try {
       await this.jobs.create(record);
     } catch (error) {
-      this.decrementIdentity(reservation.identity);
+      this.decrementIdentity(reservation.admissionIdentity);
       throw error;
     }
 
     const abort = new AbortController();
     this.controllers.set(id, abort);
     this.queue.push({ record, options, abort });
+    this.jobTiming.set(id, { submittedAt: now });
+    this.onEvent({
+      event: 'render_job_submitted',
+      jobId: id,
+      // Exclude this job, so an idle service reports queued: 0 and "queued > 0"
+      // is a usable backlog signal.
+      queued: this.queue.length - 1,
+      running: this.running,
+    });
     this.pump();
     return id;
   }
 
-  /** Cancel a queued or running job through the same AbortSignal executor seam. */
-  async cancel(id: string): Promise<boolean> {
+  /** Cancel only when the immutable job owner matches the caller. */
+  async cancelForOwner(id: string, ownerId: RenderOwnerId): Promise<boolean> {
+    const owned = await this.jobs.getForOwner(id, ownerId);
+    if (!owned) return false;
+    return this.cancelOwned(owned);
+  }
+
+  /** Cancel a known-owned queued or running job through the executor signal. */
+  private async cancelOwned(record: RenderJobRecord): Promise<boolean> {
+    const { id } = record;
     const controller = this.controllers.get(id);
     if (!controller) return false;
     controller.abort();
@@ -150,11 +247,16 @@ export class RenderCoordinator {
     if (queuedIdx >= 0) {
       const [queued] = this.queue.splice(queuedIdx, 1);
       this.controllers.delete(id);
-      if (queued.record.userId) this.decrementIdentity(queued.record.userId);
+      this.decrementIdentity(queued.record.admissionIdentity);
       const failure: RenderCancelledFailure = {
         code: 'cancelled',
         message: 'Render cancelled',
       };
+      // Cancelling before the job ever started skips `finishNonSuccess`, so
+      // close the lifecycle here too. Without this a queued-then-cancelled job
+      // is submitted and then simply never heard from again, which would leave
+      // any success rate computed from these events quietly wrong.
+      this.finishEvent(id, 'cancelled');
       await this.jobs.update(id, {
         status: 'cancelled',
         currentStage: 'cancelled',
@@ -173,11 +275,51 @@ export class RenderCoordinator {
     }
   }
 
+  /**
+   * Close a job's lifecycle in the log. Also drops its submission timestamp so
+   * the map cannot grow without bound across a long-lived process.
+   */
+  private finishEvent(id: string, outcome: RenderOutcome, errorCode?: string): void {
+    // Deleting the timing entry is also what makes this idempotent. A terminal
+    // job-store write can reject *after* an outcome is known, which lands in the
+    // caller's catch and would otherwise close the same job a second time with a
+    // contradictory outcome — one render counted as both a success and a
+    // failure, which is precisely the corruption these events exist to rule out.
+    const timing = this.jobTiming.get(id);
+    if (!timing) return;
+    this.jobTiming.delete(id);
+    const now = Date.now();
+    this.onEvent({
+      event: 'render_job_finished',
+      jobId: id,
+      outcome,
+      durationMs: now - timing.submittedAt,
+      ...(timing.startedAt === undefined
+        ? {}
+        : {
+            queueWaitMs: timing.startedAt - timing.submittedAt,
+            renderMs: now - timing.startedAt,
+          }),
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
+  }
+
+  /** In-flight jobs whose timing is still tracked. Exposed for tests. */
+  get trackedJobs(): number {
+    return this.jobTiming.size;
+  }
+
   private async finishNonSuccess(
     id: string,
     projectDir: string,
     result: Exclude<RenderExecutionResult, { status: 'succeeded' }>,
   ): Promise<void> {
+    // `failure.code` is a fixed vocabulary; the free-text message is not logged.
+    this.finishEvent(
+      id,
+      result.status,
+      result.status === 'failed' ? result.failure.code : undefined,
+    );
     try {
       await this.jobs.update(id, {
         status: result.status,
@@ -186,6 +328,7 @@ export class RenderCoordinator {
         error: result.failure.message,
         ...(result.performance ? { performance: result.performance } : {}),
         ...(result.metrics ? { metrics: result.metrics } : {}),
+        ...(result.resources ? { resources: result.resources } : {}),
       });
     } finally {
       await this.cleanupProject(projectDir);
@@ -195,38 +338,73 @@ export class RenderCoordinator {
   private async run({ record, options, abort }: QueuedJob): Promise<void> {
     const { id, projectDir } = record;
     const outputPath = join(projectDir, 'output.mp4');
+    let resources: RenderResourceSettlement | undefined;
     try {
-      await this.jobs.update(id, { status: 'running', currentStage: 'preparing' });
-      const result = await this.executor.execute({
-        projectDir,
-        outputPath,
-        options,
-        signal: abort.signal,
-        deadlineMs: this.jobDeadlineMs,
-        onProgress: async (progress) => {
-          await this.jobs.update(id, {
-            status: 'running',
-            progress: progress.progress,
-            currentStage: progress.stage,
-            ...(progress.framesRendered !== undefined
-              ? { framesRendered: progress.framesRendered }
-              : {}),
-            ...(progress.totalFrames !== undefined ? { totalFrames: progress.totalFrames } : {}),
-          });
-        },
-      });
+      const result = await this.runWithExecutionSlot(async () => {
+        if (this.executor.accepting?.() === false) {
+          return {
+            status: 'failed',
+            failure: { code: 'execution_failed', message: 'The resource owner is unavailable.' },
+          } satisfies RenderExecutionResult;
+        }
+        // Inside the slot: the wait measured here is exactly the time this job
+        // spent queued behind other renders, which is the signal a busy
+        // deployment needs and the one nothing else exposes.
+        const timing = this.jobTiming.get(id);
+        const startedAt = Date.now();
+        if (timing) timing.startedAt = startedAt;
+        this.onEvent({
+          event: 'render_job_started',
+          jobId: id,
+          queueWaitMs: startedAt - (timing?.submittedAt ?? startedAt),
+          queued: this.queue.length,
+          running: this.running,
+        });
+        await this.jobs.update(id, { status: 'running', currentStage: 'preparing' });
+        return this.executor.execute({
+          projectDir,
+          outputPath,
+          options,
+          signal: abort.signal,
+          deadlineMs: this.jobDeadlineMs,
+          onProgress: async (progress) => {
+            await this.jobs.update(id, {
+              status: 'running',
+              progress: progress.progress,
+              currentStage: progress.stage,
+              ...(progress.framesRendered !== undefined
+                ? { framesRendered: progress.framesRendered }
+                : {}),
+              ...(progress.totalFrames !== undefined ? { totalFrames: progress.totalFrames } : {}),
+            });
+          },
+        });
+      }, abort.signal);
 
+      resources = result.resources;
+      if (
+        result.resources &&
+        (!result.resources.cleanupVerified || !result.resources.reservationReturned)
+      ) {
+        this.retainedProjects.add(projectDir);
+      }
       if (result.status !== 'succeeded') {
         await this.finishNonSuccess(id, projectDir, result);
         return;
       }
 
-      if (abort.signal.aborted) {
+      // A resource executor publishes before returning its terminal result. A
+      // cancellation can arrive while that result is in IPC transit; once the
+      // atomic publication is explicit, it is the winning commit decision and
+      // must not be relabelled or deleted. Executors without that settlement
+      // keep the existing cancellation behavior.
+      if (abort.signal.aborted && result.resources?.published !== true) {
         await this.finishNonSuccess(id, projectDir, {
           status: 'cancelled',
           failure: { code: 'cancelled', message: 'Render cancelled' },
           ...(result.performance ? { performance: result.performance } : {}),
           ...(result.metrics ? { metrics: result.metrics } : {}),
+          ...(result.resources ? { resources: result.resources } : {}),
         });
         return;
       }
@@ -239,17 +417,56 @@ export class RenderCoordinator {
         outputPath,
         ...(result.performance ? { performance: result.performance } : {}),
         ...(result.metrics ? { metrics: result.metrics } : {}),
+        ...(result.resources ? { resources: result.resources } : {}),
       });
+      // Emitted last: until the terminal write lands, "succeeded" is not yet
+      // true, and the catch below would drop the artifact this event describes.
+      this.finishEvent(id, 'succeeded');
     } catch (error) {
+      const publicationCommitted = resources?.published === true;
+      if (publicationCommitted) {
+        // The root owner already crossed the atomic publication point. Store
+        // bookkeeping may fail, but it must not revoke the artifact record,
+        // delete the committed output, or let a late cancel relabel it. A
+        // confirmed-cleanup job remains eligible for ordinary TTL expiry.
+        const failure: RenderFailedFailure = {
+          code: 'execution_failed',
+          message: error instanceof Error ? error.message : String(error),
+        };
+        this.finishEvent(id, 'failed', failure.code);
+        await this.jobs
+          .update(id, {
+            status: 'failed',
+            currentStage: 'failed',
+            failure,
+            error: failure.message,
+            resources,
+          })
+          .catch((recoveryError: unknown) => {
+            console.error('Failed to record committed render settlement', {
+              jobId: id,
+              error: recoveryError,
+            });
+          });
+        return;
+      }
       await this.artifacts.remove(id).catch(() => {});
+      if (abort.signal.aborted) {
+        await this.finishNonSuccess(id, projectDir, {
+          status: 'cancelled',
+          failure: { code: 'cancelled', message: 'Render cancelled' },
+          resources,
+        });
+        return;
+      }
       const failure: RenderFailedFailure = {
         code: 'execution_failed',
         message: error instanceof Error ? error.message : String(error),
       };
-      await this.finishNonSuccess(id, projectDir, { status: 'failed', failure });
+      await this.finishNonSuccess(id, projectDir, { status: 'failed', failure, resources });
     } finally {
       this.controllers.delete(id);
-      if (record.userId) this.decrementIdentity(record.userId);
+      this.decrementIdentity(record.admissionIdentity);
       this.running -= 1;
       this.pump();
     }
@@ -257,7 +474,14 @@ export class RenderCoordinator {
 
   /** Best-effort recursive delete of a job's unzipped project dir. */
   async cleanupProject(dir: string): Promise<void> {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
+    // Quarantined objects outlive HTTP/TTL bookkeeping and belong to the platform.
+    if (this.retainedProjects.has(dir)) return;
+    await Promise.all([
+      rm(dir, { recursive: true, force: true }).catch(() => {}),
+      rm(planPathForProject(dir), { recursive: true, force: true }).catch(() => {}),
+      rm(`${planPathForProject(dir)}.local.json`, { force: true }).catch(() => {}),
+      rm(`${planPathForProject(dir)}.chunks`, { recursive: true, force: true }).catch(() => {}),
+    ]);
   }
 }
 

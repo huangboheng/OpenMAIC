@@ -44,26 +44,44 @@ export {
 } from './asset/http.js';
 export { newAssetId, toAssetId, type AssetId } from './asset/id.js';
 export {
+  ASSET_DESCRIPTOR_MEDIA_TYPE,
   AssetNotFoundError,
   AssetQuotaExceededError,
+  AssetRootedError,
   DEFAULT_RENDERABLE_TYPES,
   EXCLUDED_RENDERABLE_TYPES,
   type AssetBytes,
   type AssetIdentity,
+  type AssetIndirectRead,
+  type AssetIndirectReadRequest,
   type AssetPrincipal,
   type AssetStore,
 } from './asset/types.js';
+export type { AssetByteStore, AssetSignedReadHeaders } from './asset/byte-store.js';
 export {
+  ASSET_PG_MIGRATIONS,
   ASSET_PG_SCHEMA,
+  DEFAULT_ASSET_PENDING_TTL_MS,
   PgAssetStore,
   ensureAssetSchema,
   type PgAssetStoreOptions,
 } from './asset/pg.js';
+// `./asset/references.js` is deliberately NOT re-exported. Its functions are
+// transaction-scoped maintenance primitives that replace and delete reference
+// rows; called outside a document write they would corrupt the table they
+// maintain. The supported surface is the two options -- PgDocumentStore's
+// `trackAssetReferences` and AssetCollector's `documentReferences` -- which is
+// everything a host needs to run the feature.
 export { PgAssetByteStore } from './asset/pg-bytes.js';
 export {
+  AssetCollectionFailure,
   AssetCollector,
+  AssetReferenceTrackingNotEnabledError,
+  assertSignedUrlTtlWithinGrace,
   DEFAULT_ASSET_COLLECTION_BATCH_SIZE,
   DEFAULT_ASSET_COLLECTION_GRACE_MS,
+  DEFAULT_ASSET_REFERENCE_BACKFILL_BATCH_SIZE,
+  type AssetCollectionEntryLevelFailure,
   type AssetCollectionPass,
   type AssetCollectorOptions,
 } from './asset/collector.js';
@@ -78,11 +96,23 @@ export type {
   DocumentStore,
   MaicDocument,
   DocumentSummary,
+  DocumentFolder,
+  DocumentFolderStore,
   SceneLike,
   SceneValidator,
   StageValidator,
+  StageSceneManifest,
+  StageFreshnessManifest,
+  StageFreshnessManifestStore,
 } from './document/types.js';
-export { DocumentNotFoundError, DocumentVersionError } from './document/types.js';
+export { StorageBusyError, isStorageBusyError } from './store-errors.js';
+export {
+  DocumentFolderLimitError,
+  DocumentNotFoundError,
+  DocumentVersionError,
+  DocumentWriteRefusedError,
+  isDocumentWriteRefusedError,
+} from './document/types.js';
 export { BrowserDocumentStore, type BrowserDocumentStoreOptions } from './document/browser.js';
 export {
   HttpDocumentStore,
@@ -92,10 +122,32 @@ export {
   type HttpDocumentStoreOptions,
 } from './document/http.js';
 export {
+  SCHEMA_MIGRATION_LOCK_KEY,
+  SCHEMA_MIGRATIONS_TABLE,
+  SchemaMigrationChecksumError,
+  SchemaVersionAheadError,
+  applySchemaMigrations,
+  schemaMigrationChecksum,
+  type ApplySchemaMigrationsOptions,
+  type MigrationQueryable,
+  type SchemaMigration,
+  type SchemaMigrationSet,
+} from './pg-migrations.js';
+export {
   PgDocumentStore,
+  DOCUMENT_PG_MIGRATIONS,
   DOCUMENT_PG_SCHEMA,
+  DocumentAssetReferencesDisabledError,
+  StorageLockUnavailableError,
   ensureDocumentSchema,
+  readStageFreshnessManifest,
+  reassignDocumentFolders,
+  splitSqlStatements,
+  type DocumentFolderReassignment,
+  type DocumentOwnershipRelation,
   type PgDocumentStoreOptions,
+  type ReassignDocumentFoldersInput,
+  type StorageLockUnavailableReason,
 } from './document/pg.js';
 
 export type {
@@ -105,9 +157,122 @@ export type {
   RuntimeAppendOptions,
   RuntimeTailOptions,
 } from './runtime/types.js';
-export { RuntimeAppendConflictError } from './runtime/types.js';
+export {
+  RuntimeAppendConflictError,
+  RuntimeSessionExistsError,
+  RuntimeStageNotFoundError,
+} from './runtime/types.js';
 export { BrowserRuntimeStore, type BrowserRuntimeStoreOptions } from './runtime/browser.js';
+
+export {
+  AGENT_SESSION_LIFECYCLE,
+  AGENT_SESSION_STATUSES,
+  AGENT_SESSION_URL_SOURCES,
+  OWNER_SESSION_EVENT_TYPES,
+  AgentSessionAccessError,
+  AgentSessionEntryTreeError,
+  AgentSessionLeaseLostError,
+  extractObservedUrls,
+  normalizeObservedUrl,
+  type AgentSessionClaimReason,
+  type AgentSessionAutomaticTitleStore,
+  type AgentSessionCompactionEntry,
+  type AgentSessionCustomMessageEntry,
+  type AgentSessionEntry,
+  type AgentSessionEntryBase,
+  type AgentSessionEntryTree,
+  type AgentSessionEntryTreeHandle,
+  type AgentSessionEventLog,
+  type AgentSessionHooks,
+  type AgentSessionLabelEntry,
+  type AgentSessionLeafEntry,
+  type AgentSessionLease,
+  type AgentSessionLifecycleEventType,
+  type AgentSessionMessageEntry,
+  type AgentSessionMeta,
+  type AgentSessionStatus,
+  type AgentSessionStore,
+  type AgentSessionTitleStore,
+  type AgentSessionTransaction,
+  type AgentSessionUrlSource,
+  type AgentSessionUrlStore,
+  type AgentSessionUserMessage,
+  type ClaimedAgentSession,
+  type ClaimAgentSessionOptions,
+  type CreateAgentSessionInput,
+  type FinishAgentSessionPatch,
+  type NewAgentSessionEvent,
+  type NewOwnerSessionEvent,
+  type OwnerSessionEventProjection,
+  type OwnerSessionEventType,
+  type PersistedAgentSessionEvent,
+  type PersistedOwnerSessionEvent,
+  type PostAgentUserMessageOptions,
+  type PostAgentUserMessageResult,
+} from './agent-session/types.js';
 
 // Re-export the DSL-owned asset contract for convenience, so consumers can get
 // the interface and a backend from one import without reaching into the DSL.
 export type { AssetRef, AssetMeta, BinaryBlob, StorageProvider } from '@openmaic/dsl';
+
+export {
+  USER_SKILL_EDITABLE_PATHS,
+  USER_SKILL_LIMIT,
+  USER_SKILL_CONTENT_MAX_BYTES,
+  USER_SKILL_NAME_PATTERN,
+  UserSkillError,
+  applyOpsOnce,
+  applyUserSkillPatchOps,
+  hasUnpairedSurrogate,
+  normalizeUserSkillFields,
+  validateUserSkillFields,
+  validateUserSkillInput,
+  type AppliedUserSkillOp,
+  type UserSkillEditablePath,
+  type UserSkillErrorCode,
+  type UserSkillFields,
+  type UserSkillPatchOpInput,
+  type UserSkillPatchOutcome,
+  type UserSkillRecord,
+  type UserSkillStore,
+} from './skill/types.js';
+export {
+  DEFAULT_USER_SKILL_TABLE_NAMES,
+  PgUserSkillStore,
+  USER_SKILL_PG_MIGRATIONS,
+  USER_SKILL_PG_SCHEMA,
+  ensureUserSkillSchema,
+  type PgUserSkillStoreOptions,
+  type UserSkillOwnerMerge,
+  type UserSkillTableNames,
+} from './skill/pg.js';
+
+export {
+  AGENT_SESSION_MATERIAL_KINDS,
+  AgentSessionMaterialError,
+  createMaterialId,
+  isAgentSessionMaterialKind,
+  MATERIAL_EXTRACTION_STATUSES,
+  MAX_MATERIAL_EXTRACTION_RETRIES,
+  type AgentSessionMaterial,
+  type AgentSessionMaterialKind,
+  type AgentSessionMaterialStore,
+  type CreateAgentSessionMaterialInput,
+  type ListAgentSessionMaterialsOptions,
+  type MaterialExtractionStatus,
+  type MaterialExtractionState,
+  type MaterialExtractionStats,
+  type ClaimedMaterialExtraction,
+  type ClaimMaterialExtractionOptions,
+  type CompleteMaterialExtractionInput,
+  type MaterialExtractionFailureSettlement,
+} from './material/types.js';
+export {
+  AGENT_SESSION_MATERIAL_PG_MIGRATIONS,
+  AGENT_SESSION_MATERIAL_PG_SCHEMA,
+  DEFAULT_AGENT_SESSION_MATERIAL_TABLE_NAMES,
+  PgAgentSessionMaterialStore,
+  ensureAgentSessionMaterialSchema,
+  type AgentSessionMaterialTableNames,
+  type PgAgentSessionMaterialStoreOptions,
+} from './material/pg.js';

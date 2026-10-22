@@ -4,34 +4,76 @@ import { useState, useCallback, useRef } from 'react';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import { useI18n } from '@/lib/hooks/use-i18n';
-import { db, mediaFileKey } from '@/lib/utils/database';
-import type { AudioFileRecord } from '@/lib/utils/database';
+import { db, mediaFileKey } from '@/lib/device-storage/database';
+import type { AudioFileRecord } from '@/lib/device-storage/database';
 import type { GeneratedAgentConfig } from '@/lib/types/stage';
 import {
   agentConfigFromManifest,
   type ClassroomManifest,
   type ManifestScene,
+  type MediaIndexEntry,
 } from '@/lib/export/classroom-zip-types';
 import { rewriteAudioRefsToIds } from '@/lib/export/classroom-zip-utils';
 import { createLogger } from '@/lib/logger';
 import { canonicalizeLegacyScene, mutateDocument, type AppDocument } from '@/lib/document-store';
-import { putAsset, removeAsset } from '@/lib/media/asset-pool';
 import { isConcreteMediaAddress } from '@/lib/media/resolve-media-ref';
 import { isGeneratedMediaPlaceholder } from '@/lib/media/media-ref';
+import { putAsset } from '@/lib/media/asset-pool';
+import { isStorageFullFailure } from '@/lib/media/media-failure';
 import type JSZip from 'jszip';
-import type { Slide } from '@openmaic/dsl';
+import type { AssetMeta, Slide } from '@openmaic/dsl';
 import type { Stage } from '@/lib/types/stage';
 
 const log = createLogger('ImportClassroom');
 
-export interface ImportedMediaMappings {
-  refToNewId: Record<string, string>;
-  posterRefToNewId: Record<string, string>;
-  posterByMediaRef: Record<string, string>;
+async function allocateImportedAsset(blob: Blob, meta: AssetMeta): Promise<string> {
+  // A shared document must name stored bytes, not a browser-only cache key.
+  return putAsset(blob, meta);
 }
 
-function rewriteImportedMediaRef(value: string, mapped: string | undefined): string | undefined {
+async function writeImportedMediaCache(write: () => Promise<unknown>): Promise<void> {
+  try {
+    await write();
+  } catch (error) {
+    // The upload already succeeded; a cache failure only costs a re-download.
+    log.warn('Imported media cache write failed; keeping the server asset:', error);
+  }
+}
+
+export interface ImportedMediaMappings {
+  readonly refToNewId: ReadonlyMap<string, string>;
+  readonly posterRefToNewId: ReadonlyMap<string, string>;
+  readonly posterByMediaRef: ReadonlyMap<string, string>;
+}
+
+export interface ImportedAudioMappings {
+  readonly pathToId: ReadonlyMap<string, string>;
+  readonly sourceRefToId: ReadonlyMap<string, string>;
+}
+
+/** Content type the importer writes for serialized narration metadata. */
+export function importedAudioContentType(
+  meta: Pick<MediaIndexEntry, 'mimeType' | 'format'>,
+  blobType: string,
+): string {
+  return meta.mimeType || blobType || `audio/${meta.format || 'mp3'}`;
+}
+
+type ImportedRefMapping = ReadonlyMap<string, unknown> | Readonly<Record<string, unknown>>;
+
+function mappedString(mapping: ImportedRefMapping, key: string): string | undefined {
+  const value =
+    mapping instanceof Map
+      ? mapping.get(key)
+      : Object.hasOwn(mapping, key)
+        ? (mapping as Readonly<Record<string, unknown>>)[key]
+        : undefined;
+  return typeof value === 'string' ? value : undefined;
+}
+
+function rewriteImportedMediaRef(value: unknown, mapped: string | undefined): string | undefined {
   if (mapped) return mapped;
+  if (typeof value !== 'string') return undefined;
   if (isConcreteMediaAddress(value) || isGeneratedMediaPlaceholder(value)) return value;
   return undefined;
 }
@@ -84,6 +126,7 @@ function posterRefsForMedia(manifest: ClassroomManifest, mediaRef: string): stri
 export function rewriteImportedSlideMediaRefs(
   slide: Slide,
   mappings: ImportedMediaMappings,
+  audioRefToNewId: ImportedRefMapping = new Map(),
 ): Slide {
   const background =
     slide.background?.type === 'image' && slide.background.image
@@ -94,7 +137,7 @@ export function rewriteImportedSlideMediaRefs(
             src:
               rewriteImportedMediaRef(
                 slide.background.image.src,
-                mappings.refToNewId[slide.background.image.src],
+                mappedString(mappings.refToNewId, slide.background.image.src),
               ) ?? '',
           },
         }
@@ -104,23 +147,35 @@ export function rewriteImportedSlideMediaRefs(
     background,
     elements: slide.elements.map((element) => {
       if (element.type === 'image') {
-        const src = rewriteImportedMediaRef(element.src, mappings.refToNewId[element.src]) ?? '';
+        const src =
+          rewriteImportedMediaRef(element.src, mappedString(mappings.refToNewId, element.src)) ??
+          '';
+        return src === element.src ? element : { ...element, src };
+      }
+      if (element.type === 'audio') {
+        const src =
+          rewriteImportedMediaRef(element.src, mappedString(audioRefToNewId, element.src)) ?? '';
         return src === element.src ? element : { ...element, src };
       }
       if (element.type !== 'video') return element;
       const oldMediaRef = element.mediaRef || element.src || '';
       const src = element.src
-        ? (rewriteImportedMediaRef(element.src, mappings.refToNewId[element.src]) ?? '')
+        ? (rewriteImportedMediaRef(element.src, mappedString(mappings.refToNewId, element.src)) ??
+          '')
         : undefined;
       const mediaRef = element.mediaRef
-        ? rewriteImportedMediaRef(element.mediaRef, mappings.refToNewId[element.mediaRef])
+        ? rewriteImportedMediaRef(
+            element.mediaRef,
+            mappedString(mappings.refToNewId, element.mediaRef),
+          )
         : undefined;
       const poster = element.poster
         ? rewriteImportedMediaRef(
             element.poster,
-            mappings.posterRefToNewId[element.poster] ?? mappings.refToNewId[element.poster],
+            mappedString(mappings.posterRefToNewId, element.poster) ??
+              mappedString(mappings.refToNewId, element.poster),
           )
-        : mappings.posterByMediaRef[oldMediaRef];
+        : mappedString(mappings.posterByMediaRef, oldMediaRef);
       const rewritten = { ...element, ...(src !== undefined ? { src } : {}) };
       if (mediaRef) rewritten.mediaRef = mediaRef;
       else delete rewritten.mediaRef;
@@ -138,7 +193,7 @@ export function rewriteImportedVideoManifest(
   if (!manifest) return manifest;
   return Object.fromEntries(
     Object.entries(manifest).flatMap(([ref, entry]) => {
-      const rewritten = rewriteImportedMediaRef(ref, mappings.refToNewId[ref]);
+      const rewritten = rewriteImportedMediaRef(ref, mappedString(mappings.refToNewId, ref));
       return rewritten ? [[rewritten, entry] as const] : [];
     }),
   );
@@ -151,23 +206,36 @@ export async function materializeImportedAudio(
   stageId: string,
   createdAt: number,
   allocatedIds: string[] = [],
-): Promise<Record<string, string>> {
-  const mappings: Record<string, string> = {};
-  for (const [zipPath, meta] of Object.entries(manifest.mediaIndex ?? {})) {
+): Promise<ImportedAudioMappings> {
+  const pathToId = new Map<string, string>();
+  const sourceRefToId = new Map<string, string>();
+  // Sorting makes malformed duplicate-sourceRef handling independent of JSON
+  // object insertion order: the lexicographically first ZIP path owns the
+  // source-ref alias, while every genuine ZIP path remains addressable.
+  const entries = Object.entries(manifest.mediaIndex ?? {}).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  for (const [zipPath, meta] of entries) {
     if (meta.type !== 'audio' || meta.missing) continue;
     const zipEntry = zip.file(zipPath);
     if (!zipEntry) continue;
     const blob = await zipEntry.async('blob');
-    const assetId = await putAsset(blob, {
-      contentType: blob.type || `audio/${meta.format || 'mp3'}`,
-      mediaType: 'audio',
-      duration: meta.duration,
-      voice: meta.voice,
+    const audioId = await allocateImportedAsset(blob, {
+      contentType: importedAudioContentType(meta, blob.type),
+      ...(meta.duration === undefined ? {} : { durationSeconds: meta.duration }),
     });
-    allocatedIds.push(assetId);
-    mappings[zipPath] = assetId;
+    allocatedIds.push(audioId);
+    pathToId.set(zipPath, audioId);
+    const relativePath = zipPath.startsWith('audio/') ? zipPath.slice('audio/'.length) : zipPath;
+    const formatSuffix = meta.format ? `.${meta.format}` : undefined;
+    const sourceRef =
+      (typeof meta.sourceRef === 'string' ? meta.sourceRef : undefined) ??
+      (formatSuffix && relativePath.endsWith(formatSuffix)
+        ? relativePath.slice(0, -formatSuffix.length)
+        : relativePath.replace(/\.[^/.]+$/, ''));
+    if (!sourceRefToId.has(sourceRef)) sourceRefToId.set(sourceRef, audioId);
     const record: AudioFileRecord = {
-      id: assetId,
+      id: audioId,
       stageId,
       blob,
       format: meta.format || 'mp3',
@@ -175,12 +243,12 @@ export async function materializeImportedAudio(
       voice: meta.voice,
       createdAt,
     };
-    await db.audioFiles.put(record);
+    await writeImportedMediaCache(() => db.audioFiles.put(record));
   }
-  return mappings;
+  return { pathToId, sourceRefToId };
 }
 
-/** Allocate imported media into the browser-global pool and mirror it to Dexie. */
+/** Store archive bytes before returning the references the imported document will hold. */
 export async function materializeImportedMedia(
   zip: JSZip,
   manifest: ClassroomManifest,
@@ -188,10 +256,13 @@ export async function materializeImportedMedia(
   createdAt: number,
   allocatedIds: string[] = [],
 ): Promise<ImportedMediaMappings> {
+  const refToNewId = new Map<string, string>();
+  const posterRefToNewId = new Map<string, string>();
+  const posterByMediaRef = new Map<string, string>();
   const mappings: ImportedMediaMappings = {
-    refToNewId: {},
-    posterRefToNewId: {},
-    posterByMediaRef: {},
+    refToNewId,
+    posterRefToNewId,
+    posterByMediaRef,
   };
 
   const imported: Array<{
@@ -207,33 +278,34 @@ export async function materializeImportedMedia(
     const zipEntry = zip.file(zipPath);
     if (!zipEntry) continue;
     const blob = await zipEntry.async('blob');
-    const oldRef = mediaRefFromZipPath(zipPath, meta.mimeType);
+    const oldRef =
+      typeof meta.sourceRef === 'string'
+        ? meta.sourceRef
+        : mediaRefFromZipPath(zipPath, meta.mimeType);
     const mimeType = meta.mimeType || 'image/jpeg';
-    const type = mimeType.startsWith('video/') ? 'video' : 'image';
+    const type = importedMediaKind(mimeType);
     const posterEntry =
       type === 'video' ? zip.file(siblingPosterZipPath(zipPath, meta.mimeType)) : null;
     const posterBlob = posterEntry ? await posterEntry.async('blob') : undefined;
-    const assetId = await putAsset(blob, {
-      contentType: mimeType,
-      mediaType: type,
-      prompt: meta.prompt,
-    });
-    allocatedIds.push(assetId);
-    mappings.refToNewId[oldRef] = assetId;
+    const mediaId = await allocateImportedAsset(blob, { contentType: mimeType });
+    allocatedIds.push(mediaId);
+    refToNewId.set(oldRef, mediaId);
 
-    await db.mediaFiles.put({
-      id: mediaFileKey(stageId, assetId),
-      stageId,
-      type,
-      blob,
-      mimeType,
-      size: meta.size || blob.size,
-      poster: posterBlob,
-      prompt: meta.prompt || '',
-      params: '',
-      createdAt,
-    });
-    imported.push({ oldRef, assetId, type, posterBlob, prompt: meta.prompt });
+    await writeImportedMediaCache(() =>
+      db.mediaFiles.put({
+        id: mediaFileKey(stageId, mediaId),
+        stageId,
+        type,
+        blob,
+        mimeType,
+        size: meta.size || blob.size,
+        poster: posterBlob,
+        prompt: meta.prompt || '',
+        params: '',
+        createdAt,
+      }),
+    );
+    imported.push({ oldRef, assetId: mediaId, type, posterBlob, prompt: meta.prompt });
   }
 
   // A modern ZIP can contain both the video's legacy sibling poster and the
@@ -241,35 +313,42 @@ export async function materializeImportedMedia(
   // only older ZIPs need an extra allocation for the sibling poster bytes.
   for (const entry of imported) {
     if (entry.type !== 'video' || !entry.posterBlob) continue;
+    const posterBlob = entry.posterBlob;
     const oldPosterRefs = posterRefsForMedia(manifest, entry.oldRef);
     let posterAssetId = oldPosterRefs
-      .map((oldPosterRef) => mappings.refToNewId[oldPosterRef])
-      .find(Boolean);
+      .map((oldPosterRef) => mappedString(mappings.refToNewId, oldPosterRef))
+      .find((value): value is string => typeof value === 'string');
     if (!posterAssetId) {
-      posterAssetId = await putAsset(entry.posterBlob, {
-        contentType: entry.posterBlob.type || 'image/jpeg',
-        mediaType: 'video-poster',
-        parentRef: entry.assetId,
+      posterAssetId = await allocateImportedAsset(posterBlob, {
+        contentType: posterBlob.type || 'image/jpeg',
       });
       allocatedIds.push(posterAssetId);
-      await db.mediaFiles.put({
-        id: mediaFileKey(stageId, posterAssetId),
-        stageId,
-        type: 'image',
-        blob: entry.posterBlob,
-        mimeType: entry.posterBlob.type || 'image/jpeg',
-        size: entry.posterBlob.size,
-        prompt: entry.prompt || '',
-        params: '',
-        createdAt,
-      });
+      const posterRef = posterAssetId;
+      await writeImportedMediaCache(() =>
+        db.mediaFiles.put({
+          id: mediaFileKey(stageId, posterRef),
+          stageId,
+          type: 'image',
+          blob: posterBlob,
+          mimeType: posterBlob.type || 'image/jpeg',
+          size: posterBlob.size,
+          prompt: entry.prompt || '',
+          params: '',
+          createdAt,
+        }),
+      );
     }
-    mappings.posterByMediaRef[entry.oldRef] = posterAssetId;
+    posterByMediaRef.set(entry.oldRef, posterAssetId);
     for (const oldPosterRef of oldPosterRefs) {
-      mappings.posterRefToNewId[oldPosterRef] = posterAssetId;
+      posterRefToNewId.set(oldPosterRef, posterAssetId);
     }
   }
   return mappings;
+}
+
+/** Classification used for imported generated media after export normalization. */
+export function importedMediaKind(mimeType: string): 'image' | 'video' {
+  return mimeType.startsWith('video/') ? 'video' : 'image';
 }
 
 export type ImportPhase =
@@ -358,11 +437,11 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
               ? nonTeacherAgentIndex
               : undefined;
 
-        // 4. Write media to IndexedDB
+        // 4. Store media before publishing the document's references.
         setPhase('writingMedia');
         toast.loading(t('import.writingMedia'), { id: toastId });
 
-        const audioRefToNewId = await materializeImportedAudio(
+        const audioMappings = await materializeImportedAudio(
           zip,
           manifest,
           newStageId,
@@ -414,7 +493,7 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
           scenes: manifest.scenes.map((mScene: ManifestScene, index: number) => {
             const newSceneId = nanoid();
             const actions = mScene.actions
-              ? rewriteAudioRefsToIds(mScene.actions, audioRefToNewId, {
+              ? rewriteAudioRefsToIds(mScene.actions, audioMappings.pathToId, {
                   agentIds: newAgentIds,
                   fallbackDiscussionAgentIndex,
                 })
@@ -433,7 +512,11 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
               mScene.content.type === 'slide'
                 ? {
                     ...mScene.content,
-                    canvas: rewriteImportedSlideMediaRefs(mScene.content.canvas, mediaMappings),
+                    canvas: rewriteImportedSlideMediaRefs(
+                      mScene.content.canvas,
+                      mediaMappings,
+                      audioMappings.sourceRefToId,
+                    ),
                   }
                 : mScene.content;
             return canonicalizeLegacyScene({
@@ -444,7 +527,7 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
               content,
               actions,
               whiteboards: mScene.whiteboards?.map((slide) =>
-                rewriteImportedSlideMediaRefs(slide, mediaMappings),
+                rewriteImportedSlideMediaRefs(slide, mediaMappings, audioMappings.sourceRefToId),
               ),
               multiAgent,
               createdAt: now,
@@ -453,19 +536,44 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
           }),
         };
 
-        // The document is the commit point: one aggregate write under its per-stage lock.
-        await mutateDocument(newStageId, async (_existing, store) => store.saveDocument(document));
+        // The document is the commit point: one aggregate write under its
+        // per-stage lock. Wholesale replacement: the imported aggregate
+        // overwrites the whole document, so eager conversion of whatever
+        // currently sits there would allocate assets the import immediately
+        // replaces.
+        await mutateDocument(
+          newStageId,
+          async (_existing, store) => {
+            try {
+              await store.saveDocument(document);
+            } catch (saveError) {
+              try {
+                if (await store.loadDocument(newStageId)) return;
+              } catch (verificationError) {
+                log.error('Failed to verify rejected document write:', verificationError);
+              }
+              throw saveError;
+            }
+          },
+          {},
+          { mode: 'replace' },
+        );
         importCommitted = true;
         setPhase('done');
       } catch (error) {
         log.error('Classroom ZIP import failed:', error);
         const isQuotaError = error instanceof DOMException && error.name === 'QuotaExceededError';
-        toast.error(isQuotaError ? t('import.error.storageFull') : t('import.error.invalidZip'), {
-          id: toastId,
-        });
+        const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+        const message = isStorageFullFailure(typeof code === 'string' ? code : undefined)
+          ? t('settings.mediaStorageFull')
+          : isQuotaError
+            ? t('import.error.storageFull')
+            : t('import.error.invalidZip');
+        toast.error(message, { id: toastId });
       } finally {
-        // Media files cannot join the aggregate document transaction. Until the
-        // document commit point, compensate every row/allocation individually.
+        // A rejected response does not prove the atomic document write failed.
+        // Never delete by stage id here. Local rows are disposable caches, and
+        // the pending collector reclaims unreferenced server assets.
         const cleanup = async (label: string, operation: () => Promise<unknown>) => {
           try {
             await operation();
@@ -475,22 +583,12 @@ export function useImportClassroom(onSuccess?: (importedStageId: string) => void
         };
         if (!importCommitted && importedStageId) {
           const stageId = importedStageId;
-          await cleanup('document', async () => {
-            await mutateDocument(stageId, async (_document, store) =>
-              store.deleteDocument(stageId),
-            );
-          });
           await cleanup('generated media', () =>
             db.mediaFiles.where('stageId').equals(stageId).delete(),
           );
           await cleanup('audio files', () =>
             db.audioFiles.where('stageId').equals(stageId).delete(),
           );
-        }
-        if (!importCommitted) {
-          for (const id of importedPoolIds) {
-            await cleanup(`asset pool entry ${id}`, () => removeAsset(id));
-          }
         }
         setImporting(false);
         setPhase('idle');

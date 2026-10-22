@@ -1,4 +1,16 @@
+import { createTextProseStyles } from '@openmaic/renderer';
+
 export const EDITOR_REACT_STYLES = `
+${createTextProseStyles('.renderer-prosemirror-editor .ProseMirror')}
+
+/* ProseMirror inserts this zero-size caret helper after inline atoms.
+   Host image resets (e.g. Tailwind display:block) must not add a new line. */
+.renderer-prosemirror-editor img.ProseMirror-separator {
+  display: inline !important;
+  border: none !important;
+  margin: 0 !important;
+}
+
 .renderer-prosemirror-editor {
   cursor: text;
 }
@@ -8,25 +20,4 @@ export const EDITOR_REACT_STYLES = `
   outline: none;
 }
 
-.renderer-prosemirror-editor ul {
-  list-style-position: outside !important;
-  padding-inline-start: 1.5rem !important;
-}
-
-.renderer-prosemirror-editor ul:not([style*='list-style-type']) {
-  list-style-type: disc !important;
-}
-
-.renderer-prosemirror-editor ol {
-  list-style-position: outside !important;
-  padding-inline-start: 1.5rem !important;
-}
-
-.renderer-prosemirror-editor ol:not([style*='list-style-type']) {
-  list-style-type: decimal !important;
-}
-
-.renderer-prosemirror-editor li {
-  display: list-item !important;
-}
 `;

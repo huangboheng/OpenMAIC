@@ -1,3 +1,4 @@
+import type { ASRModelConfig } from '@/lib/audio/types';
 export type DocumentExtractorProviderId = string;
 
 export interface DocumentExtractorCapabilities {
@@ -20,6 +21,25 @@ export interface DocumentExtractorConfig {
   accessKeySecret?: string;
   /** Allow AliDocMind to use server env credentials (trusted context only). */
   allowEnvFallback?: boolean;
+  /**
+   * The base URL is server configuration, not caller input: it may reach a
+   * local network without ALLOW_LOCAL_NETWORKS (cloud metadata stays refused).
+   */
+  managed?: boolean;
+  /** Skip image extraction when the caller needs text only. */
+  textOnly?: boolean;
+  /**
+   * The speech recognition connection, resolved by the server from its asr
+   * slot, for media extractors that transcribe an audio track.
+   */
+  asr?: ASRModelConfig;
+  /** Speech configuration failure, raised only when transcription is needed. */
+  asrError?: Error;
+  /**
+   * The caller stopped waiting (a deleted material, a deadline, shutdown): the
+   * extractor aborts its requests, polls and commands and rejects.
+   */
+  signal?: AbortSignal;
 }
 
 export interface DocumentExtractorInput {
@@ -35,6 +55,18 @@ export interface DocumentExtractorProvider {
   displayName: string;
   supportedMimeTypes: readonly string[];
   capabilities: DocumentExtractorCapabilities;
+  /**
+   * Whether extraction needs a server-configured service (see the extractor
+   * manifest). Absent on ad-hoc providers, which count as self-contained.
+   */
+  requiresServiceConfig?: boolean;
+  /**
+   * Provider version. Bump it whenever this provider's extraction output
+   * shape or quality changes; it is the version half of the
+   * (content identity, extractor identity) key under which extraction
+   * artifacts are derived and cached. Nothing consumes it yet.
+   */
+  version: string;
   extract(input: DocumentExtractorInput): Promise<DocumentArtifact>;
 }
 
@@ -63,8 +95,24 @@ export interface MediaExtractorInput {
 export interface MediaExtractorProvider {
   id: MediaExtractorProviderId;
   displayName: string;
-  supportedMimeTypes: string[];
+  /**
+   * Readonly for parity with `DocumentExtractorProvider` and the browser-safe
+   * manifest entries the providers spread from (RFC #1153 part 1): nothing
+   * mutates the list, and the manifest must stay a plain-data mirror.
+   */
+  supportedMimeTypes: readonly string[];
   capabilities: MediaExtractorCapabilities;
+  /** Whether an audio track needs a server ASR provider (see the extractor manifest). */
+  requiresServerASR?: boolean;
+  /**
+   * Provider version. Bump it whenever this provider's extraction output
+   * shape or quality changes; it is the version half of the
+   * (content identity, extractor identity) key under which extraction
+   * artifacts are derived and cached. Nothing consumes it yet.
+   */
+  version: string;
+  /** Resolve optional runtime requirements before this provider is selected. */
+  availability?(input: MediaExtractorInput): Promise<{ available: boolean; reason?: string }>;
   extract(input: MediaExtractorInput): Promise<MediaArtifact>;
 }
 

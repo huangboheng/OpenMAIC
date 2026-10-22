@@ -14,7 +14,7 @@
  *
  * This module lives in `lib/video-export-app/` — the impure, app-side companion
  * to the pure `lib/video-export/` compiler — precisely because it reaches into
- * `@/lib/utils/database` and (for video probing) the DOM, the two concerns the
+ * `@/lib/device-storage/database` and (for video probing) the DOM, the two concerns the
  * compiler's purity boundary keeps out.
  */
 import type {
@@ -33,10 +33,16 @@ import type {
   InteractiveHtmlSource,
   TimingProbe,
 } from '@/lib/video-export';
-import type { Scene, SlideContent } from '@/lib/types/stage';
+import type { Scene, SlideContent, Stage } from '@/lib/types/stage';
+import { enumerateAssetManifest } from '@openmaic/dsl';
 import { isMediaPlaceholder } from '@/lib/store/media-generation';
 import { measureSlideElementGeometry, type MeasuredGeometry } from '@openmaic/renderer/snapshot';
-import { db, type AudioFileRecord, type MediaFileRecord } from '@/lib/utils/database';
+import {
+  db,
+  mediaFileKey,
+  type AudioFileRecord,
+  type MediaFileRecord,
+} from '@/lib/device-storage/database';
 import {
   emptyPreparedInteractiveHtmlSet,
   prepareInteractiveHtmlScenes,
@@ -45,6 +51,8 @@ import {
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { resolveVideoMediaForElement } from '@/lib/media/media-task-resolution';
 import { resolveAudioBlob } from '@/lib/media/resolve-audio-bytes';
+import { fetchMediaUrl } from '@/lib/media/fetch-media-url';
+import { mapWithConcurrency } from '@/lib/utils/concurrency';
 
 /** Loaded source records, keyed for both metadata (compiler) and byte collection. */
 export interface VideoTimelineRecords {
@@ -110,26 +118,6 @@ function elementMediaRef(
 const PROBE_TIMEOUT_MS = 10_000;
 /** How many media-duration probes run at once (bounded so a big deck can't thrash). */
 const PROBE_CONCURRENCY = 6;
-
-/**
- * Run `worker` over `items` with bounded concurrency, collecting results. Order
- * is not significant to callers (they key results into a Map), so this drains a
- * shared cursor from `PROBE_CONCURRENCY` lanes.
- */
-async function mapWithConcurrency<T>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  let cursor = 0;
-  const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const i = cursor++;
-      await worker(items[i]);
-    }
-  });
-  await Promise.all(lanes);
-}
 
 /**
  * Probe a video blob's natural duration (ms) via an off-document `<video>`.
@@ -201,7 +189,7 @@ function probeAudioDurationMs(blob: Blob): Promise<number | null> {
  * compiler's sync `videoDurationMs` is a table lookup.
  */
 export async function createVideoTimelineDeps(input: {
-  stage: { id: string };
+  stage: Pick<Stage, 'id' | 'whiteboard' | 'videoManifest'>;
   scenes: Scene[];
   /**
    * Skip the off-screen content-box geometry measurement (an off-screen React
@@ -221,32 +209,101 @@ export async function createVideoTimelineDeps(input: {
     ? emptyPreparedInteractiveHtmlSet()
     : await prepareInteractiveHtmlScenes(scenes);
 
+  // The standardized asset manifest names exactly the media references this
+  // document holds. Video compilation consumes audio only through speech
+  // actions, so narration ids come from the speech pairs below; slide-audio
+  // elements are renderable document assets but never timeline audio clips.
+  // The media load no longer scans the table -- a row no document reference
+  // names (an orphan) was never reachable through the scene-scoped bridge
+  // anyway, and now is not even read.
+  const assetManifest = enumerateAssetManifest({ stage, scenes });
+
   // Audio: load only the records referenced by speech actions.
-  const audioIds = new Set<string>();
+  const speechPairs: Array<{ audioId?: string; audioUrl?: string }> = [];
   for (const scene of scenes) {
     for (const action of scene.actions ?? []) {
-      if (action.type === 'speech' && (action as SpeechAction).audioId) {
-        audioIds.add((action as SpeechAction).audioId!);
-      }
+      if (action.type !== 'speech') continue;
+      const speech = action as SpeechAction;
+      speechPairs.push({
+        audioId: speech.audioId || undefined,
+        audioUrl: (speech as { audioUrl?: string }).audioUrl || undefined,
+      });
     }
   }
+  const manifestAudioRefs = new Set(
+    assetManifest.entries.filter((entry) => entry.kind === 'audio').map((entry) => entry.ref),
+  );
+  // The manifest gates membership, but speech traversal remains the ordering
+  // source. Slide-audio slots can make the same ref appear earlier in manifest
+  // order even though the timeline first consumes a different narration.
+  const audioIds = new Set(
+    speechPairs.flatMap((pair) =>
+      pair.audioId && manifestAudioRefs.has(pair.audioId) ? [pair.audioId] : [],
+    ),
+  );
   const audioById = new Map<string, AudioFileRecord>();
-  for (const audioId of audioIds) {
-    const record = await db.audioFiles.get(audioId);
-    // A stable-id regeneration whose mirror write failed leaves the row on the
-    // superseded narration, so the pool answers first here too.
-    const blob = await resolveAudioBlob(audioId);
-    if (record) audioById.set(audioId, blob ? { ...record, blob } : record);
-    else if (blob) audioById.set(audioId, { id: audioId, blob } as AudioFileRecord);
+  const resolvedAudio = await mapWithConcurrency(
+    [...audioIds],
+    PROBE_CONCURRENCY,
+    async (audioId) => {
+      // Bytes come only from the shared resolver: pool-first, so a stable-id
+      // regeneration whose mirror write failed (the row then holds the
+      // superseded narration) still exports what the classroom plays; the row's
+      // own blob is the resolver's legacy fallback. The row read here supplies
+      // duration/format/ossKey metadata for the compiler's sync lookups.
+      const record = await db.audioFiles.get(audioId);
+      const blob = await resolveAudioBlob(audioId);
+      return { audioId, blob, record };
+    },
+  );
+  for (const resolved of resolvedAudio) {
+    if (!resolved) continue;
+    const { audioId, blob, record } = resolved;
+    if (blob) {
+      audioById.set(
+        audioId,
+        record ? { ...record, blob } : ({ id: audioId, blob } as AudioFileRecord),
+      );
+    }
   }
+  // An unconverted document can carry narration only as a legacy URL: the
+  // playback paths fall back to it, and the export must too, or a playable
+  // clip renders as missing. Fetched bytes are keyed by the URL itself, which
+  // the lookup below prefers exactly when no id resolves. A URL is fetched
+  // only when its action's id produced no usable bytes -- server-backed
+  // conversion deliberately retains these URLs, and fetching them anyway
+  // would double-download every clip.
+  const legacyAudioUrls = new Set<string>();
+  for (const pair of speechPairs) {
+    if (!pair.audioUrl) continue;
+    const record = pair.audioId ? audioById.get(pair.audioId) : undefined;
+    if (record?.blob.size) continue;
+    legacyAudioUrls.add(pair.audioUrl);
+  }
+  await mapWithConcurrency([...legacyAudioUrls], PROBE_CONCURRENCY, async (url) => {
+    try {
+      const response = await fetchMediaUrl(url, 15_000);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      audioById.set(url, {
+        id: url,
+        blob,
+        format: blob.type.split('/')[1] || 'mp3',
+        createdAt: 0,
+      } as AudioFileRecord);
+    } catch {
+      // An unfetchable legacy URL leaves the clip missing, as before.
+    }
+  });
 
   // Probe real audio durations from the local blobs up front, so the compiler's
   // sync `audioDurationMs` is an accurate table lookup rather than a text-length
-  // estimate. Only local blobs can be probed here; an ossKey-only (evicted)
-  // record has no bytes to read, so it falls back to the stored duration (or
-  // estimate) — the same asymmetry the video probe accepts. Probes run with
-  // bounded concurrency (each has its own timeout) so a large deck resolves
-  // quickly without one stuck blob wedging the export.
+  // estimate. Every retained record has bytes from the shared resolver; a
+  // failed CDN-backed resolution stays missing for both compilation and byte
+  // collection, rather than letting collection retry it after the timeline has
+  // already fallen back to an estimate. Probes run with bounded concurrency
+  // (each has its own timeout) so a large deck resolves quickly without one
+  // stuck blob wedging the export.
   const audioDurationMsByAudioId = new Map<string, number>();
   const probableAudio = [...audioById].filter(([, record]) => record.blob.size > 0);
   await mapWithConcurrency(probableAudio, PROBE_CONCURRENCY, async ([audioId, record]) => {
@@ -254,14 +311,16 @@ export async function createVideoTimelineDeps(input: {
     if (ms !== null) audioDurationMsByAudioId.set(audioId, ms);
   });
 
-  // Media: all generated media for this stage, keyed by media ref (`gen_vid_…` /
-  // `gen_img_…` — the stored `stageId:` prefix stripped), NOT the slide element
-  // id that `play_video` actions target.
-  const mediaRecords = await db.mediaFiles.where('stageId').equals(stage.id).toArray();
+  // Media: the records of every media ref the manifest names, keyed by that
+  // ref (`gen_vid_…` / allocated id -- the stored `stageId:` prefix stripped),
+  // NOT the slide element id that `play_video` actions target.
   const mediaByElementId = new Map<string, MediaFileRecord>();
-  for (const record of mediaRecords) {
-    const elementId = record.id.includes(':') ? record.id.split(':').slice(1).join(':') : record.id;
-    mediaByElementId.set(elementId, record);
+  for (const entry of assetManifest.entries) {
+    if (entry.kind === 'audio') continue;
+    const record = await db.mediaFiles
+      .get(mediaFileKey(stage.id, entry.ref))
+      .catch(() => undefined);
+    if (record) mediaByElementId.set(entry.ref, record);
   }
 
   // Bridge slide element `.id` → media ref, so a `play_video`/media lookup by the
@@ -325,14 +384,25 @@ export async function createVideoTimelineDeps(input: {
     if (ms !== null) videoDurationMsByElementId.set(elementId, ms);
   });
 
+  // The key a speech action's audio lives under: its id when that resolves,
+  // otherwise the retained legacy URL of an unconverted pair, otherwise the
+  // id again so a miss reports against the id rather than the URL.
+  const audioLookupKey = (action: SpeechAction): string | undefined => {
+    if (action.audioId && audioById.has(action.audioId)) return action.audioId;
+    const legacyUrl = (action as { audioUrl?: string }).audioUrl;
+    if (legacyUrl && audioById.has(legacyUrl)) return legacyUrl;
+    return action.audioId;
+  };
+
   const timing: TimingProbe = {
     audioDurationMs(action: SpeechAction): number | null {
-      if (!action.audioId) return null;
+      const key = audioLookupKey(action);
+      if (!key) return null;
       // Prefer the real probed duration; fall back to the stored TTS duration
       // (older records), then null (→ compiler estimates from text length).
-      const probed = audioDurationMsByAudioId.get(action.audioId);
+      const probed = audioDurationMsByAudioId.get(key);
       if (probed != null) return probed;
-      const record = audioById.get(action.audioId);
+      const record = audioById.get(key);
       if (!record || typeof record.duration !== 'number') return null;
       return Math.round(record.duration * 1000);
     },
@@ -344,18 +414,19 @@ export async function createVideoTimelineDeps(input: {
 
   const assets: AssetSource = {
     audio(action: SpeechAction): AssetMeta | null {
-      if (!action.audioId) return null;
-      const record = audioById.get(action.audioId);
-      if (!record) return { id: action.audioId, present: false };
-      const probed = audioDurationMsByAudioId.get(action.audioId);
+      const key = audioLookupKey(action);
+      if (!key) return null;
+      const record = audioById.get(key);
+      if (!record) return { id: key, present: false };
+      const probed = audioDurationMsByAudioId.get(key);
       return {
-        id: action.audioId,
+        id: key,
         mimeType: record.blob.type || undefined,
         format: record.format || 'mp3',
         durationMs:
           probed ?? (typeof record.duration === 'number' ? record.duration * 1000 : undefined),
-        // Present when locally held or fetchable from its CDN ossKey at collect time.
-        present: record.blob.size > 0 || !!record.ossKey,
+        // Retained records always contain bytes resolved before compilation.
+        present: record.blob.size > 0,
       };
     },
     media(elementId: string, scene: SceneCore): AssetMeta | null {

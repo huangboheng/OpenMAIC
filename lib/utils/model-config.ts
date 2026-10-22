@@ -18,7 +18,8 @@ export function getCurrentModelConfig() {
   const providerConfig = providersConfig[providerId];
   const modelInfo = findModelById(providerId, providerConfig?.models, modelId);
   const thinking =
-    modelInfo?.capabilities?.thinking ?? getCatalogThinkingCapability(providerId, modelId);
+    (modelInfo && 'capabilities' in modelInfo ? modelInfo.capabilities?.thinking : undefined) ??
+    getCatalogThinkingCapability(providerId, modelId);
   const thinkingConfig = supportsConfigurableThinking(thinking)
     ? normalizeThinkingConfig(thinking, thinkingConfigs[getThinkingConfigKey(providerId, modelId)])
     : undefined;

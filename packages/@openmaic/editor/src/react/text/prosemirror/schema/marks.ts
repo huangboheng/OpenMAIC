@@ -115,6 +115,21 @@ const fontsize: MarkSpec = {
   },
 };
 
+const letterSpacing: MarkSpec = {
+  attrs: {
+    letterSpacing: {},
+  },
+  inline: true,
+  group: 'inline',
+  parseDOM: [
+    {
+      style: 'letter-spacing',
+      getAttrs: (letterSpacing) => (letterSpacing ? { letterSpacing } : {}),
+    },
+  ],
+  toDOM: (mark) => ['span', { style: `letter-spacing: ${mark.attrs.letterSpacing};` }, 0],
+};
+
 const fontname: MarkSpec = {
   attrs: {
     fontname: {},
@@ -188,8 +203,10 @@ const { em, strong, code } = marks;
 const schemaMarks = {
   em,
   strong,
-  fontsize,
+  // Family must wrap size: a size wrapper in the host font shifts Latin baselines.
   fontname,
+  fontsize,
+  letterSpacing,
   code,
   forecolor,
   backcolor,

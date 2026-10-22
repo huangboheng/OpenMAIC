@@ -13,12 +13,19 @@ function isJsonFormat(): boolean {
   return process.env.LOG_FORMAT === 'json';
 }
 
+// WebKit stacks list frames only, without the `Name: message` line V8 puts first.
+function formatError(error: Error): string {
+  const head = `${error.name}: ${error.message}`;
+  if (!error.stack) return head;
+  return error.stack.startsWith(head) ? error.stack : `${head}\n${error.stack}`;
+}
+
 function formatLine(level: LogLevel, tag: string, args: unknown[]): string {
   const timestamp = new Date().toISOString();
   const upperLevel = level.toUpperCase();
   const msg = args
     .map((a) => {
-      if (a instanceof Error) return redact(a.stack ?? a.message);
+      if (a instanceof Error) return redact(formatError(a));
       if (typeof a === 'string') return redact(a);
       // JSON 序列化后脱敏（处理嵌套对象中的 string 字段）
       return JSON.stringify(redactDeep(a));

@@ -20,13 +20,17 @@ export type PromptId =
 
 /** Snippets referenced by generation-owned prompt templates. */
 export type SnippetId =
+  | 'interactive-libraries'
+  | 'interactive-math'
+  | 'interactive-observation'
   | 'json-output-rules'
   | 'image-instructions'
   | 'video-instructions'
   | 'media-safety-guidelines'
   | 'slide-image-instructions'
   | 'slide-generated-image-instructions'
-  | 'slide-video-instructions';
+  | 'slide-video-instructions'
+  | 'speech-tts-readability';
 
 /** Loaded prompt template. */
 export interface LoadedPrompt {

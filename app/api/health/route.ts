@@ -1,11 +1,6 @@
 import { apiSuccess } from '@/lib/server/api-response';
-import {
-  getServerWebSearchProviders,
-  getServerImageProviders,
-  getServerVideoProviders,
-  getServerTTSProviders,
-  isServerLLMConfigured,
-} from '@/lib/server/provider-config';
+import { resolveServerGenerationCapabilities } from '@/lib/server/generation-capabilities';
+import { getParallelSceneConcurrency, isServerLLMConfigured } from '@/lib/server/provider-config';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -28,11 +23,9 @@ export async function GET() {
     // Deployment gate (ADR-0001): false means managed-mode clients can never
     // start a chat/discussion — the deploy health check treats it as failure.
     llmConfigured: isServerLLMConfigured(),
-    capabilities: {
-      webSearch: Object.keys(getServerWebSearchProviders()).length > 0,
-      imageGeneration: Object.keys(getServerImageProviders()).length > 0,
-      videoGeneration: Object.keys(getServerVideoProviders()).length > 0,
-      tts: Object.values(getServerTTSProviders()).some((info) => !info.disabled),
-    },
+    accessCodeConfigured: Boolean(process.env.ACCESS_CODE),
+    capabilities: await resolveServerGenerationCapabilities(),
+    // How many scenes the browser may generate at once (PARALLEL_SCENE_CONCURRENCY).
+    generation: { parallelSceneConcurrency: getParallelSceneConcurrency() },
   });
 }

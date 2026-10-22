@@ -5,8 +5,12 @@ const searchWithBraveMock = vi.hoisted(() => vi.fn());
 const searchWithClaudeMock = vi.hoisted(() => vi.fn());
 const searchWithBaiduMock = vi.hoisted(() => vi.fn());
 const searchWithTavilyMock = vi.hoisted(() => vi.fn());
+const searchWithDeepSeekMock = vi.hoisted(() => vi.fn());
+const searchWithKimiMock = vi.hoisted(() => vi.fn());
 const searchWithMiniMaxMock = vi.hoisted(() => vi.fn());
 const searchWithDoubaoMock = vi.hoisted(() => vi.fn());
+const searchWithExaMock = vi.hoisted(() => vi.fn());
+const searchWithFirecrawlMock = vi.hoisted(() => vi.fn());
 const searchWithSearxngMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/web-search/bocha', () => ({
@@ -29,12 +33,24 @@ vi.mock('@/lib/web-search/tavily', () => ({
   searchWithTavily: searchWithTavilyMock,
 }));
 
+vi.mock('@/lib/web-search/deepseek', () => ({ searchWithDeepSeek: searchWithDeepSeekMock }));
+
+vi.mock('@/lib/web-search/kimi', () => ({ searchWithKimi: searchWithKimiMock }));
+
 vi.mock('@/lib/web-search/minimax', () => ({
   searchWithMiniMax: searchWithMiniMaxMock,
 }));
 
 vi.mock('@/lib/web-search/doubao', () => ({
   searchWithDoubao: searchWithDoubaoMock,
+}));
+
+vi.mock('@/lib/web-search/exa', () => ({
+  searchWithExa: searchWithExaMock,
+}));
+
+vi.mock('@/lib/web-search/firecrawl', () => ({
+  searchWithFirecrawl: searchWithFirecrawlMock,
 }));
 
 vi.mock('@/lib/web-search/searxng', () => ({
@@ -51,7 +67,10 @@ describe('searchWeb', () => {
     searchWithBaiduMock.mockReset();
     searchWithTavilyMock.mockReset();
     searchWithMiniMaxMock.mockReset();
+    searchWithKimiMock.mockReset();
     searchWithDoubaoMock.mockReset();
+    searchWithExaMock.mockReset();
+    searchWithFirecrawlMock.mockReset();
     searchWithSearxngMock.mockReset();
   });
 
@@ -107,6 +126,66 @@ describe('searchWeb', () => {
       baseUrl: 'https://api.bocha.cn',
     });
     expect(searchWithTavilyMock).not.toHaveBeenCalled();
+  });
+
+  it('dispatches Exa provider requests', async () => {
+    searchWithExaMock.mockResolvedValueOnce({
+      answer: '',
+      sources: [],
+      query: 'q',
+      responseTime: 0.2,
+    });
+
+    await expect(
+      searchWeb({
+        providerId: 'exa',
+        query: 'q',
+        apiKey: 'exa-key',
+        maxResults: 8,
+        baseUrl: 'https://api.exa.ai',
+      }),
+    ).resolves.toEqual({
+      answer: '',
+      sources: [],
+      query: 'q',
+      responseTime: 0.2,
+    });
+    expect(searchWithExaMock).toHaveBeenCalledWith({
+      query: 'q',
+      apiKey: 'exa-key',
+      maxResults: 8,
+      baseUrl: 'https://api.exa.ai',
+    });
+  });
+
+  it('dispatches Firecrawl provider requests', async () => {
+    searchWithFirecrawlMock.mockResolvedValueOnce({
+      answer: '',
+      sources: [],
+      query: 'q',
+      responseTime: 0.2,
+    });
+
+    await expect(
+      searchWeb({
+        providerId: 'firecrawl',
+        query: 'q',
+        apiKey: 'fc-key',
+        maxResults: 8,
+        baseUrl: 'https://api.firecrawl.dev',
+      }),
+    ).resolves.toEqual({
+      answer: '',
+      sources: [],
+      query: 'q',
+      responseTime: 0.2,
+    });
+    expect(searchWithFirecrawlMock).toHaveBeenCalledWith({
+      query: 'q',
+      apiKey: 'fc-key',
+      maxResults: 8,
+      baseUrl: 'https://api.firecrawl.dev',
+    });
   });
 
   it('dispatches Claude provider requests with the selected model', async () => {
@@ -298,5 +377,44 @@ describe('searchWeb', () => {
       maxResults: 8,
       baseUrl: 'http://192.168.161.100:6060',
     });
+  });
+
+  it('threads the caller AbortSignal through every registered provider adapter', async () => {
+    const signal = new AbortController().signal;
+    const result = { answer: '', sources: [], query: 'q', responseTime: 0.1 };
+    const cases: Array<{
+      providerId: Parameters<typeof searchWeb>[0]['providerId'];
+      adapter: ReturnType<typeof vi.fn>;
+      baseUrl?: string;
+    }> = [
+      { providerId: 'tavily', adapter: searchWithTavilyMock },
+      { providerId: 'exa', adapter: searchWithExaMock },
+      { providerId: 'firecrawl', adapter: searchWithFirecrawlMock },
+      { providerId: 'bocha', adapter: searchWithBochaMock },
+      { providerId: 'brave', adapter: searchWithBraveMock },
+      { providerId: 'baidu', adapter: searchWithBaiduMock },
+      { providerId: 'claude', adapter: searchWithClaudeMock },
+      { providerId: 'kimi', adapter: searchWithKimiMock },
+      { providerId: 'deepseek', adapter: searchWithDeepSeekMock },
+      { providerId: 'minimax', adapter: searchWithMiniMaxMock },
+      { providerId: 'doubao', adapter: searchWithDoubaoMock },
+      {
+        providerId: 'searxng',
+        adapter: searchWithSearxngMock,
+        baseUrl: 'http://192.168.161.100:6060',
+      },
+    ];
+
+    for (const testCase of cases) {
+      testCase.adapter.mockResolvedValueOnce(result);
+      await searchWeb({
+        providerId: testCase.providerId,
+        query: 'q',
+        apiKey: 'key',
+        baseUrl: testCase.baseUrl,
+        signal,
+      });
+      expect(testCase.adapter).toHaveBeenLastCalledWith(expect.objectContaining({ signal }));
+    }
   });
 });

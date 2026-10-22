@@ -1,5 +1,6 @@
 import { createElement, type ComponentType, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { parseHTML } from 'linkedom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SceneProvider, type SceneDataController } from '@/lib/contexts/scene-context';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
@@ -7,6 +8,7 @@ import { PlaybackScreenCanvas } from '@/components/slide-renderer/Editor/ScreenC
 import { getPlaybackImageState } from '@/components/slide-renderer/Editor/RendererScreenCanvas';
 import type { SlideContent } from '@/lib/types/stage';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
+import { setModelSettingsViewForTests } from '../helpers/model-settings-view';
 
 vi.mock('@/lib/hooks/use-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -64,6 +66,7 @@ describe('PlaybackScreenCanvas', () => {
   });
 
   afterEach(() => {
+    setModelSettingsViewForTests(null);
     if (original === undefined) {
       delete process.env[flag];
     } else {
@@ -101,8 +104,112 @@ describe('PlaybackScreenCanvas', () => {
     expect(html).toContain('id="screen-element-title-1"');
   });
 
-  it('renders an untracked generated placeholder as pending in renderer playback mode', () => {
+  it('keeps shape-label padding and paragraph spacing in both playback renderers', () => {
+    const shapeController: SceneDataController<SlideContent> = {
+      ...controller,
+      getSnapshot: () => ({
+        ...content,
+        canvas: {
+          ...content.canvas,
+          elements: [
+            {
+              id: 'shape-1',
+              type: 'shape',
+              left: 24,
+              top: 32,
+              width: 160,
+              height: 100,
+              rotate: 0,
+              path: 'M0 0 L160 0 L160 100 Z',
+              viewBox: [160, 100],
+              fixedRatio: false,
+              fill: '#eeeeee',
+              text: {
+                content: '<p>First</p><p>Second</p>',
+                align: 'middle',
+                defaultFontName: 'Arial',
+                defaultColor: '#111111',
+                paragraphSpace: 12,
+              },
+            },
+          ],
+        },
+      }),
+    };
+
+    for (const rendererEnabled of [false, true]) {
+      if (rendererEnabled) process.env[flag] = 'true';
+      else delete process.env[flag];
+      const html = renderToStaticMarkup(
+        createElement(
+          TestSceneProvider,
+          { controller: shapeController as SceneDataController },
+          createElement(PlaybackScreenCanvas),
+        ),
+      );
+      const { document } = parseHTML(html);
+      const label = document.querySelector('.shape-text');
+      const prose = document.querySelector('.shape-text .slide-renderer-prose');
+      expect(label?.getAttribute('style')).toContain('padding:10px');
+      expect(label?.getAttribute('style')).toContain('line-height:1.625');
+      expect(prose?.getAttribute('style')).toContain('--paragraphSpace:12px');
+      expect(document.querySelector('style')?.textContent).toContain('.slide-renderer-prose p');
+    }
+  });
+
+  it('renders playback videos inline for mobile browsers', () => {
+    const videoContent: SlideContent = {
+      ...content,
+      canvas: {
+        ...content.canvas,
+        elements: [
+          {
+            id: 'video-1',
+            type: 'video',
+            left: 24,
+            top: 32,
+            width: 320,
+            height: 180,
+            rotate: 0,
+            src: 'video.mp4',
+            autoplay: false,
+          },
+        ],
+      },
+    };
+    const videoController: SceneDataController<SlideContent> = {
+      ...controller,
+      getSnapshot: () => videoContent,
+    };
+
+    for (const rendererEnabled of [false, true]) {
+      if (rendererEnabled) {
+        process.env[flag] = 'true';
+      } else {
+        delete process.env[flag];
+      }
+
+      const html = renderToStaticMarkup(
+        createElement(
+          TestSceneProvider,
+          { controller: videoController as SceneDataController },
+          createElement(PlaybackScreenCanvas),
+        ),
+      );
+
+      expect(html).toMatch(/<video[^>]*playsinline/i);
+    }
+  });
+
+  // With image generation off — the default — an untracked generated
+  // placeholder is a slide whose media will not arrive, and that is what it
+  // says. It briefly claimed to be pending only because asking the asset pool
+  // about the placeholder left a lease in flight during the first paint; the
+  // pool never held such a ref, so it is no longer asked.
+  it('renders an untracked generated placeholder as disabled when generation is off', () => {
     process.env[flag] = 'true';
+    // The workspace's image slot resolves to nothing.
+    setModelSettingsViewForTests({});
     const imageContent: SlideContent = {
       ...content,
       canvas: {
@@ -139,7 +246,7 @@ describe('PlaybackScreenCanvas', () => {
       ),
     );
 
-    expect(html).toContain('data-media-state="pending"');
+    expect(html).toContain('data-media-state="disabled"');
     expect(html).not.toContain('src="gen_img_1"');
   });
 
