@@ -2,7 +2,7 @@
 
 | 版本 | 创建日期 | 最后更新 |
 |------|----------|----------|
-| v1.2.0 | 2026-10-11 | 2026-10-22 |
+| v1.2.1 | 2026-10-11 | 2026-10-22 |
 
 ## 1 大纲
 
@@ -392,14 +392,18 @@
 
 ### 11.3 发现的迁移缺口
 
-旧课堂内容本身不需要重生成，但当前生产库缺一次存储迁移，导致三类症状：
+旧课堂内容本身不需要重生成，但当前生产库缺一次存储迁移，导致四类问题：
 
 1. **首页课程列表为空**：`document_stages` 有 193 条，`stage_meta` 的 owner 绑定为 0 条；`/api/stages` 按 owner 过滤后返回空数组。
 2. **自动保存 404**：旧课堂由文件回退加载，文档库没有对应 owner 文档；`PUT /documents/<id>/stage` 报 `document not found`。
 3. **DSL 版本过期**：`scripts/sync-classrooms-to-pg.mjs` 把文档写成 `dslVersion 0.1.0`，当前 `DSL_VERSION=0.3.0`；部分保存被 400 拒绝。
 4. **冲突触发器**：共享库遗留 `trg_document_stages_updated_at` 调用 `set_updated_at()`，把 timestamptz 写入 double precision 的 `updated_at`；全量保存报 `22P02`。`@openmaic/storage` 自身不创建该触发器。
+5. **内置 legacy importer 被绕过**：启动时 `LegacyClassroomImport` 发现 193 个文件课堂，但因 `document_stages` 已由同步脚本写入，全部记为 `skipped / a course with this id already exists`（`legacy_classroom_imports` 193 条），不会重试。上游文档明确要求先设身份模式再首次导入：单用户或团队共享 owner 会把课堂归给该 owner；匿名模式则归专用 owner `system:legacy-classrooms`，只能通过旧链接只读打开、不进入任何课程库。
 
-已在隔离库用 `jKWTUciIe7` 验证修复路径：补 `stage_meta(owner_id='local')` → 删除 `trg_document_stages_updated_at` → 全量 PUT 一次把 DSL 升到 0.3.0。结果为：首页「最近学习 193」、课堂 GET 200、`PUT /stage` 204、无 console error。生产库执行时需先按实际身份模式确定 owner id（`OWNER_SINGLE_USER_ID`，默认 `local`，或 `PERSISTENCE_SHARED_OWNER_ID`），再逐课堂全量保存一次。
+修复有两条路径，均不涉及重新生成：
+
+- **A 受支持的重新导入（推荐）**：备份数据库与 `data/` → 删除 193 条 `legacy_classroom_imports` 跳过记录和对应 `document_stages`（级联 scene）→ 设置 `OWNER_SINGLE_USER=true`（或 `PERSISTENCE_SHARED_OWNER_ID`）→ 重启；importer 会按当前身份重建 owner 绑定，并以当前 DSL 版本写入。
+- **B 原地补齐（已在隔离库验证）**：补 `stage_meta(owner_id='local')` → 删除 `trg_document_stages_updated_at` → 对每个课堂全量 PUT 一次把 DSL 升到 0.3.0。隔离库结果为：首页「最近学习 193」、课堂 GET 200、`PUT /stage` 204、无 console error。生产库执行时需先按实际身份模式确定 owner id（`OWNER_SINGLE_USER_ID`，默认 `local`，或 `PERSISTENCE_SHARED_OWNER_ID`）。
 
 ### 11.4 残留生成任务清理
 
@@ -415,7 +419,7 @@
 
 - 浏览器只抽查 3 个代表课堂；193 个课堂的逐页播放未跑。
 - 存量无 PBL 课堂，PBL 播放路径未覆盖。
-- 生产库尚未执行 owner 绑定、触发器清理和 DSL 全量升级；旧课堂当前仍是「可直接播放、首页不显示、编辑不落库」状态。完成迁移后应重跑 `pnpm verify:classrooms --strict`，目标 0 warnings。
+- 生产库尚未执行 owner 绑定、触发器清理和 DSL 全量升级；`legacy_classroom_imports` 的 193 条记录全部是 `skipped`，内置导入不会重试。旧课堂当前仍是「可直接播放、首页不显示、编辑不落库」状态。完成迁移后应重跑 `pnpm verify:classrooms --strict`，目标 0 warnings。
 
 ## 12 修订历史
 
@@ -425,3 +429,4 @@
 | v1.1.0 | 2026-10-22 | 追加第 10 节合并执行记录：上游基线推进到 `e19ed13f`（v1.2.1），314 提交/60 冲突，记录独立集成分支、六条解决原则、兼容层拆分、tsc/build/873 项单测结果与五条遗留风险 |
 | v1.1.1 | 2026-10-22 | 浏览器冒烟发现并修复三类真实回归：本地生成 API 路由缺失（404）、`llmApiError` 兼容缺失（500）、服务端 provider 未同步到客户端 store（首页卡「配置模型」）；补模型授权回退与 `maxOutputTokens` 钳制，冒烟跑到场景内容 200 |
 | v1.2.0 | 2026-10-22 | 追加第 11 节旧课堂验证与残留任务清理：193 个课堂/1759 scene 全量静态与 HTTP 校验通过，3 个代表课堂浏览器播放通过；记录 owner 绑定缺失、DSL 0.1.0、冲突触发器三类迁移缺口及隔离库验证过的修复路径；归档 197 个残留生成任务；新增 `scripts/verify-classrooms.mts` 与 `pnpm verify:classrooms` |
+| v1.2.1 | 2026-10-22 | 补充内置 `LegacyClassroomImport` 根因：193 条导入记录均为 `skipped / id already exists`，不会重试；增加「先设身份模式后重新导入」与「原地补齐」两条不重生成的修复路径，并同步 11.6 遗留风险 |
