@@ -59,6 +59,9 @@ async function hmacSha256Hex(key: string, data: string): Promise<string> {
  * Edge-compatible variant of {@link verifyAccessToken} for use in Next.js
  * middleware (Edge Runtime cannot use Node.js `crypto`/`Buffer`).
  * Produces the same hex HMAC-SHA256 signature and compares in constant time.
+ *
+ * The timestamp/format guards are shared with the Node verifier so the proxy
+ * cannot accept an expired or non-canonical token that the Node path rejects.
  */
 export async function verifyAccessTokenEdge(token: string, accessCode: string): Promise<boolean> {
   try {
@@ -67,6 +70,9 @@ export async function verifyAccessTokenEdge(token: string, accessCode: string): 
 
     const timestamp = token.substring(0, dotIndex);
     const signature = token.substring(dotIndex + 1);
+
+    if (!isAccessTokenTimestampValid(timestamp)) return false;
+    if (!isAccessTokenSignatureFormatValid(signature)) return false;
 
     const expected = await hmacSha256Hex(accessCode, timestamp);
     if (signature.length !== expected.length) return false;

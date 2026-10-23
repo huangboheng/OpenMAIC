@@ -8,6 +8,7 @@ import { AccessCodeModal } from '@/components/access-code-modal';
 import { importLegacyModelSettings } from '@/components/model-settings-init';
 import { modelSettingsClient } from '@/lib/model-settings/client';
 import { reloadAgentRegistry } from '@/lib/orchestration/registry/store';
+import { useSettingsStore } from '@/lib/store/settings';
 
 export function AccessCodeGuard({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<{
@@ -61,6 +62,11 @@ export function AccessCodeGuard({ children }: { children: ReactNode }) {
             // authorized, and retry the one-time import of browser settings.
             void modelSettingsClient.load();
             void importLegacyModelSettings();
+            // The client also learns which providers the server manages from
+            // /api/server-providers, which ran before login and was answered
+            // 401. Without this re-fetch the home page sees no usable LLM and
+            // keeps "Enter Classroom" disabled.
+            void useSettingsStore.getState().fetchServerProviders();
             // The same for the custom agents (and their one-time import).
             void reloadAgentRegistry();
             // And for the courses this browser stored before 1.2.0: the

@@ -19,6 +19,11 @@ function loadDotEnvSecrets(): void {
 }
 loadDotEnvSecrets();
 
+// The access-code gate test and the dev server must agree on the code even when
+// CI has no .env.local to load.
+const accessCode = process.env.ACCESS_CODE || 'e2e-access-code-0123456789';
+process.env.ACCESS_CODE = accessCode;
+
 export default defineConfig({
   testDir: './e2e/tests',
   fullyParallel: true,
@@ -60,6 +65,10 @@ export default defineConfig({
       // Home is off by default (hosted deployments expose only classrooms).
       // The browser suite exercises the full home/generation flow, so enable it.
       OPENMAIC_HOME_ENABLED: 'true',
+      // Standalone mode: pages render for the client-side AccessCodeGuard, and
+      // the two access-code endpoints are reachable without a session.
+      OPENMAIC_AUTH_MODE: 'access-code',
+      ACCESS_CODE: accessCode,
       ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
     },
   },

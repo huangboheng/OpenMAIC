@@ -44,3 +44,4 @@
 - **既有 e2e 首页 spec 仍红**：`e2e/fixtures/base.ts` 不注入 session cookie；根路径虽能渲染（200），但 API 会 401，子页会 307。这是既有测试缺口，不在本次范围。
 - **托管出口假设主站根为 `/`**：`window.location.assign('/')` 在 `philochora.com/openmaic` 拓扑下正确；若未来换域名或挂载方式，需要改成显式主站 URL。
 - 开关是 server-only，客户端只收到 `homeEnabled` 布尔值，不暴露 env；改动开关需要重启进程。
+- **后续（2026-10-24）**：ADR-0003 新增 `OPENMAIC_AUTH_MODE=access-code`，本地模式放行访问码端点并让页面直出由 `AccessCodeGuard` 门禁；本 ADR 的根 matcher / 根 bypass 决策不变，托管默认 OAuth 行为不变。

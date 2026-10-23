@@ -188,6 +188,19 @@ function isNeverAllowedRange(value: string): boolean {
 }
 
 /**
+ * The IANA benchmarking range (198.18.0.0/15) is what transparent proxies
+ * (Clash fake-IP and similar) use for real public names. It is not a metadata
+ * endpoint, so the operator's local-network opt-in covers it; without the flag
+ * it stays blocked like every other reserved range.
+ */
+function isBenchmarkingRange(value: string): boolean {
+  const canonical = canonicalizeIp(value);
+  if (canonical === null || canonical.includes(':')) return false;
+  const [first, second] = canonical.split('.');
+  return first === '198' && (second === '18' || second === '19');
+}
+
+/**
  * Ranges the `ALLOW_LOCAL_NETWORKS` opt-in governs: private, loopback and
  * link-local targets, plus carrier-grade NAT (100.64.0.0/10). CGNAT is a
  * routable unicast range that overlay networks such as Tailscale/Headscale
@@ -260,6 +273,11 @@ export function connectionAddressBlockReason(
   }
   if (isCloudMetadataAddress(canonical)) {
     return CLOUD_METADATA_BLOCK_MESSAGE;
+  }
+  // Fake-IP DNS (Clash and similar) maps public names into IANA's benchmarking
+  // range; the operator's local-network opt-in covers that range.
+  if (allowLocalNetworks && isBenchmarkingRange(canonical)) {
+    return null;
   }
   // IANA reserved/multicast/broadcast ranges are never legitimate proxy
   // targets, opt-in or not.
@@ -517,7 +535,7 @@ export async function validateUrlForSSRFWithPolicy(
   // proxy targets, so this applies even when the local-network opt-in is set -
   // matching the connect-time dispatcher policy. It also covers the case Node
   // never runs `connect.lookup` for: an IP-literal URL.
-  if (isNeverAllowedRange(hostname)) {
+  if (isNeverAllowedRange(hostname) && !(allowLocal && isBenchmarkingRange(hostname))) {
     return LOCAL_NETWORK_BLOCK_MESSAGE;
   }
 
@@ -541,7 +559,11 @@ export async function validateUrlForSSRFWithPolicy(
     if (resolvedAddresses?.some(({ address }) => isCloudMetadataAddress(address))) {
       return CLOUD_METADATA_BLOCK_MESSAGE;
     }
-    if (resolvedAddresses?.some(({ address }) => isNeverAllowedRange(address))) {
+    if (
+      resolvedAddresses?.some(
+        ({ address }) => isNeverAllowedRange(address) && !isBenchmarkingRange(address),
+      )
+    ) {
       return LOCAL_NETWORK_BLOCK_MESSAGE;
     }
     return null;

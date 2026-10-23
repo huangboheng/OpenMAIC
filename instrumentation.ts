@@ -281,6 +281,12 @@ async function validateBootConfiguration(): Promise<void> {
   const { resolveAssetPendingTtlMs } = await import('@/lib/persistence/asset-pending-ttl');
   runConfigurationCheck(resolveAssetPendingTtlMs);
 
+  // The proxy auth mode: `access-code` without an ACCESS_CODE (or a value that
+  // is not one of the two modes) would otherwise fall back to OAuth at request
+  // time and send users to an issuer the deployment does not have.
+  const { validateAuthModeConfiguration } = await import('@/lib/config/auth-mode');
+  runConfigurationCheck(validateAuthModeConfiguration);
+
   // Owner identity, for the same reason and at the same moment. A malformed
   // PERSISTENCE_SHARED_OWNER_ID or single-user setting, the two together, or a
   // setting a host registration would ignore,

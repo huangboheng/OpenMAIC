@@ -50,6 +50,25 @@ describe('validateUrlForSSRF', () => {
     expect(lookupMock).not.toHaveBeenCalled();
   });
 
+  it('allows the Clash fake-IP benchmarking range only with ALLOW_LOCAL_NETWORKS', async () => {
+    process.env.ALLOW_LOCAL_NETWORKS = 'true';
+    lookupMock.mockResolvedValue([{ address: '198.18.0.157', family: 4 }]);
+
+    const { connectionAddressBlockReason, validateUrlForSSRF } = await import(
+      '@/lib/server/ssrf-guard'
+    );
+
+    await expect(validateUrlForSSRF('https://dashscope.aliyuncs.com')).resolves.toBeNull();
+    await expect(validateUrlForSSRF('https://198.18.0.157')).resolves.toBeNull();
+    expect(connectionAddressBlockReason('198.18.0.157', true)).toBeNull();
+    expect(connectionAddressBlockReason('198.18.0.157', false)).toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+    expect(connectionAddressBlockReason('169.254.169.254', true)).toBe(
+      CLOUD_METADATA_BLOCK_MESSAGE,
+    );
+  });
+
   it('allows a public IPv6 literal without DNS lookup', async () => {
     const { validateUrlForSSRF } = await import('@/lib/server/ssrf-guard');
 
@@ -427,12 +446,14 @@ describe('validateUrlForSSRF', () => {
 
     for (const url of [
       'http://240.0.0.1/',
-      'http://198.18.0.1/',
       'http://224.0.0.1/',
       'http://255.255.255.255/',
     ]) {
       await expect(validateUrlForSSRF(url)).resolves.toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
     }
+    // Clash fake-IP maps real public names into IANA's benchmarking range; the
+    // opt-in covers it, while other reserved ranges stay blocked.
+    await expect(validateUrlForSSRF('http://198.18.0.1/')).resolves.toBeNull();
     expect(lookupMock).not.toHaveBeenCalled();
 
     lookupMock.mockResolvedValue([{ address: '240.0.0.1', family: 4 }]);
@@ -827,10 +848,14 @@ describe('connectionAddressBlockReason', () => {
   it('matches validateUrlForSSRF for reserved/multicast ranges, opt-in or not', async () => {
     const { connectionAddressBlockReason } = await import('@/lib/server/ssrf-guard');
 
-    for (const address of ['240.0.0.1', '198.18.0.1', '224.0.0.1', '255.255.255.255']) {
+    for (const address of ['240.0.0.1', '224.0.0.1', '255.255.255.255']) {
       expect(connectionAddressBlockReason(address, false)).toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
       expect(connectionAddressBlockReason(address, true)).toBe(PRIVATE_NETWORK_BLOCK_MESSAGE);
     }
+    expect(connectionAddressBlockReason('198.18.0.1', false)).toBe(
+      PRIVATE_NETWORK_BLOCK_MESSAGE,
+    );
+    expect(connectionAddressBlockReason('198.18.0.1', true)).toBeNull();
   });
 
   it('governs CGNAT addresses by the opt-in and keeps metadata blocked with the flag', async () => {

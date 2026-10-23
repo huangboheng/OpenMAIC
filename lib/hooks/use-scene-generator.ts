@@ -22,8 +22,10 @@ import { resolveAgentVoiceOptions, pickNarratorAgent } from '@/lib/audio/agent-v
 import {
   PREGENERATED_VOICES,
   DEFAULT_PREGENERATED_VOICE,
+  DEFAULT_TTS_VOICES,
   voiceIdToFileName,
 } from '@/lib/audio/constants';
+import type { TTSProviderId } from '@/lib/audio/types';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import {
   generateMediaForOutlines,
@@ -259,6 +261,36 @@ interface TTSApiResponse {
   details?: string;
 }
 
+interface SingleVoiceTtsOverride {
+  providerId: TTSProviderId;
+  voiceId: string;
+}
+
+/**
+ * MiniMax is the only provider with the four pre-generated voice variants.
+ * When it is not configured, fall back to one default voice from any other
+ * enabled provider instead of failing the whole scene.
+ */
+function resolveSingleVoiceTtsOverride(): SingleVoiceTtsOverride | null {
+  const settings = useSettingsStore.getState();
+  const configs = settings.ttsProvidersConfig;
+  if (isTTSProviderEnabled('minimax-tts', configs?.['minimax-tts'])) return null;
+
+  const candidates: TTSProviderId[] = [];
+  if (settings.ttsProviderId !== 'minimax-tts') candidates.push(settings.ttsProviderId);
+  for (const id of Object.keys(configs ?? {}) as TTSProviderId[]) {
+    if (id !== 'minimax-tts' && !candidates.includes(id)) candidates.push(id);
+  }
+
+  for (const providerId of candidates) {
+    if (providerId === 'browser-native-tts') continue;
+    if (!isTTSProviderEnabled(providerId, configs?.[providerId])) continue;
+    const voiceId = DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES];
+    if (voiceId) return { providerId, voiceId };
+  }
+  return null;
+}
+
 /** Generate TTS for one speech action and return its allocated asset reference. */
 export async function generateAndStoreTTS(
   requestId: string,
@@ -268,19 +300,20 @@ export async function generateAndStoreTTS(
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
   replaceAssetId?: string,
   stageId?: string,
-  options?: { forceVoice?: string },
+  options?: { forceVoice?: string; voiceOverride?: SingleVoiceTtsOverride },
 ): Promise<string | null> {
   const settings = useSettingsStore.getState();
   const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
+  const voiceOverride = options?.voiceOverride;
 
-  // When forceVoice is provided, skip agent/settings resolution and use MiniMax
-  // directly — the multi-voice pre-generation path needs deterministic ids.
-  const forced = !!options?.forceVoice;
-  let effectiveProviderId = forced ? 'minimax-tts' as const : settings.ttsProviderId;
-  let effectiveVoice = options?.forceVoice || settings.ttsVoice;
-  let effectiveProviderConfig = forced
-    ? settings.ttsProvidersConfig?.['minimax-tts']
-    : settings.ttsProvidersConfig?.[settings.ttsProviderId];
+  // forceVoice is the four-variant MiniMax path; voiceOverride is the
+  // single-voice fallback when MiniMax is unavailable. Both store under the
+  // deterministic request id so the player can resolve the file.
+  const forced = !!options?.forceVoice || !!voiceOverride;
+  let effectiveProviderId: TTSProviderId =
+    voiceOverride?.providerId ?? (options?.forceVoice ? 'minimax-tts' : settings.ttsProviderId);
+  let effectiveVoice = voiceOverride?.voiceId ?? options?.forceVoice ?? settings.ttsVoice;
+  let effectiveProviderConfig = settings.ttsProvidersConfig?.[effectiveProviderId];
 
   if (!forced) {
     // Narration is the teacher's voice — resolve it from the teacher agent profile
@@ -456,8 +489,33 @@ export async function generateTTSForScene(
   signal?: AbortSignal,
   retryOptions?: ClientRetryOptions<TTSApiResponse>,
 ): Promise<{ success: boolean; failedCount: number; error?: string }> {
-  const providerId = useSettingsStore.getState().ttsProviderId;
-  scene.actions = splitLongSpeechActions(scene.actions || [], providerId);
+  const settings = useSettingsStore.getState();
+  const configs = settings.ttsProvidersConfig;
+  const selectedProviderId = settings.ttsProviderId;
+  const selectedEnabled = isTTSProviderEnabled(selectedProviderId, configs?.[selectedProviderId]);
+  const miniMaxAvailable = isTTSProviderEnabled('minimax-tts', configs?.['minimax-tts']);
+
+  if (selectedProviderId === 'browser-native-tts') {
+    return { success: true, failedCount: 0 };
+  }
+  // Preserve the old "selected provider disabled ⇒ no TTS" behavior.
+  if (!selectedEnabled && selectedProviderId !== 'minimax-tts') {
+    return { success: true, failedCount: 0 };
+  }
+
+  // The four-variant architecture is MiniMax-only. When it is unavailable,
+  // either fall back to one default voice from the selected/another provider,
+  // or leave speech actions unvoiced (the player then uses browser-native TTS
+  // or the reading timer) instead of failing the scene.
+  const singleVoice = miniMaxAvailable ? null : resolveSingleVoiceTtsOverride();
+  const useFallback = !miniMaxAvailable && !!singleVoice;
+  if (!miniMaxAvailable && !useFallback) {
+    log.warn('No usable TTS provider; leaving speech actions unvoiced.');
+    return { success: true, failedCount: 0 };
+  }
+
+  const effectiveProviderId = useFallback ? singleVoice!.providerId : 'minimax-tts';
+  scene.actions = splitLongSpeechActions(scene.actions || [], effectiveProviderId);
   const speechActions = scene.actions.filter(
     (a): a is SpeechAction => a.type === 'speech' && !!a.text,
   );
@@ -474,6 +532,9 @@ export async function generateTTSForScene(
     const baseAudioId = `tts_s${sceneOrder}_${action.id}`;
     const generatedVoiceFiles: string[] = [];
     for (const voice of PREGENERATED_VOICES) {
+      // The fallback has one voice; reuse the default anchor id so the player
+      // resolves it through the normal default-voice path.
+      if (useFallback && voice !== DEFAULT_PREGENERATED_VOICE) continue;
       const voiceFile = voiceIdToFileName(voice);
       const audioId = `${baseAudioId}_${voiceFile}`;
       try {
@@ -485,7 +546,7 @@ export async function generateTTSForScene(
           undefined,
           undefined,
           undefined,
-          { forceVoice: voice },
+          useFallback ? { voiceOverride: singleVoice! } : { forceVoice: voice },
         );
         generatedVoiceFiles.push(voiceFile);
       } catch (error) {
@@ -494,7 +555,7 @@ export async function generateTTSForScene(
         lastError =
           error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
         log.warn('TTS generation failed:', {
-          providerId: 'minimax-tts',
+          providerId: effectiveProviderId,
           actionId: action.id,
           sceneOrder,
           audioId,
@@ -529,7 +590,9 @@ export async function generateTTSForScene(
   }
 
   return {
-    success: failedCount === 0,
+    // A fallback failure must not block generation; the action stays unvoiced
+    // and the classroom falls back to browser-native speech / the reading timer.
+    success: failedCount === 0 || useFallback,
     failedCount,
     error: lastError,
   };
@@ -764,11 +827,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             // TTS generation — failure means the whole scene fails
             if (
               settings.ttsEnabled &&
-              settings.ttsProviderId !== 'browser-native-tts' &&
-              isTTSProviderEnabled(
-                settings.ttsProviderId,
-                settings.ttsProvidersConfig?.[settings.ttsProviderId],
-              )
+              settings.ttsProviderId !== 'browser-native-tts'
             ) {
               const ttsResult = await generateTTSForScene(
                 scene,
@@ -947,11 +1006,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
         const settings = useSettingsStore.getState();
         if (
           settings.ttsEnabled &&
-          settings.ttsProviderId !== 'browser-native-tts' &&
-          isTTSProviderEnabled(
-            settings.ttsProviderId,
-            settings.ttsProvidersConfig?.[settings.ttsProviderId],
-          )
+          settings.ttsProviderId !== 'browser-native-tts'
         ) {
           const ttsResult = await generateTTSForScene(
             actionsResult.scene,

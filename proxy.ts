@@ -22,6 +22,7 @@ import {
 } from '@/lib/server/oauth-client';
 import { verifyAccessTokenEdge } from '@/lib/server/access-token';
 import { isHomePageEnabled } from '@/lib/config/feature-flags';
+import { resolveAuthMode } from '@/lib/config/auth-mode';
 
 // ── Configuration ─────────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ function verifyServiceApiKey(request: NextRequest): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   let modifiedHeaders: Headers | undefined;
+  const accessCodeMode = resolveAuthMode() === 'access-code';
 
   // SEC-02: Reject any non-whitelisted page path (root /, /eval/*,
   // /generation-preview, ...) before any auth/redirect logic runs. Hosted
@@ -124,6 +126,21 @@ export async function proxy(request: NextRequest) {
   // 404, so this branch is unreachable there.
   if (pathname === '/' && isHomePageEnabled()) {
     return NextResponse.next();
+  }
+
+  // Standalone access-code mode: the two access-code endpoints bootstrap the
+  // client-side gate, and page requests must reach AccessCodeGuard instead of
+  // the OAuth redirect. Every other API keeps the auth checks below.
+  if (accessCodeMode) {
+    const isAccessCodeEndpoint =
+      (pathname === '/api/access-code/status' && request.method === 'GET') ||
+      (pathname === '/api/access-code/verify' && request.method === 'POST');
+    if (isAccessCodeEndpoint) {
+      return NextResponse.next();
+    }
+    if (!pathname.startsWith('/api/')) {
+      return NextResponse.next();
+    }
   }
 
   // Skip auth for whitelisted paths

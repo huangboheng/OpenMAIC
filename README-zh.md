@@ -231,6 +231,8 @@ pnpm dev
 
 打开 **http://localhost:3000** 开始学习！未设置 `DATABASE_URL` 时服务会拒绝启动，并提示如何提供（见[服务端持久化](#服务端持久化postgresql)）。
 
+> 本仓库以 `/openmaic` 子路径部署：本地地址是 **http://localhost:3000/openmaic**。本地访问码/单用户/数据库配置见 [本地单独运行指南](docs/local-standalone.md)。
+
 ### 5. 生产环境构建
 
 ```bash

@@ -233,6 +233,8 @@ Open **http://localhost:3000** and start learning! Without a `DATABASE_URL` the
 server refuses to start and tells you how to provide one (see
 [Server-backed persistence](#server-backed-persistence-postgresql)).
 
+> This fork mounts the app under `/openmaic`: the local URL is **http://localhost:3000/openmaic**. See [Local standalone guide](docs/local-standalone.md) for access-code, single-user and database setup.
+
 ### 5. Build for Production
 
 ```bash

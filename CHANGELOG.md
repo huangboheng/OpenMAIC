@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.7] - 2026-10-24
+
+### 自有功能 (Own Feature)
+
+- 新增 server-only `OPENMAIC_AUTH_MODE`（默认 `oauth`，本地可设 `access-code`）：本地独立运行可用访问码登录，托管继续走 Philochora OAuth。
+- 访问码模式放行 `/api/access-code/status|verify` 与页面直出，由 `AccessCodeGuard` 完成门禁；其他 API 仍要求签名 cookie。
+- 本地推荐 `OWNER_SINGLE_USER=true`，所有本地访问共用 `local` 课程库，避免首屏并发产生多个匿名 owner。
+- MiniMax TTS 不可用时自动回退到已配置的 TTS（如 qwen-tts）生成单音色，避免课堂生成在 TTS 阶段中断。
+
+### Bug 修复
+
+- 修复 proxy 的 Edge 访问令牌校验漏掉时间戳/签名格式检查的问题：过期或非规范的 `openmaic_access` cookie 不再被接受。
+- 修复 SSRF 防护：`ALLOW_LOCAL_NETWORKS=true` 现在放行 Clash fake-IP 使用的 `198.18.0.0/15`（云元数据和其他 reserved 段仍拒绝），本地 TTS/图片 provider 不再被误拦。
+- 修复本地访问码弹窗无法自举：访问码端点被 proxy 401 挡住、子页面 307 到不可用的本地 OAuth 地址。
+- 修复登录后首页仍判定“无可用 LLM”（`/api/server-providers` 在登录前 401 后未重拉），导致“进入课堂”按钮一直禁用。
+- 新增启动校验：`access-code` 缺 `ACCESS_CODE` 或模式值非法时以 `[boot]` 拒绝启动。
+- 本地指南补充共享旧库 `document_stages.updated_at` 遗留触发器的一次性清理 SQL（该触发器向 `double precision` 写入 `NOW()`，会导致课堂保存 500）。
+
+### 文档与测试
+
+- 新增 ADR-0003 与 `docs/local-standalone.md`；补充 `.env.example` 鉴权模式、fake-IP 放行说明，并修正过时的 fail-open 描述。
+- 新增 auth-mode/proxy/SSRF 单测与访问码 E2E；本地手工验证包含真实短课堂生成、刷新后场景持久化；托管 OAuth 路径由 proxy 单测覆盖。
+
+---
+
 ## [1.2.6] - 2026-10-23
 
 ### 自有功能 (Own Feature)

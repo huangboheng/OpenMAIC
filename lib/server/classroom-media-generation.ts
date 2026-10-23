@@ -16,6 +16,7 @@ import {
   TTS_PROVIDERS,
   PREGENERATED_VOICES,
   DEFAULT_PREGENERATED_VOICE,
+  DEFAULT_TTS_VOICES,
   voiceIdToFileName,
 } from '@/lib/audio/constants';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
@@ -267,6 +268,62 @@ function stampAudioFields(
   }
 }
 
+const FALLBACK_TTS_PROVIDER_ORDER: TTSProviderId[] = [
+  'qwen-tts',
+  'glm-tts',
+  'openai-tts',
+  'azure-tts',
+  'doubao-tts',
+  'elevenlabs-tts',
+];
+
+interface PregeneratedTtsPlan {
+  providerId: TTSProviderId;
+  apiKey: string;
+  baseUrl: string | undefined;
+  modelId: string;
+  voices: readonly { logicalVoice: string; synthesisVoice: string }[];
+  multiVoice: boolean;
+}
+
+/**
+ * MiniMax owns the four-variant pre-generation architecture. When it has no
+ * key, use one default voice from another configured provider and keep the
+ * default logical voice id so the player still resolves the file.
+ */
+function resolvePregeneratedTtsPlan(): PregeneratedTtsPlan | null {
+  const minimaxApiKey = resolveTTSApiKey('minimax-tts');
+  if (minimaxApiKey) {
+    return {
+      providerId: 'minimax-tts',
+      apiKey: minimaxApiKey,
+      baseUrl: resolveTTSBaseUrl('minimax-tts') || TTS_PROVIDERS['minimax-tts'].defaultBaseUrl,
+      modelId: 'speech-2.8-hd',
+      voices: PREGENERATED_VOICES.map((voice) => ({
+        logicalVoice: voice,
+        synthesisVoice: voice,
+      })),
+      multiVoice: true,
+    };
+  }
+
+  for (const providerId of FALLBACK_TTS_PROVIDER_ORDER) {
+    const provider = TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS];
+    const apiKey = resolveTTSApiKey(providerId);
+    const synthesisVoice = DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES];
+    if (!provider || !apiKey || !synthesisVoice) continue;
+    return {
+      providerId,
+      apiKey,
+      baseUrl: resolveTTSBaseUrl(providerId) || provider.defaultBaseUrl,
+      modelId: provider.defaultModelId || '',
+      voices: [{ logicalVoice: DEFAULT_PREGENERATED_VOICE, synthesisVoice }],
+      multiVoice: false,
+    };
+  }
+  return null;
+}
+
 export async function generateTTSForClassroom(
   scenes: Scene[],
   classroomId: string,
@@ -275,17 +332,13 @@ export async function generateTTSForClassroom(
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 
-  // Force MiniMax TTS as the sole provider for pre-generated multi-voice audio.
-  const providerId: TTSProviderId = 'minimax-tts';
-  const apiKey = resolveTTSApiKey(providerId);
-  const ttsProvider = TTS_PROVIDERS[providerId];
-  if (!apiKey) {
-    log.warn(`No API key for TTS provider "${providerId}", skipping TTS generation`);
+  const plan = resolvePregeneratedTtsPlan();
+  if (!plan) {
+    log.warn('No configured TTS provider; skipping TTS generation');
     return;
   }
-  const ttsBaseUrl = resolveTTSBaseUrl(providerId) || ttsProvider?.defaultBaseUrl;
-  const modelId = 'speech-2.8-hd';
-  const format = 'mp3';
+  const { providerId, apiKey, baseUrl: ttsBaseUrl, modelId } = plan;
+  let format = plan.multiVoice ? 'mp3' : 'wav';
 
   for (const scene of scenes) {
     if (!scene.actions) continue;
@@ -306,8 +359,8 @@ export async function generateTTSForClassroom(
       // Track which voices actually succeeded — a missing file must never
       // be referenced by audioId/audioUrl (the player would 404 silently).
       const generatedVoiceFiles: string[] = [];
-      for (const voice of PREGENERATED_VOICES) {
-        const voiceFile = voiceIdToFileName(voice);
+      for (const voice of plan.voices) {
+        const voiceFile = voiceIdToFileName(voice.logicalVoice);
         const audioId = `${baseAudioId}_${voiceFile}`;
         try {
           const result = await generateTTS(
@@ -316,18 +369,23 @@ export async function generateTTSForClassroom(
               modelId,
               apiKey,
               baseUrl: ttsBaseUrl,
-              voice,
+              voice: voice.synthesisVoice,
               speed: speechAction.speed,
             },
             speechAction.text,
           );
 
-          const filename = `${audioId}.${result.format || format}`;
+          const fileFormat = result.format || format;
+          format = fileFormat;
+          const filename = `${audioId}.${fileFormat}`;
           await fs.writeFile(path.join(audioDir, filename), result.audio);
           generatedVoiceFiles.push(voiceFile);
           log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
         } catch (err) {
-          log.warn(`TTS generation failed for ${audioId} (voice=${voice}):`, err);
+          log.warn(
+            `TTS generation failed for ${audioId} (voice=${voice.synthesisVoice}):`,
+            err,
+          );
         }
       }
 
@@ -374,16 +432,13 @@ export async function backfillMissingTTSForClassroom(
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 
-  const providerId: TTSProviderId = 'minimax-tts';
-  const apiKey = resolveTTSApiKey(providerId);
-  const ttsProvider = TTS_PROVIDERS[providerId];
-  if (!apiKey) {
-    log.warn(`No API key for TTS provider "${providerId}", skipping TTS backfill`);
+  const plan = resolvePregeneratedTtsPlan();
+  if (!plan) {
+    log.warn('No configured TTS provider; skipping TTS backfill');
     return stats;
   }
-  const ttsBaseUrl = resolveTTSBaseUrl(providerId) || ttsProvider?.defaultBaseUrl;
-  const modelId = 'speech-2.8-hd';
-  const format = 'mp3';
+  const { providerId, apiKey, baseUrl: ttsBaseUrl, modelId } = plan;
+  const format = plan.multiVoice ? 'mp3' : 'wav';
 
   for (const scene of scenes) {
     if (!scene.actions) continue;
@@ -399,8 +454,8 @@ export async function backfillMissingTTSForClassroom(
       stats.total += 1;
 
       const existingVoiceFiles: string[] = [];
-      for (const voice of PREGENERATED_VOICES) {
-        const voiceFile = voiceIdToFileName(voice);
+      for (const voice of plan.voices) {
+        const voiceFile = voiceIdToFileName(voice.logicalVoice);
         const audioId = `${baseAudioId}_${voiceFile}`;
         if (await fileExists(path.join(audioDir, `${audioId}.${format}`))) {
           existingVoiceFiles.push(voiceFile);
@@ -414,7 +469,7 @@ export async function backfillMissingTTSForClassroom(
               modelId,
               apiKey,
               baseUrl: ttsBaseUrl,
-              voice,
+              voice: voice.synthesisVoice,
               speed: speechAction.speed,
             },
             speechAction.text,
@@ -426,7 +481,10 @@ export async function backfillMissingTTSForClassroom(
           log.info(`Backfilled TTS: ${filename} (${result.audio.length} bytes)`);
         } catch (err) {
           stats.failed += 1;
-          log.warn(`TTS backfill failed for ${audioId} (voice=${voice}):`, err);
+          log.warn(
+            `TTS backfill failed for ${audioId} (voice=${voice.synthesisVoice}):`,
+            err,
+          );
         }
       }
 

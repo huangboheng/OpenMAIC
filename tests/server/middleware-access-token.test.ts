@@ -83,7 +83,7 @@ describe('middleware access-token gate for the retired POST /api/chat', () => {
     const response = await middleware(legacyChatRequest());
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toMatchObject({ error: 'Access code required' });
+    await expect(response.json()).resolves.toMatchObject({ error: 'Authentication required' });
   });
 
   it('lets a valid access cookie through to routing', async () => {
@@ -94,11 +94,12 @@ describe('middleware access-token gate for the retired POST /api/chat', () => {
     expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 
-  it('lets the request through to routing when no access code is set', async () => {
+  it('answers 401 without a session when no access code is set', async () => {
     delete process.env.ACCESS_CODE;
 
     const response = await middleware(legacyChatRequest());
 
-    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({ error: 'Authentication required' });
   });
 });

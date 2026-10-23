@@ -13,7 +13,6 @@ import { useStageStore } from '@/lib/store/stage';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { getEnabledProvidersWithVoices } from '@/lib/audio/voice-resolver';
-import { isTTSProviderEnabled } from '@/lib/audio/provider-enablement';
 import { useVoxCPMVoiceProfiles } from '@/lib/audio/voxcpm-voices';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import {
@@ -1019,11 +1018,7 @@ function GenerationPreviewContent() {
       // Generate TTS for first scene (part of actions step — blocking)
       if (
         settings.ttsEnabled &&
-        settings.ttsProviderId !== 'browser-native-tts' &&
-        isTTSProviderEnabled(
-          settings.ttsProviderId,
-          settings.ttsProvidersConfig?.[settings.ttsProviderId],
-        )
+        settings.ttsProviderId !== 'browser-native-tts'
       ) {
         const ttsResult = await generateTTSForScene(
           firstScene,
