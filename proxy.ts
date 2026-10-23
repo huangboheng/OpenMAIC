@@ -21,6 +21,7 @@ import {
   generateState,
 } from '@/lib/server/oauth-client';
 import { verifyAccessTokenEdge } from '@/lib/server/access-token';
+import { isHomePageEnabled } from '@/lib/config/feature-flags';
 
 // ── Configuration ─────────────────────────────────────────────────
 
@@ -51,11 +52,16 @@ const GET_AUTH_WHITELIST = [
   '/api/classroom-media/', // GET /api/classroom-media/:id/:path (media assets)
 ];
 
-// SEC-02: Entry tightening — OpenMAIC has NO public homepage.
-// The only legal page entry is the classroom page (linked from Philochora
-// course pages). Root path, eval/generation-preview pages and any other
-// non-whitelisted page path must return 404 (application-layer defense,
-// Nginx layer enforces the same rule to avoid single point of failure).
+// SEC-02: Entry tightening — hosted deployments have NO public homepage.
+// With OPENMAIC_HOME_ENABLED=false (the default), the only legal page entry is
+// the classroom page (linked from Philochora course pages). Local development
+// sets the flag to true, which lifts this page allowlist so the home page and
+// its generation flow are usable.
+//
+// The matcher includes '/', which Next compiles with the basePath prefix into
+// the exact `/openmaic` root (plus `/openmaic/` and `/openmaic/index`). This
+// is required: without it the basePath root bypasses the proxy entirely and
+// the hosted deployment would rely on nginx alone.
 const PAGE_ENTRY_PATTERN =
   /^\/classroom\/|^\/api\/|^\/_next(\/|$)|^\/favicon\.ico$|^\/logos\//;
 
@@ -103,11 +109,21 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   let modifiedHeaders: Headers | undefined;
 
-  // SEC-02: Reject any non-whitelisted page path (root /, /eval/*, /generation-preview, ...)
-  // before any auth/redirect logic runs. Classroom pages and API endpoints are
-  // the only legal entries; everything else is treated as non-existent.
-  if (!PAGE_ENTRY_PATTERN.test(pathname)) {
+  // SEC-02: Reject any non-whitelisted page path (root /, /eval/*,
+  // /generation-preview, ...) before any auth/redirect logic runs. Hosted
+  // deployments keep the allowlist; local development lifts it via the flag.
+  // Classroom pages and API endpoints remain the only legal entries in
+  // hosted mode.
+  if (!isHomePageEnabled() && !PAGE_ENTRY_PATTERN.test(pathname)) {
     return new NextResponse('Not Found', { status: 404 });
+  }
+
+  // Local home bypass: render the standalone UI shell without the hosted OAuth
+  // round-trip. The root page has no data of its own; every API call below
+  // still requires auth. In hosted mode the gate above has already returned
+  // 404, so this branch is unreachable there.
+  if (pathname === '/' && isHomePageEnabled()) {
+    return NextResponse.next();
   }
 
   // Skip auth for whitelisted paths
@@ -264,5 +280,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|logos/|api/public/).*)'],
+  matcher: ['/', '/((?!_next/static|_next/image|favicon.ico|logos/|api/public/).*)'],
 };

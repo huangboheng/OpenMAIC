@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.6] - 2026-10-23
+
+### 自有功能 (Own Feature)
+
+- 新增 server-only `OPENMAIC_HOME_ENABLED`（默认 OFF）：本地可开启首页与生成流程，托管 VPS 保持无公开首页。
+- 课堂页“返回首页/logo”在托管模式改跳 Philochora 主站。
+
+### Bug 修复
+
+- 修复精确 basePath 根路径 `/openmaic` 绕过 proxy 页面门禁的问题（matcher 增加 `'/'`）。
+- 修复本地首页被无条件 SEC-02 门禁 404 挡住的问题。
+
+### 文档与测试
+
+- 新增 ADR-0002；补充 flag/proxy 单测；Playwright 开启首页流程。
+
+---
+
 ## [1.2.4] - 2026-10-22
 
 ### 自有功能 (Own Feature)

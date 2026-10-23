@@ -4,6 +4,7 @@ import {
   isAgentRuntimeEnabled,
   isEditorRendererEnabled,
   isCoursewareReferenceEnabled,
+  isHomePageEnabled,
   isMaicEditorEnabled,
   isPlaybackRendererEnabled,
   isPiNativeChildRuntimeEnabled,
@@ -394,5 +395,38 @@ describe('isPptxImportEnabled', () => {
     expect(isPptxImportEnabled()).toBe(false);
     process.env[flag] = 'false';
     expect(isPptxImportEnabled()).toBe(false);
+  });
+});
+
+describe('isHomePageEnabled', () => {
+  const flag = 'OPENMAIC_HOME_ENABLED';
+  let original: string | undefined;
+
+  beforeEach(() => {
+    original = process.env[flag];
+    delete process.env[flag];
+  });
+
+  afterEach(() => {
+    if (original === undefined) delete process.env[flag];
+    else process.env[flag] = original;
+  });
+
+  it('defaults off when unset', () => {
+    expect(isHomePageEnabled()).toBe(false);
+  });
+
+  it("returns true for 'true' and '1'", () => {
+    process.env[flag] = 'true';
+    expect(isHomePageEnabled()).toBe(true);
+    process.env[flag] = '1';
+    expect(isHomePageEnabled()).toBe(true);
+  });
+
+  it("returns false for 'false', '0' and unrecognized strings", () => {
+    for (const value of ['false', '0', 'yes', '']) {
+      process.env[flag] = value;
+      expect(isHomePageEnabled()).toBe(false);
+    }
   });
 });

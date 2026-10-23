@@ -19,7 +19,6 @@ function loadDotEnvSecrets(): void {
 }
 loadDotEnvSecrets();
 
-
 export default defineConfig({
   testDir: './e2e/tests',
   fullyParallel: true,
@@ -58,6 +57,9 @@ export default defineConfig({
       NEXT_PUBLIC_MAIC_EDITOR_ENABLED: 'true',
       NEXT_PUBLIC_BASE_PATH: '',
       NEXT_PUBLIC_COURSEWARE_REFERENCE_ENABLED: 'true',
+      // Home is off by default (hosted deployments expose only classrooms).
+      // The browser suite exercises the full home/generation flow, so enable it.
+      OPENMAIC_HOME_ENABLED: 'true',
       ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
     },
   },

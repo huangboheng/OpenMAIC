@@ -1,7 +1,6 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { AnimatePresence, Reorder, motion, useReducedMotion } from 'motion/react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +10,7 @@ import { withBasePath } from '@/lib/utils/base-path';
 import { useStageStore } from '@/lib/store';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { useHomeNavigation } from '@/lib/hooks/use-home-navigation';
 import { useDeletedSceneRecycle } from '@/lib/edit/deleted-scene-recycle';
 import { duplicateSlideScene } from '@/lib/edit/slide-defaults';
 import {
@@ -51,7 +51,7 @@ const RAIL_MAX_PX = 360;
  */
 export function SlideNavRail() {
   const { t } = useI18n();
-  const router = useRouter();
+  const goHome = useHomeNavigation();
   const brand = useBrand();
   const isDesktop = useIsDesktop();
   const inWorkbenchPanel = useInWorkbenchPanel();
@@ -403,7 +403,7 @@ export function SlideNavRail() {
           {!collapsed && !isDesktop && (
             <button
               type="button"
-              onClick={() => router.push('/')}
+              onClick={goHome}
               title={t('generation.backToHome')}
               className="flex items-center gap-2 cursor-pointer rounded-lg px-1.5 -mx-1.5 py-1 -my-1 hover:bg-gray-100/80 dark:hover:bg-gray-800/60 active:scale-[0.97] transition-all duration-150"
             >

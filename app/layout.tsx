@@ -16,6 +16,8 @@ import { AccessCodeGuard } from '@/components/access-code-guard';
 import { ProSwapWatcher } from '@/components/workbench/ProSwapWatcher';
 import { loadLocaleResource } from '@/lib/i18n/load-resource';
 import { LOCALE_COOKIE, resolveRequestLocale } from '@/lib/i18n/resolve-locale';
+import { isHomePageEnabled } from '@/lib/config/feature-flags';
+import { AppConfigProvider } from '@/lib/contexts/app-config-context';
 
 // The UI font is loaded from @fontsource's stylesheet rather than next/font,
 // because only the stylesheet carries the per-subset `unicode-range`
@@ -60,6 +62,7 @@ export default async function RootLayout({
     acceptLanguage: headerStore.get('accept-language'),
   });
   const resources = await loadLocaleResource(locale);
+  const homeEnabled = isHomePageEnabled();
 
   return (
     <html lang={locale} suppressHydrationWarning>
@@ -70,19 +73,21 @@ export default async function RootLayout({
         className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <ThemeProvider>
-          <I18nProvider initialLocale={locale} initialResources={resources}>
-            <ModelSettingsInit />
-            <AgentRegistryInit />
-            <ProSwapWatcher />
-            <AccessCodeGuard>{children}</AccessCodeGuard>
-            <Toaster position="top-center" />
-            {/* After the Toaster: this one raises a toast on mount when
-                persistence is already broken, and a toast raised before its
-                host exists has nowhere to go. */}
-            <StorageHealthNotice />
-          </I18nProvider>
-        </ThemeProvider>
+        <AppConfigProvider homeEnabled={homeEnabled}>
+          <ThemeProvider>
+            <I18nProvider initialLocale={locale} initialResources={resources}>
+              <ModelSettingsInit />
+              <AgentRegistryInit />
+              <ProSwapWatcher />
+              <AccessCodeGuard>{children}</AccessCodeGuard>
+              <Toaster position="top-center" />
+              {/* After the Toaster: this one raises a toast on mount when
+                  persistence is already broken, and a toast raised before its
+                  host exists has nowhere to go. */}
+              <StorageHealthNotice />
+            </I18nProvider>
+          </ThemeProvider>
+        </AppConfigProvider>
       </body>
     </html>
   );

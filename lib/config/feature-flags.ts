@@ -25,6 +25,21 @@ export function isAgentRuntimeConfigured(): boolean {
 }
 
 /**
+ * Server-only gate for the application's own home page and generation flow.
+ * Default OFF: hosted deployments (the Philochora sub-path mount) expose only
+ * classroom pages. Local development opts in with
+ * `OPENMAIC_HOME_ENABLED=true` in `.env.local`.
+ *
+ * The value is enforced at the page (`app/page.tsx`) and proxy layers; the
+ * root layout also passes the boolean to the client so classroom "back to
+ * home" affordances can target the host site when the home page is disabled.
+ * Never rename this to a `NEXT_PUBLIC_*` variable.
+ */
+export function isHomePageEnabled(): boolean {
+  return readBoolean(process.env.OPENMAIC_HOME_ENABLED);
+}
+
+/**
  * Server-side persistence is available: documents, runtime rows and assets are
  * durable and owner-scoped. This is the same condition the persistence route
  * itself keys on, and it is strictly weaker than

@@ -37,7 +37,7 @@ import { createLogger } from '@/lib/logger';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { FileQuestion, Loader2 } from 'lucide-react';
-import Link from 'next/link';
+import { HomeLink } from './HomeLink';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { defaultClassroomLoadDeps, runClassroomLoad } from '@/lib/classroom/load-classroom';
 import {
@@ -327,12 +327,9 @@ export function ClassroomSurface({
                 <FileQuestion className="h-10 w-10 text-muted-foreground" />
                 <p className="text-lg font-medium">{t('classroom.notFound')}</p>
                 <p className="text-sm text-muted-foreground">{t('classroom.notFoundDesc')}</p>
-                <Link
-                  href="/"
-                  className="mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-                >
+                <HomeLink className="mt-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                   {t('classroom.backToHome')}
-                </Link>
+                </HomeLink>
               </div>
             </div>
           ) : view === 'error' ? (
