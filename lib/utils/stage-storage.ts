@@ -625,6 +625,14 @@ async function performStageDeletion(stageId: string): Promise<void> {
             await store.deleteDocument(stageId);
             documentDeleted = true;
 
+            // Learner-runtime data is a separate store, so it is cascaded right
+            // after the document: a runtime failure must not undo the deletion
+            // (the helper warns instead of throwing), and starting it before the
+            // disposable local cleanups below keeps one of those failing from
+            // skipping the authoritative cascade.
+            const runtimeDeletion = beginStageRuntimeDeletionSafely(stageId);
+            await runtimeDeletion.completion;
+
             // Local cache only, and intentionally after the authoritative
             // delete: liveness for the globally keyed audio rows is proved
             // against the documents that survive, which requires this one to
@@ -633,7 +641,7 @@ async function performStageDeletion(stageId: string): Promise<void> {
             await clearStageMediaCache(stageId);
 
             // Clear the device-scoped playback cursor. Runtime rows of every
-            // kind are removed by the all-kind cascade below.
+            // kind are removed by the all-kind cascade above.
             try {
               await clearCursor(stageId);
             } catch (error) {
@@ -650,11 +658,6 @@ async function performStageDeletion(stageId: string): Promise<void> {
               clearAllForScene(sceneId);
             }
 
-            // Learner-runtime data is a separate store, so it is cascaded after
-            // the document: a runtime failure must not undo the deletion (the
-            // helper warns instead of throwing).
-            const runtimeDeletion = beginStageRuntimeDeletionSafely(stageId);
-            await runtimeDeletion.completion;
             try {
               await clearStageDrainWatermarks(stageId);
             } catch (error) {

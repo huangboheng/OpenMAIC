@@ -16,6 +16,7 @@ import { configuredAssetByteEgress } from '@/lib/persistence/asset-byte-egress';
 import { resolveAssetCollectionGraceMs } from '@/lib/persistence/asset-collection-grace';
 import {
   decideDocumentAccess,
+  isQueryableSegment,
   parseDocumentAction,
   type DocumentAccess,
 } from '@/lib/persistence/document-access';
@@ -150,6 +151,48 @@ function mayMergeLearner(
     toLearnerKey === principal.ownerId &&
     isSameOriginJsonRequest(request)
   );
+}
+
+const RUNTIME_STAGE_DELETE_PATH = /^\/runtime\/stages\/([^/]+)$/u;
+
+/**
+ * The course a request deletes runtime for, or null when this is not that
+ * request. The storage package decodes every path segment before routing, so
+ * this reads the same spelling; anything unreadable stays a refusal rather
+ * than an error (the caller falls through to the package's own 400/403).
+ */
+function parseRuntimeStageDeletion(method: string, path: string): string | null {
+  if (method !== 'DELETE') return null;
+  const match = RUNTIME_STAGE_DELETE_PATH.exec(path);
+  if (!match) return null;
+  let stageId: string;
+  try {
+    stageId = decodeURIComponent(match[1]!);
+  } catch {
+    return null;
+  }
+  return isQueryableSegment(stageId) ? stageId : null;
+}
+
+/**
+ * Whether this request may purge a course's runtime data.
+ *
+ * The runtime contract gates the stage-wide delete behind an admin check, and
+ * this app has no admin identity: the only caller is the browser's deletion
+ * cascade, which runs after the course is tombstoned (see
+ * `lib/persistence/owner-bound-document-store.ts`). So the course's owner may
+ * clear the runtime of a course they have already retired, and nothing else:
+ * the global wipe (`DELETE /runtime`) and live courses stay refused.
+ */
+async function mayPurgeRetiredStageRuntime(
+  queryable: Queryable,
+  ownerId: string,
+  request: Request,
+): Promise<boolean> {
+  const stageId = parseRuntimeStageDeletion(request.method, routeRelativePath(request));
+  if (stageId === null) return false;
+  const meta = await readStageMeta(queryable, stageId);
+  return meta !== null && meta.ownerId === ownerId && meta.deletedAt !== null;
 }
 
 /**
@@ -312,7 +355,9 @@ async function createPersistenceHandler(
     // `mergeThroughClaim` below and lib/persistence/owner-claims.ts).
     authorizeMerge: async (_runtimePrincipal, fromLearnerKey, toLearnerKey) =>
       mayMergeLearner(principal, request, fromLearnerKey, toLearnerKey),
-    authorizeAdmin: async () => false,
+    // Both admin-gated DELETE routes pass through here; only the stage-scoped
+    // one can be allowed, and only for a course its owner already retired.
+    authorizeAdmin: async () => mayPurgeRetiredStageRuntime(pool, ownerId, request),
     authorizeDocuments: async () => access === 'allow',
     validateScene: validateAppScene,
     validateStage: validateAppStage,

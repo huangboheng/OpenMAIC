@@ -152,6 +152,7 @@ import { saveCurrentScene } from '@/lib/document-store';
 import { saveChatSessions } from '@/lib/utils/chat-storage';
 import { withRuntimeStorageSharedLock } from '@/lib/utils/chat-storage-lock';
 import { preparePBLScenesForDocumentPersistence } from '@/lib/pbl/v2/runtime/document-persistence';
+import { beginStageRuntimeDeletionSafely } from '@/lib/runtime/store';
 import type { Scene } from '@/lib/types/stage';
 
 let stageCounter = 0;
@@ -630,6 +631,19 @@ describe('deleteStageData wiring', () => {
     expect(dbMock.mediaFiles._delete).not.toHaveBeenCalled();
     // Audio rows are keyed globally; another course may play from the same id.
     expect(dbMock.audioFiles._bulkDelete).not.toHaveBeenCalled();
+  });
+
+  it('still cascades runtime deletion when the local media cache cannot be cleared', async () => {
+    // The media cache is disposable; a failed clear must not skip the
+    // authoritative runtime cascade this deletion exists to run. The failure
+    // still surfaces as a partial-cascade rejection (the established
+    // contract); only the ordering changed.
+    dbMock.mediaFiles._toArray.mockRejectedValueOnce(new Error('indexeddb unavailable'));
+
+    await expect(deleteStageData(stageId)).rejects.toThrow('indexeddb unavailable');
+
+    expect(beginStageRuntimeDeletionSafely).toHaveBeenCalledExactlyOnceWith(stageId);
+    expect(isStageDeleted(stageId)).toBe(true);
   });
 
   it('evicts the warm in-memory store after a successful deletion', async () => {

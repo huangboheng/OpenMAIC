@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.9] - 2026-10-24
+
+### Bug 修复
+
+- 修复删除课程后运行数据不删：持久化路由只放行「课程 owner 且课程已墓碑」的 `DELETE /runtime/stages/<id>`（全局 `DELETE /runtime` 仍拒绝），客户端在文档墓碑后立即发起运行数据级联，本地缓存清理失败不再跳过权威清理；历史孤儿按 ADR-0004 的运维 SQL 处理。
+
+---
+
 ## [1.2.8] - 2026-10-24
 
 ### Bug 修复

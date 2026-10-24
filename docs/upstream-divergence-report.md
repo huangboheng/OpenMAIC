@@ -2,7 +2,7 @@
 
 | 版本 | 创建日期 | 最后更新 |
 |------|----------|----------|
-| v1.2.1 | 2026-10-11 | 2026-10-22 |
+| v1.2.2 | 2026-10-11 | 2026-10-24 |
 
 ## 1 大纲
 
@@ -188,6 +188,7 @@
 | 公共静态资源与 base path | `app/api/public/[...path]/route.ts`、`lib/utils/base-path.ts`、`lib/fetch-base-path.ts` |
 | 内容采集 | `scripts/zlibrary-search.mjs`、`zlibrary-download.mjs`、`import-books.py`、`batch-generate-chapters.mjs`、`run-translation.mjs` |
 | 部署运维 | `scripts/deploy-sync.sh`、`deploy-nginx.sh`、`deploy-verify.mjs`、`deploy-health-check.mjs`、`service-ecosystem.config.cjs`、`deploy/nginx/philochora.conf` |
+| 删除课程时按课程 owner 清理运行数据 | `app/api/persistence/[...path]/route.ts`、`docs/adr/0004-stage-owner-runtime-purge.md` |
 
 ### 6.2 不与上游重叠的治理与工具面
 
@@ -430,3 +431,4 @@
 | v1.1.1 | 2026-10-22 | 浏览器冒烟发现并修复三类真实回归：本地生成 API 路由缺失（404）、`llmApiError` 兼容缺失（500）、服务端 provider 未同步到客户端 store（首页卡「配置模型」）；补模型授权回退与 `maxOutputTokens` 钳制，冒烟跑到场景内容 200 |
 | v1.2.0 | 2026-10-22 | 追加第 11 节旧课堂验证与残留任务清理：193 个课堂/1759 scene 全量静态与 HTTP 校验通过，3 个代表课堂浏览器播放通过；记录 owner 绑定缺失、DSL 0.1.0、冲突触发器三类迁移缺口及隔离库验证过的修复路径；归档 197 个残留生成任务；新增 `scripts/verify-classrooms.mts` 与 `pnpm verify:classrooms` |
 | v1.2.1 | 2026-10-22 | 补充内置 `LegacyClassroomImport` 根因：193 条导入记录均为 `skipped / id already exists`，不会重试；增加「先设身份模式后重新导入」与「原地补齐」两条不重生成的修复路径，并同步 11.6 遗留风险 |
+| v1.2.2 | 2026-10-24 | 补记删除课程的运行数据清理授权：上游仅 admin 可删，本仓改为「已墓碑课程的 owner」可清理并把客户端级联前移到本地清理之前；不做自动清理，运维 SQL 见 ADR-0004 |
