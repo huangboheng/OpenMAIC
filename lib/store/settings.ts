@@ -99,6 +99,29 @@ export function getValidASRLanguage(providerId: ASRProviderId, currentLanguage?:
   return isLanguageValid && currentLanguage ? currentLanguage : supportedLanguages[0] || 'auto';
 }
 
+/** Prefer provider auto-detection for an unset preference, otherwise resolve the UI locale. */
+export function resolveASRLanguage(
+  providerId: ASRProviderId,
+  currentLanguage: string | undefined,
+  locale: string,
+): string {
+  // 非空设置来自用户或旧版本，继续按原有规则校验，不能被界面语言覆盖。
+  if (currentLanguage) return getValidASRLanguage(providerId, currentLanguage);
+  const languages = isCustomASRProvider(providerId)
+    ? CUSTOM_ASR_DEFAULT_LANGUAGES
+    : ASR_PROVIDERS[providerId as keyof typeof ASR_PROVIDERS]?.supportedLanguages || [];
+  // 语言课程中的发言可能不同于界面语言；提供商支持时优先自动识别。
+  if (languages.includes('auto')) return 'auto';
+  const normalizedLocale = locale.toLowerCase().replaceAll('_', '-');
+  const baseLanguage = normalizedLocale.split('-')[0];
+  const exact = languages.find((language) => language.toLowerCase() === normalizedLocale);
+  const base = languages.find((language) => language.toLowerCase() === baseLanguage);
+  const regional = languages.find((language) =>
+    language.toLowerCase().startsWith(`${baseLanguage}-`),
+  );
+  return exact || base || regional || languages[0] || 'auto';
+}
+
 export interface SettingsState {
   // Model selection
   providerId: ProviderId;
@@ -120,6 +143,7 @@ export interface SettingsState {
   ttsVoice: string;
   ttsSpeed: number;
   asrProviderId: ASRProviderId;
+  /** Speech input language; empty uses auto-detection when supported, otherwise the UI locale. */
   asrLanguage: string;
 
   // Audio provider configurations
@@ -505,7 +529,8 @@ const getDefaultAudioConfig = () => ({
   ttsVoice: 'default',
   ttsSpeed: 1.0,
   asrProviderId: 'browser-native' as ASRProviderId,
-  asrLanguage: 'zh',
+  // 留空后在录音时解析界面语言，避免初次加载或后续切换语言时固定为中文。
+  asrLanguage: '',
   ttsProvidersConfig: {
     // Built-in providers default enabled:true — they only ever surface once
     // configured (API key or server-managed), so "enabled" is a user opt-OUT,

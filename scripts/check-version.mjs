@@ -58,8 +58,8 @@ function readPackageVersion() {
 }
 
 function validateVersion(versionStr) {
-  // 支持: 0.3.1 或 0.3.1+local.1
-  return /^\d+\.\d+\.\d+(?:\+local\.\d+)?$/.test(versionStr);
+  // 支持: 0.3.1 / 1.3.0-rc.1（semver 预发布）/ 0.3.1+local.1
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+local\.\d+)?$/.test(versionStr);
 }
 
 function getStagedFiles() {
@@ -81,7 +81,7 @@ async function checkPreCommit() {
   if (!version) return false;
 
   if (!validateVersion(version)) {
-    logError(`VERSION 文件格式无效: "${version}"（期望: MAJOR.MINOR.PATCH 或 MAJOR.MINOR.PATCH+local.N）`);
+    logError(`VERSION 文件格式无效: "${version}"（期望: MAJOR.MINOR.PATCH、MAJOR.MINOR.PATCH-PRERELEASE 或 MAJOR.MINOR.PATCH+local.N）`);
     return false;
   }
 
