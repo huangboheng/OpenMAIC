@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/utils/base-path';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
 import { isLLMProviderConfigured } from '@/lib/store/settings-validation';
@@ -301,7 +302,11 @@ export function GenerationToolbar({
                           className={cn('flex items-center gap-1.5', !available && 'opacity-50')}
                         >
                           {provider.icon && (
-                            <img src={provider.icon} alt={provider.name} className="w-3.5 h-3.5" />
+                            <img
+                              src={withBasePath(provider.icon)}
+                              alt={provider.name}
+                              className="w-3.5 h-3.5"
+                            />
                           )}
                           {provider.name}
                           {cfg?.isServerConfigured && (
@@ -849,7 +854,7 @@ function ModelSettingsPopover({
             >
               {currentProviderIcon ? (
                 <img
-                  src={currentProviderIcon}
+                  src={withBasePath(currentProviderIcon)}
                   alt={currentProviderName}
                   className="size-4 shrink-0 rounded-sm"
                 />
@@ -903,7 +908,7 @@ function ModelSettingsPopover({
                     >
                       {provider.icon ? (
                         <img
-                          src={provider.icon}
+                          src={withBasePath(provider.icon)}
                           alt={provider.name}
                           className="size-4 shrink-0 rounded-sm"
                         />

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { Box, ExternalLink, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/utils/base-path';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { MONO_LOGO_PROVIDERS } from '@/lib/ai/providers';
 import { PINNED_PROVIDER_ID, PROVIDER_SIGNUP_LINKS, pickRegionalLink } from './provider-links';
@@ -78,7 +79,7 @@ export function ProviderList({
                 >
                   {provider.icon ? (
                     <img
-                      src={provider.icon}
+                      src={withBasePath(provider.icon)}
                       alt={provider.name}
                       className={cn(
                         'size-4 object-contain',

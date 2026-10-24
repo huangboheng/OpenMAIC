@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.8] - 2026-10-24
+
+### Bug 修复
+
+- 修复子路径部署（`basePath=/openmaic`）与 Next 16 Turbopack dev 下服务图标 404：模型选择器、模型服务列表、Token Plan、生成工具栏与媒体弹窗的 `/logos/*` 在渲染层统一经 `withBasePath` 改写到 `<basePath>/api/public/logos/...`；provider 常量与持久化配置保持裸路径不变。
+
+---
+
 ## [1.2.7] - 2026-10-24
 
 ### 自有功能 (Own Feature)

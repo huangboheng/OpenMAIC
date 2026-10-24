@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/utils/base-path';
 import {
   TOKEN_PLAN_PRESETS,
   MODALITY_ORDER,
@@ -167,7 +168,7 @@ function PresetLogo({ preset }: { preset: TokenPlanPreset }) {
     >
       {}
       <img
-        src={preset.icon}
+        src={withBasePath(preset.icon)}
         alt=""
         className={cn('object-contain', preset.id === 'tokendance' ? 'size-full' : 'size-6')}
       />

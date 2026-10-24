@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/utils/base-path';
 import {
   getDefaultThinkingConfig,
   getThinkingDisplayValue,
@@ -66,7 +67,7 @@ export function ProviderLogo({
   }
   return (
     <img
-      src={group.icon}
+      src={withBasePath(group.icon)}
       alt=""
       aria-hidden="true"
       className={cn(

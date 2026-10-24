@@ -46,6 +46,7 @@ import type { ApplyChange, ModelSettingsView } from '@/lib/model-settings/client
 import { serviceEntries, type ServiceEntry } from '@/lib/model-settings/services';
 import { canAddService } from '@/lib/model-settings/shape';
 import { cn } from '@/lib/utils';
+import { withBasePath } from '@/lib/utils/base-path';
 import type { SettingsSection } from '@/lib/types/settings';
 
 import { AddProviderDialog } from './add-provider-dialog';
@@ -175,7 +176,7 @@ export function ModelServicesPanel({
           <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary/10">
             {icon ? (
               <img
-                src={icon}
+                src={withBasePath(icon)}
                 alt={name}
                 className={cn(
                   'size-5 object-contain',
