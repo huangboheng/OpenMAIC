@@ -11,6 +11,7 @@ import { CircleStop, MessageCircleMore } from 'lucide-react';
 import { InlineActionTag } from './inline-action-tag';
 import { useUserProfileStore } from '@/lib/store/user-profile';
 import { useSoftCloseCountdown } from './use-soft-close-countdown';
+import { withBasePath } from '@/lib/utils/base-path';
 
 /** Extended message part type covering standard + custom action parts */
 interface MessagePart {
@@ -30,9 +31,10 @@ interface ChatSessionProps {
   readonly onContinueSession?: (sessionId: string) => void;
 }
 
+/** 默认头像。 使用 withBasePath 包裹以兼容 /openmaic 子路径部署。 */
 const AVATARS = {
-  teacher: '/avatars/teacher.png',
-  user: '/avatars/user.png',
+  teacher: withBasePath('/avatars/teacher.png'),
+  user: withBasePath('/avatars/user.png'),
 };
 
 /**

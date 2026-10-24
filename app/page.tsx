@@ -29,6 +29,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { withBasePath } from '@/lib/utils/base-path';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { createLogger } from '@/lib/logger';
 import { Button } from '@/components/ui/button';
@@ -103,6 +104,7 @@ import { useImportClassroom } from '@/lib/import/use-import-classroom';
 import {
   isProWorkbenchEnabled,
   isPptxImportEnabled,
+  isSettingsEnabled,
   shouldShowVocationalTestUi,
 } from '@/lib/config/feature-flags';
 import { useImportPptx } from '@/lib/import/use-import-pptx';
@@ -187,6 +189,7 @@ function HomePage() {
   }, [router, workbenchEntryEnabled]);
   const [form, setForm] = useState<FormState>(initialFormState);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsEnabled = isSettingsEnabled();
   const [settingsSection, setSettingsSection] = useState<
     import('@/lib/types/settings').SettingsSection | undefined
   >(undefined);
@@ -723,26 +726,32 @@ function HomePage() {
           )}
         </div>
 
-        <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
+        {settingsEnabled && (
+          <>
+            <div className="w-[1px] h-4 bg-gray-200 dark:bg-gray-700" />
 
-        {/* Settings Button */}
-        <div className="relative">
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all group"
-          >
-            <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
-          </button>
-        </div>
+            {/* Settings Button */}
+            <div className="relative">
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="p-2 rounded-full text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm transition-all group"
+              >
+                <Settings className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
+              </button>
+            </div>
+          </>
+        )}
       </div>
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          setSettingsOpen(open);
-          if (!open) setSettingsSection(undefined);
-        }}
-        initialSection={settingsSection}
-      />
+      {settingsEnabled && (
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            setSettingsOpen(open);
+            if (!open) setSettingsSection(undefined);
+          }}
+          initialSection={settingsSection}
+        />
+      )}
 
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -766,7 +775,7 @@ function HomePage() {
         {/* ── Logo ── */}
         <div className="relative" data-pro-morph="lockup">
           <img
-            src="/logo-horizontal.png"
+            src={withBasePath('/logo-horizontal.png')}
             alt="OpenMAIC"
             className={cn(
               'h-12 md:h-16 mb-2 -ml-2 md:-ml-3',
@@ -830,10 +839,14 @@ function HomePage() {
                   }}
                   onPdfError={setError}
                   materialsLocked={preparingGenerate}
-                  onSettingsOpen={(section) => {
-                    setSettingsSection(section);
-                    setSettingsOpen(true);
-                  }}
+                  onSettingsOpen={
+                    settingsEnabled
+                      ? (section) => {
+                          setSettingsSection(section);
+                          setSettingsOpen(true);
+                        }
+                      : undefined
+                  }
                 />
               </div>
 
