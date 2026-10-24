@@ -10,7 +10,6 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { createKVPersistStorage, purgeLegacyPersistKey } from '@/lib/store/kv-persist';
-import { withBasePath } from '@/lib/utils/base-path';
 
 /**
  * Bound after the store exists; see `onWriteRefused` for why it is not inlined.
@@ -19,15 +18,15 @@ import { withBasePath } from '@/lib/utils/base-path';
  */
 const recovery: { rehydrate?: () => void | Promise<void> } = {};
 
-/** Predefined avatar options. 使用 withBasePath 包裹以兼容 /openmaic 子路径部署。 */
+/** Predefined avatar options */
 export const AVATAR_OPTIONS = [
-  withBasePath('/avatars/user.png'),
-  withBasePath('/avatars/teacher-2.png'),
-  withBasePath('/avatars/assist-2.png'),
-  withBasePath('/avatars/clown-2.png'),
-  withBasePath('/avatars/curious-2.png'),
-  withBasePath('/avatars/note-taker-2.png'),
-  withBasePath('/avatars/thinker-2.png'),
+  '/avatars/user.png',
+  '/avatars/teacher-2.png',
+  '/avatars/assist-2.png',
+  '/avatars/clown-2.png',
+  '/avatars/curious-2.png',
+  '/avatars/note-taker-2.png',
+  '/avatars/thinker-2.png',
 ] as const;
 
 export interface UserProfileState {

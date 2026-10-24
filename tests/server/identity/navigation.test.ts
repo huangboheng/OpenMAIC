@@ -58,6 +58,15 @@ afterEach(() => {
 });
 
 describe('the page request establishes the anonymous owner', () => {
+  // 本仓 proxy 在托管模式会把页面请求 302 到 Philochora OAuth、首页默认 404；
+  // 匿名 owner 只在本仓的 standalone 形态（首页开放 + access-code 模式）下
+  // 随页面响应下发。这里按该形态测试，托管形态的鉴权收缩由 proxy 测试覆盖。
+  beforeEach(() => {
+    vi.stubEnv('OPENMAIC_HOME_ENABLED', 'true');
+    vi.stubEnv('OPENMAIC_AUTH_MODE', 'access-code');
+    vi.stubEnv('ACCESS_CODE', 'demo-code-that-is-long-enough');
+  });
+
   it('mints one cookie on a first page load, with the attributes a route handler uses', async () => {
     const response = await middleware(pageRequest());
 

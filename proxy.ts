@@ -20,9 +20,17 @@ import {
   generateCodeChallenge,
   generateState,
 } from '@/lib/server/oauth-client';
-import { verifyAccessTokenEdge } from '@/lib/server/access-token';
-import { isHomePageEnabled } from '@/lib/config/feature-flags';
+import {
+  isAgentRuntimeConfigured,
+  isHomePageEnabled,
+  isProWorkbenchEnabled,
+} from '@/lib/config/feature-flags';
 import { resolveAuthMode } from '@/lib/config/auth-mode';
+import { verifyAccessTokenEdge } from '@/lib/server/access-token-edge';
+import {
+  anonymousOwnerForNavigation,
+  type NavigationIdentity,
+} from '@/lib/server/identity/navigation';
 
 // ── Configuration ─────────────────────────────────────────────────
 
@@ -104,12 +112,50 @@ function verifyServiceApiKey(request: NextRequest): boolean {
   return mismatch === 0;
 }
 
+/**
+ * Let the request through, carrying the anonymous owner a page request
+ * establishes: the cookie is set on the page response, and the forwarded
+ * request carries it too, so the page and every request it sends resolve one
+ * owner (see `lib/server/identity/navigation.ts`).
+ */
+function next(
+  request: NextRequest,
+  identity: NavigationIdentity | undefined,
+  modifiedHeaders?: Headers,
+): NextResponse {
+  if (!identity && !modifiedHeaders) return NextResponse.next();
+  const headers = new Headers(modifiedHeaders ?? request.headers);
+  if (identity) headers.set('cookie', identity.requestCookie);
+  const response = NextResponse.next({ request: { headers } });
+  if (identity) response.headers.append('set-cookie', identity.setCookie);
+  return response;
+}
+
 // ── Middleware ────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   let modifiedHeaders: Headers | undefined;
   const accessCodeMode = resolveAuthMode() === 'access-code';
+
+  // Return an actual server-side 404 when either half of the workbench is off.
+  // Edge middleware cannot reliably inspect server-only deployment variables,
+  // so it enforces the public gate and leaves the complete runtime/database
+  // check to Node. A Node-hosted middleware uses the same gate as startup.
+  const canInspectServerRuntime = process.env.NEXT_RUNTIME !== 'edge';
+  const workbenchEnabled =
+    isProWorkbenchEnabled() && (!canInspectServerRuntime || isAgentRuntimeConfigured());
+  if (!workbenchEnabled && (pathname === '/workbench' || pathname.startsWith('/workbench/'))) {
+    return new NextResponse('Not found', { status: 404 });
+  }
+
+  // One anonymous owner per browser, established on the page response before
+  // any API request can mint its own.
+  const identity = anonymousOwnerForNavigation({
+    method: request.method,
+    headers: request.headers,
+    pathname,
+  });
 
   // SEC-02: Reject any non-whitelisted page path (root /, /eval/*,
   // /generation-preview, ...) before any auth/redirect logic runs. Hosted
@@ -125,7 +171,7 @@ export async function proxy(request: NextRequest) {
   // still requires auth. In hosted mode the gate above has already returned
   // 404, so this branch is unreachable there.
   if (pathname === '/' && isHomePageEnabled()) {
-    return NextResponse.next();
+    return next(request, identity);
   }
 
   // Standalone access-code mode: the two access-code endpoints bootstrap the
@@ -136,16 +182,16 @@ export async function proxy(request: NextRequest) {
       (pathname === '/api/access-code/status' && request.method === 'GET') ||
       (pathname === '/api/access-code/verify' && request.method === 'POST');
     if (isAccessCodeEndpoint) {
-      return NextResponse.next();
+      return next(request, identity);
     }
     if (!pathname.startsWith('/api/')) {
-      return NextResponse.next();
+      return next(request, identity);
     }
   }
 
   // Skip auth for whitelisted paths
   if (isWhitelisted(pathname)) {
-    return NextResponse.next();
+    return next(request, identity);
   }
 
   // Skip auth for GET-only whitelisted paths (classroom data read).
@@ -162,7 +208,7 @@ export async function proxy(request: NextRequest) {
         );
       }
     }
-    return NextResponse.next();
+    return next(request, identity);
   }
 
   // SEC-01: Service-to-service API key bypasses OAuth
@@ -291,9 +337,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  return modifiedHeaders
-    ? NextResponse.next({ request: { headers: modifiedHeaders } })
-    : NextResponse.next();
+  return next(request, identity, modifiedHeaders);
 }
 
 export const config = {

@@ -14,7 +14,6 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { withBasePath } from '@/lib/utils/base-path';
 import {
   ArrowUp,
   CheckCircle2,
@@ -24,7 +23,6 @@ import {
   Lightbulb,
   Loader2,
   MessageSquare,
-  RotateCcw,
 } from 'lucide-react';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
 import { SpeechButton } from '@/components/audio/speech-button';
@@ -160,7 +158,6 @@ export function PBLV2Chat({
     simPhase,
     run,
     clearError,
-    retry,
   } = useInstructorStream(project, onProjectChange, onInstructorStreamingChange);
   const { t } = useI18n();
   // `streaming` is this instance's own run; `instructorStreaming` also covers a
@@ -648,23 +645,13 @@ export function PBLV2Chat({
 
         {error && (
           <div className="flex items-start justify-between gap-2 rounded-xl border border-destructive/40 bg-destructive/15 px-3 py-2 text-xs text-red-200">
-            <span className="min-w-0 flex-1">{error}</span>
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={retry}
-                disabled={streamActive}
-                className="inline-flex items-center gap-1 underline underline-offset-2 hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RotateCcw className="w-3 h-3" />
-                {t('pbl.v2.chat.retry')}
-              </button>
-              <button
-                onClick={clearError}
-                className="underline underline-offset-2 hover:opacity-80"
-              >
-                {t('pbl.v2.hero.close')}
-              </button>
-            </div>
+            <span>{error}</span>
+            <button
+              onClick={clearError}
+              className="shrink-0 underline underline-offset-2 hover:opacity-80"
+            >
+              {t('pbl.v2.hero.close')}
+            </button>
           </div>
         )}
 
@@ -1150,8 +1137,8 @@ function InstructorMessageBubble({
 /** PBL v2 instructor avatar — a PBL-owned asset, intentionally NOT
  *  roundtable's `DEFAULT_TEACHER_AVATAR`, so the instructor's face is
  *  decoupled from the OpenMAIC classroom teacher avatar; changing one
- *  never affects the other. 使用 withBasePath 兼容 /openmaic 子路径部署。 */
-const PBL_INSTRUCTOR_AVATAR = withBasePath('/avatars/instructor.png');
+ *  never affects the other. */
+const PBL_INSTRUCTOR_AVATAR = '/avatars/instructor.png';
 
 const INSTRUCTOR_AVATAR_RING =
   'h-8 w-8 overflow-hidden rounded-full border border-primary/35 bg-primary/15 shadow-[0_0_22px_rgba(169,148,255,0.22)]';
